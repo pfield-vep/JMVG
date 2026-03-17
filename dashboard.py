@@ -1467,155 +1467,243 @@ with tab6:
                           'total_sales': round(_c['net_sales'].sum(),0)})
         return _pd.DataFrame(_rows)
 
-    trend_df = compute_sss_trend(selected_market, selected_grouping)
+    # If a specific store is selected, show that store's individual trend instead
+    if selected_store:
+        trend_df = compute_sss_trend(selected_market, selected_grouping)  # still compute for context
+        _store_name = STORE_NAMES.get(selected_store, selected_store)
+        st.markdown(f'<div class="section-header">STORE TREND — {selected_store} · {_store_name.upper()}</div>', unsafe_allow_html=True)
 
-    # ── Roll forward: append PDF weeks not yet in history ────────────────────
-    # PDF data uses store-level sales but no prior-year transactions,
-    # so we use the market totals (from PDF summary rows) for the most recent weeks
-    @st.cache_data(ttl=300)
-    def get_pdf_trend_rows(market_filter):
-        import pandas as _pd, math as _m
-        _conn, _ = get_db_connection()
-        _mkt = _pd.read_sql(
-            "SELECT week_ending, market, store_count, sss_pct, same_store_ticket_pct, "
-            "same_store_txn_pct FROM weekly_market_totals ORDER BY week_ending", _conn)
-        _conn.close()
-        # Filter to CA-level total (highest store count, not FL)
-        _ca = _mkt[~_mkt['market'].isin(['FL','Miami, Ft. Lauderdale'])].copy()
-        _ca = _ca.sort_values('store_count', ascending=False)
-        _ca = _ca.drop_duplicates(subset=['week_ending'], keep='first')
-        if market_filter != "All Markets":
-            _mk = _mkt[_mkt['market'].str.contains(
-                market_filter.split('/')[0].strip(), case=False, na=False)]
-            _mk = _mk.sort_values('store_count', ascending=False)
-            _ca = _mk.drop_duplicates(subset=['week_ending'], keep='first')
-        _rows = []
-        for _, r in _ca.iterrows():
-            try:
-                _sss = float(r['sss_pct']) if _pd.notna(r['sss_pct']) else None
-                _txn = float(r['same_store_ticket_pct']) if _pd.notna(r['same_store_ticket_pct']) else None
-                _tkt = float(r['same_store_txn_pct']) if _pd.notna(r['same_store_txn_pct']) else None
-                if _sss is None: continue
-                _rows.append({'week_ending': r['week_ending'],
-                              'comp_stores': int(r['store_count']) if _pd.notna(r['store_count']) else 0,
-                              'sss_pct': round(_sss,2),
-                              'ss_txn_pct': round(_txn,2) if _txn else None,
-                              'ss_ticket_pct': round(_tkt,2) if _tkt else None})
-            except: pass
-        return _pd.DataFrame(_rows)
+        import pandas as _spd
+        _conn2, _ = get_db_connection()
+        _sh = _spd.read_sql(
+            f"SELECT week_ending, net_sales, transactions FROM weekly_store_history "
+            f"WHERE store_id = '{selected_store}' AND net_sales > 0 ORDER BY week_ending", _conn2)
+        _conn2.close()
 
-    pdf_rows = get_pdf_trend_rows(selected_market)
+        if len(_sh) == 0:
+            st.info("No history data available for this store.")
+        else:
+            _sh['week_ending'] = _spd.to_datetime(_sh['week_ending'])
+            _sh = _sh.sort_values('week_ending')
+            # Calculate YoY % vs 364 days prior
+            _sh_idx = _sh.set_index('week_ending')
+            _yoy_sales = []; _yoy_txns = []
+            for _wk, _row in _sh_idx.iterrows():
+                _pr = _wk - _spd.Timedelta(days=364)
+                if _pr in _sh_idx.index and _sh_idx.loc[_pr, 'net_sales'] > 0:
+                    _yoy_sales.append((_row['net_sales'] / _sh_idx.loc[_pr, 'net_sales'] - 1) * 100)
+                    _yoy_txns.append((_row['transactions'] / _sh_idx.loc[_pr, 'transactions'] - 1) * 100 if _sh_idx.loc[_pr, 'transactions'] > 0 else None)
+                else:
+                    _yoy_sales.append(None)
+                    _yoy_txns.append(None)
+            _sh['yoy_sales'] = _yoy_sales
+            _sh['yoy_txns'] = _yoy_txns
+            _sh['week_str'] = _sh['week_ending'].dt.strftime('%Y-%m-%d')
 
-    # Merge: use history for older weeks, PDF data for newer weeks not in history
-    if len(trend_df) > 0 and len(pdf_rows) > 0:
-        hist_max = trend_df['week_ending'].max()
-        new_pdf = pdf_rows[pdf_rows['week_ending'] > hist_max].copy()
-        if len(new_pdf) > 0:
-            # Rename week_ending column to match
-            trend_df = pd.concat([trend_df, new_pdf], ignore_index=True)
-            trend_df = trend_df.sort_values('week_ending').reset_index(drop=True)
-    elif len(trend_df) == 0 and len(pdf_rows) > 0:
-        trend_df = pdf_rows.copy()
+            # Net Sales trend
+            _fig_s = go.Figure()
+            _fig_s.add_trace(go.Bar(x=_sh['week_str'], y=_sh['net_sales'],
+                name='Net Sales', marker_color=RED, opacity=0.8,
+                hovertemplate='Week: %{x}<br>Sales: $%{y:,.0f}<extra></extra>'))
+            _fig_s.update_layout(**PLOTLY_THEME, height=320,
+                margin=dict(l=40,r=20,t=45,b=60), showlegend=False,
+                title=dict(text=f"Weekly Net Sales — {_store_name}", font=dict(size=15, color=TEXT, family='Arial')))
+            _fig_s.update_xaxes(tickangle=-40, tickfont=dict(size=9))
+            _fig_s.update_yaxes(tickprefix='$', tickformat=',.0f')
+            st.plotly_chart(_fig_s, use_container_width=True,
+                config={"scrollZoom": True, "responsive": True, "displayModeBar": True,
+                        "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage"]})
 
-    if len(trend_df) == 0:
-        st.info("No trend data available for the selected market.")
+            # YoY Sales %
+            _yoy_plot = _sh.dropna(subset=['yoy_sales'])
+            if len(_yoy_plot) > 0:
+                _fig_yoy = go.Figure(go.Bar(
+                    x=_yoy_plot['week_str'], y=_yoy_plot['yoy_sales'],
+                    marker_color=[GREEN if v >= 0 else DANGER for v in _yoy_plot['yoy_sales']],
+                    text=[f"{v:+.1f}%" for v in _yoy_plot['yoy_sales']],
+                    textposition='outside', textfont=dict(size=9, color=TEXT),
+                    hovertemplate='Week: %{x}<br>YoY: %{y:+.1f}%<extra></extra>'
+                ))
+                _fig_yoy.add_hline(y=0, line_color=TEXT, line_width=2)
+                _fig_yoy.update_layout(**PLOTLY_THEME, height=320,
+                    margin=dict(l=40,r=20,t=45,b=60), showlegend=False,
+                    title=dict(text=f"YoY Sales % — {_store_name}", font=dict(size=15, color=TEXT, family='Arial')))
+                _fig_yoy.update_xaxes(tickangle=-40, tickfont=dict(size=9))
+                _fig_yoy.update_yaxes(ticksuffix='%')
+                st.plotly_chart(_fig_yoy, use_container_width=True,
+                    config={"scrollZoom": True, "responsive": True, "displayModeBar": True,
+                            "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage"]})
+
+            # YoY Transactions %
+            _yoy_t = _sh.dropna(subset=['yoy_txns'])
+            if len(_yoy_t) > 0:
+                _fig_t = go.Figure(go.Bar(
+                    x=_yoy_t['week_str'], y=_yoy_t['yoy_txns'],
+                    marker_color=[GREEN if v >= 0 else DANGER for v in _yoy_t['yoy_txns']],
+                    text=[f"{v:+.1f}%" for v in _yoy_t['yoy_txns']],
+                    textposition='outside', textfont=dict(size=9, color=TEXT),
+                    hovertemplate='Week: %{x}<br>YoY Txns: %{y:+.1f}%<extra></extra>'
+                ))
+                _fig_t.add_hline(y=0, line_color=TEXT, line_width=2)
+                _fig_t.update_layout(**PLOTLY_THEME, height=320,
+                    margin=dict(l=40,r=20,t=45,b=60), showlegend=False,
+                    title=dict(text=f"YoY Transactions % — {_store_name}", font=dict(size=15, color=TEXT, family='Arial')))
+                _fig_t.update_xaxes(tickangle=-40, tickfont=dict(size=9))
+                _fig_t.update_yaxes(ticksuffix='%')
+                st.plotly_chart(_fig_t, use_container_width=True,
+                    config={"scrollZoom": True, "responsive": True, "displayModeBar": True,
+                            "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage"]})
     else:
-        st.markdown('<div class="section-header">SAME STORE PERFORMANCE TRENDS</div>', unsafe_allow_html=True)
+        trend_df = compute_sss_trend(selected_market, selected_grouping)
 
-        if 'trend_weeks' not in st.session_state:
-            st.session_state['trend_weeks'] = '26 weeks'
-        n_weeks_options = {'13 weeks': 13, '26 weeks': 26, '52 weeks': 52, 'All history': len(trend_df)}
-        st.markdown(
-            f"<div style='font-family:Arial,sans-serif; font-size:18px; font-weight:700;"
-            f"color:{TEXT}; margin-bottom:10px;'>Show:</div>",
-            unsafe_allow_html=True)
-        _active_lbl = st.session_state.get('trend_weeks', '26 weeks')
-        _btn_css = []
-        for _bi, _bopt in enumerate(n_weeks_options.keys()):
-            if _bopt == _active_lbl:
-                _sel = "div[data-testid=\"column\"]:nth-child(" + str(_bi+1) + ") button"
-                _rule = _sel + " { background-color: #134A7C !important; color: white !important; border: 2px solid #134A7C !important; font-weight: 700 !important; }"
-                _btn_css.append(_rule)
-        if _btn_css:
-            st.markdown("<style>" + " ".join(_btn_css) + "</style>", unsafe_allow_html=True)
-        btn_cols2 = st.columns(len(n_weeks_options))
-        for _i, _opt in enumerate(n_weeks_options.keys()):
-            with btn_cols2[_i]:
-                if st.button(_opt, key=f"trend_btn_{_i}", use_container_width=True):
-                    st.session_state['trend_weeks'] = _opt
-                    st.rerun()
-        n_weeks_label = st.session_state['trend_weeks']
-        if n_weeks_label not in n_weeks_options:
-            n_weeks_label = '26 weeks'
-        n_weeks = n_weeks_options[n_weeks_label]
-        plot_df = trend_df.tail(n_weeks).copy()
+    if not selected_store:
+        # ── Roll forward: append PDF weeks not yet in history ────────────────────
+        # PDF data uses store-level sales but no prior-year transactions,
+        # so we use the market totals (from PDF summary rows) for the most recent weeks
+        @st.cache_data(ttl=300)
+        def get_pdf_trend_rows(market_filter):
+            import pandas as _pd, math as _m
+            _conn, _ = get_db_connection()
+            _mkt = _pd.read_sql(
+                "SELECT week_ending, market, store_count, sss_pct, same_store_ticket_pct, "
+                "same_store_txn_pct FROM weekly_market_totals ORDER BY week_ending", _conn)
+            _conn.close()
+            # Filter to CA-level total (highest store count, not FL)
+            _ca = _mkt[~_mkt['market'].isin(['FL','Miami, Ft. Lauderdale'])].copy()
+            _ca = _ca.sort_values('store_count', ascending=False)
+            _ca = _ca.drop_duplicates(subset=['week_ending'], keep='first')
+            if market_filter != "All Markets":
+                _mk = _mkt[_mkt['market'].str.contains(
+                    market_filter.split('/')[0].strip(), case=False, na=False)]
+                _mk = _mk.sort_values('store_count', ascending=False)
+                _ca = _mk.drop_duplicates(subset=['week_ending'], keep='first')
+            _rows = []
+            for _, r in _ca.iterrows():
+                try:
+                    _sss = float(r['sss_pct']) if _pd.notna(r['sss_pct']) else None
+                    _txn = float(r['same_store_ticket_pct']) if _pd.notna(r['same_store_ticket_pct']) else None
+                    _tkt = float(r['same_store_txn_pct']) if _pd.notna(r['same_store_txn_pct']) else None
+                    if _sss is None: continue
+                    _rows.append({'week_ending': r['week_ending'],
+                                  'comp_stores': int(r['store_count']) if _pd.notna(r['store_count']) else 0,
+                                  'sss_pct': round(_sss,2),
+                                  'ss_txn_pct': round(_txn,2) if _txn else None,
+                                  'ss_ticket_pct': round(_tkt,2) if _tkt else None})
+                except: pass
+            return _pd.DataFrame(_rows)
 
-        def bar_colors(vals):
-            return [GREEN if v >= 0 else DANGER for v in vals]
+        pdf_rows = get_pdf_trend_rows(selected_market)
 
-        _bar_font = 16 if n_weeks <= 13 else 13 if n_weeks <= 26 else 11 if n_weeks <= 52 else 9
+        # Merge: use history for older weeks, PDF data for newer weeks not in history
+        if len(trend_df) > 0 and len(pdf_rows) > 0:
+            hist_max = trend_df['week_ending'].max()
+            new_pdf = pdf_rows[pdf_rows['week_ending'] > hist_max].copy()
+            if len(new_pdf) > 0:
+                # Rename week_ending column to match
+                trend_df = pd.concat([trend_df, new_pdf], ignore_index=True)
+                trend_df = trend_df.sort_values('week_ending').reset_index(drop=True)
+        elif len(trend_df) == 0 and len(pdf_rows) > 0:
+            trend_df = pdf_rows.copy()
 
-        def sss_bar(df, col, title, hover_label):
-            fig = go.Figure(go.Bar(
-                x=df['week_ending'], y=df[col],
-                marker_color=bar_colors(df[col]),
-                text=[f"{v:+.1f}%" for v in df[col]],
-                textposition='outside',
-                textfont=dict(size=_bar_font, family='Arial', color=TEXT),
-                hovertemplate=f"Week: %{{x}}<br>{hover_label}: %{{y:+.1f}}%<extra></extra>"
-            ))
-            fig.add_hline(y=0, line_color=TEXT, line_width=2, line_dash='solid')
-            fig.update_layout(**PLOTLY_THEME, height=380,
-                              margin=dict(l=20,r=20,t=55,b=60),
-                              title=dict(text=title, font=dict(size=16, color=TEXT, family='Arial')))
-            fig.update_xaxes(tickangle=-40, tickfont=dict(size=max(_bar_font-1,8), family='Arial'))
-            fig.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
-            return fig
+        if len(trend_df) == 0:
+            st.info("No trend data available for the selected market.")
+        else:
+            st.markdown('<div class="section-header">SAME STORE PERFORMANCE TRENDS</div>', unsafe_allow_html=True)
 
-        # All three stacked vertically
-        st.plotly_chart(sss_bar(plot_df, 'sss_pct',
-            f"Same Store Sales % ({n_weeks_label})", "SS Sales"),
-            use_container_width=True)
-        st.plotly_chart(sss_bar(plot_df, 'ss_txn_pct',
-            f"Same Store Transactions % ({n_weeks_label})", "SS Transactions"),
-            use_container_width=True)
-        st.plotly_chart(sss_bar(plot_df, 'ss_ticket_pct',
-            f"Same Store Avg Ticket % ({n_weeks_label})", "SS Avg Ticket"),
-            use_container_width=True)
+            if 'trend_weeks' not in st.session_state:
+                st.session_state['trend_weeks'] = '26 weeks'
+            n_weeks_options = {'13 weeks': 13, '26 weeks': 26, '52 weeks': 52, 'All history': len(trend_df)}
+            st.markdown(
+                f"<div style='font-family:Arial,sans-serif; font-size:18px; font-weight:700;"
+                f"color:{TEXT}; margin-bottom:10px;'>Show:</div>",
+                unsafe_allow_html=True)
+            _active_lbl = st.session_state.get('trend_weeks', '26 weeks')
+            _btn_css = []
+            for _bi, _bopt in enumerate(n_weeks_options.keys()):
+                if _bopt == _active_lbl:
+                    _sel = "div[data-testid=\"column\"]:nth-child(" + str(_bi+1) + ") button"
+                    _rule = _sel + " { background-color: #134A7C !important; color: white !important; border: 2px solid #134A7C !important; font-weight: 700 !important; }"
+                    _btn_css.append(_rule)
+            if _btn_css:
+                st.markdown("<style>" + " ".join(_btn_css) + "</style>", unsafe_allow_html=True)
+            btn_cols2 = st.columns(len(n_weeks_options))
+            for _i, _opt in enumerate(n_weeks_options.keys()):
+                with btn_cols2[_i]:
+                    if st.button(_opt, key=f"trend_btn_{_i}", use_container_width=True):
+                        st.session_state['trend_weeks'] = _opt
+                        st.rerun()
+            n_weeks_label = st.session_state['trend_weeks']
+            if n_weeks_label not in n_weeks_options:
+                n_weeks_label = '26 weeks'
+            n_weeks = n_weeks_options[n_weeks_label]
+            plot_df = trend_df.tail(n_weeks).copy()
 
-        # 4-week rolling average
-        st.markdown('<div class="section-header">4-WEEK ROLLING AVERAGE</div>', unsafe_allow_html=True)
-        roll = trend_df.copy()
-        roll['sss_4wk']    = roll['sss_pct'].rolling(4).mean()
-        roll['txn_4wk']    = roll['ss_txn_pct'].rolling(4).mean()
-        roll['ticket_4wk'] = roll['ss_ticket_pct'].rolling(4).mean()
-        roll = roll.tail(n_weeks).dropna(subset=['sss_4wk'])
+            def bar_colors(vals):
+                return [GREEN if v >= 0 else DANGER for v in vals]
 
-        fig_roll = go.Figure()
-        fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['sss_4wk'],
-            name='SS Sales', line=dict(color=RED, width=2.5), mode='lines+markers', marker_size=6,
-            hovertemplate="Week: %{x}<br>SS Sales (4wk): %{y:+.1f}%<extra></extra>"))
-        fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['txn_4wk'],
-            name='SS Transactions', line=dict(color=BLUE, width=2.5), mode='lines+markers', marker_size=6,
-            hovertemplate="Week: %{x}<br>SS Transactions (4wk): %{y:+.1f}%<extra></extra>"))
-        fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['ticket_4wk'],
-            name='SS Avg Ticket', line=dict(color='#F5A623', width=2.5), mode='lines+markers', marker_size=6,
-            hovertemplate="Week: %{x}<br>SS Avg Ticket (4wk): %{y:+.1f}%<extra></extra>"))
-        fig_roll.add_hline(y=0, line_color=TEXT, line_width=2.5, line_dash='solid')
-        fig_roll.update_layout(**PLOTLY_THEME, height=440,
-                               margin=dict(l=20,r=20,t=55,b=60),
-                               legend=DEFAULT_LEGEND,
-                               title=dict(text="4-Week Rolling Average — SS Sales, Transactions & Avg Ticket",
-                                          font=dict(size=16, color=TEXT, family='Arial')))
-        fig_roll.update_xaxes(tickangle=-40, tickfont=dict(size=10, family='Arial'))
-        fig_roll.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+            _bar_font = 16 if n_weeks <= 13 else 13 if n_weeks <= 26 else 11 if n_weeks <= 52 else 9
 
-        avg_comp = int(plot_df['comp_stores'].mean())
-        st.markdown(f"""
-            <div style='font-family:Arial,sans-serif;font-size:13px;color:{MUTED};margin-top:8px;padding:8px 0;'>
-                Comp stores: avg <b>{avg_comp}</b> per week &nbsp;·&nbsp;
-                420-day eligibility rule &nbsp;·&nbsp;
-                History: {trend_df['week_ending'].min()} to {trend_df['week_ending'].max()}
-            </div>
-        """, unsafe_allow_html=True)
+            def sss_bar(df, col, title, hover_label):
+                fig = go.Figure(go.Bar(
+                    x=df['week_ending'], y=df[col],
+                    marker_color=bar_colors(df[col]),
+                    text=[f"{v:+.1f}%" for v in df[col]],
+                    textposition='outside',
+                    textfont=dict(size=_bar_font, family='Arial', color=TEXT),
+                    hovertemplate=f"Week: %{{x}}<br>{hover_label}: %{{y:+.1f}}%<extra></extra>"
+                ))
+                fig.add_hline(y=0, line_color=TEXT, line_width=2, line_dash='solid')
+                fig.update_layout(**PLOTLY_THEME, height=380,
+                                  margin=dict(l=20,r=20,t=55,b=60),
+                                  title=dict(text=title, font=dict(size=16, color=TEXT, family='Arial')))
+                fig.update_xaxes(tickangle=-40, tickfont=dict(size=max(_bar_font-1,8), family='Arial'))
+                fig.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
+                return fig
+
+            # All three stacked vertically
+            st.plotly_chart(sss_bar(plot_df, 'sss_pct',
+                f"Same Store Sales % ({n_weeks_label})", "SS Sales"),
+                use_container_width=True)
+            st.plotly_chart(sss_bar(plot_df, 'ss_txn_pct',
+                f"Same Store Transactions % ({n_weeks_label})", "SS Transactions"),
+                use_container_width=True)
+            st.plotly_chart(sss_bar(plot_df, 'ss_ticket_pct',
+                f"Same Store Avg Ticket % ({n_weeks_label})", "SS Avg Ticket"),
+                use_container_width=True)
+
+            # 4-week rolling average
+            st.markdown('<div class="section-header">4-WEEK ROLLING AVERAGE</div>', unsafe_allow_html=True)
+            roll = trend_df.copy()
+            roll['sss_4wk']    = roll['sss_pct'].rolling(4).mean()
+            roll['txn_4wk']    = roll['ss_txn_pct'].rolling(4).mean()
+            roll['ticket_4wk'] = roll['ss_ticket_pct'].rolling(4).mean()
+            roll = roll.tail(n_weeks).dropna(subset=['sss_4wk'])
+
+            fig_roll = go.Figure()
+            fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['sss_4wk'],
+                name='SS Sales', line=dict(color=RED, width=2.5), mode='lines+markers', marker_size=6,
+                hovertemplate="Week: %{x}<br>SS Sales (4wk): %{y:+.1f}%<extra></extra>"))
+            fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['txn_4wk'],
+                name='SS Transactions', line=dict(color=BLUE, width=2.5), mode='lines+markers', marker_size=6,
+                hovertemplate="Week: %{x}<br>SS Transactions (4wk): %{y:+.1f}%<extra></extra>"))
+            fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['ticket_4wk'],
+                name='SS Avg Ticket', line=dict(color='#F5A623', width=2.5), mode='lines+markers', marker_size=6,
+                hovertemplate="Week: %{x}<br>SS Avg Ticket (4wk): %{y:+.1f}%<extra></extra>"))
+            fig_roll.add_hline(y=0, line_color=TEXT, line_width=2.5, line_dash='solid')
+            fig_roll.update_layout(**PLOTLY_THEME, height=440,
+                                   margin=dict(l=20,r=20,t=55,b=60),
+                                   legend=DEFAULT_LEGEND,
+                                   title=dict(text="4-Week Rolling Average — SS Sales, Transactions & Avg Ticket",
+                                              font=dict(size=16, color=TEXT, family='Arial')))
+            fig_roll.update_xaxes(tickangle=-40, tickfont=dict(size=10, family='Arial'))
+            fig_roll.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
+            st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+
+            avg_comp = int(plot_df['comp_stores'].mean())
+            st.markdown(f"""
+                <div style='font-family:Arial,sans-serif;font-size:13px;color:{MUTED};margin-top:8px;padding:8px 0;'>
+                    Comp stores: avg <b>{avg_comp}</b> per week &nbsp;·&nbsp;
+                    420-day eligibility rule &nbsp;·&nbsp;
+                    History: {trend_df['week_ending'].min()} to {trend_df['week_ending'].max()}
+                </div>
+            """, unsafe_allow_html=True)
