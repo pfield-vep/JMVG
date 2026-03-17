@@ -58,6 +58,10 @@ PLOTLY_THEME = dict(
     font=dict(color=TEXT, family="Arial, sans-serif", size=13),
     xaxis=dict(gridcolor=GRID_COLOR, linecolor=BORDER, tickfont=dict(size=12, color=MUTED)),
     yaxis=dict(gridcolor=GRID_COLOR, linecolor=BORDER, tickfont=dict(size=12, color=MUTED)),
+    dragmode='pan',
+    modebar=dict(remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d',
+                         'autoScale2d', 'resetScale2d', 'zoom2d',
+                         'pan2d', 'toImage', 'sendDataToCloud']),
 )
 # Shared legend and margin — pass explicitly, never inside PLOTLY_THEME
 DEFAULT_LEGEND = dict(
@@ -66,7 +70,7 @@ DEFAULT_LEGEND = dict(
     orientation='h',          # horizontal legend — takes less vertical space
     yanchor='bottom', y=1.02, xanchor='right', x=1
 )
-DEFAULT_MARGIN = dict(l=40, r=20, t=50, b=40)
+DEFAULT_MARGIN = dict(l=40, r=20, t=60, b=60)
 
 st.markdown(f"""
 <style>
@@ -202,6 +206,12 @@ st.markdown(f"""
     #MainMenu {{ visibility: hidden; }}
     footer {{ visibility: hidden; }}
     header {{ visibility: hidden; }}
+
+    /* Hide plotly modebar on mobile — overlaps with title */
+    @media (max-width: 768px) {{
+        .modebar-container {{ display: none !important; }}
+        .modebar {{ display: none !important; }}
+    }}
 
     /* ── MOBILE RESPONSIVE ── */
     @media (max-width: 768px) {{
@@ -727,19 +737,19 @@ with tab1:
             reg_raw, 'sss_pct',
             f"SS Sales % — Week ending {selected_week}", "SS Sales %",
             system_avg=sys_sss),
-            use_container_width=True, config={"scrollZoom": True, "responsive": True})
+            use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
     with rw2:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'same_store_ticket_pct',
             f"SS Transactions % — Week ending {selected_week}", "SS Transactions %",
             system_avg=sys_txn),
-            use_container_width=True, config={"scrollZoom": True, "responsive": True})
+            use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
     with rw3:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'same_store_txn_pct',
             f"SS Avg Ticket % — Week ending {selected_week}", "SS Avg Ticket %",
             system_avg=sys_ticket),
-            use_container_width=True, config={"scrollZoom": True, "responsive": True})
+            use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     # ── YTD: Sales | Transactions | Avg Ticket ───────────────────────────────
     st.markdown('<div class="section-header">SAME STORE METRICS BY REGION — YEAR TO DATE</div>', unsafe_allow_html=True)
@@ -807,7 +817,7 @@ with tab1:
             title=dict(text=f"Week ending {selected_week}", font=dict(size=16, color=TEXT, family='Arial')))
         fig_sw.update_xaxes(tickfont=dict(size=11, family='Arial'))
         fig_sw.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
-        st.plotly_chart(fig_sw, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig_sw, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     with sc2:
         fig_sf = go.Figure()
@@ -836,7 +846,7 @@ with tab1:
             title=dict(text=f"Year to Date (as of {selected_week})", font=dict(size=16, color=TEXT, family='Arial')))
         fig_sf.update_xaxes(tickfont=dict(size=11, family='Arial'))
         fig_sf.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
-        st.plotly_chart(fig_sf, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig_sf, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">NET SALES BY STORE</div>', unsafe_allow_html=True)
     col_a, col_b = st.columns(2)
@@ -860,7 +870,7 @@ with tab1:
                            xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
                            legend=DEFAULT_LEGEND,
                            margin=DEFAULT_MARGIN)
-        st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     with col_b:
         ns2 = week_sales[['store_id', 'fytd_net_sales', 'co_op']].copy()
@@ -881,7 +891,7 @@ with tab1:
                             xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
                             legend=DEFAULT_LEGEND,
                             margin=DEFAULT_MARGIN)
-        st.plotly_chart(fig2b, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig2b, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">AVERAGE SALES CHANNEL MIX</div>', unsafe_allow_html=True)
     don_a, don_b = st.columns(2)
@@ -905,7 +915,7 @@ with tab1:
                            title=dict(text=f"Weekly Channel Mix — Week ending {selected_week}",
                                       font=dict(size=16, color=TEXT, family='Arial')),
                            legend=DEFAULT_LEGEND)
-        st.plotly_chart(fig3, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig3, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     with don_b:
         ov2 = week_sales['online_sales_pct'].mean()   # reuse weekly — no FYTD channel split stored
@@ -934,7 +944,7 @@ with tab1:
                             title=dict(text=f"YTD Channel Mix (as of {selected_week})",
                                        font=dict(size=16, color=TEXT, family='Arial')),
                             legend=DEFAULT_LEGEND)
-        st.plotly_chart(fig3b, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig3b, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
 # ── TAB 2: STORE DETAIL ───────────────────────────────────────────────────────
 with tab2:
@@ -971,7 +981,7 @@ with tab2:
                 fn = px.line(ss, x='week_ending', y='net_sales', title='Net Sales Over Time', markers=True)
                 fn.update_traces(line_color=RED, marker_color=RED, marker_size=8, line_width=2.5)
                 fn.update_layout(**PLOTLY_THEME, height=300)
-                st.plotly_chart(fn, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+                st.plotly_chart(fn, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
             with col2:
                 ss2 = ss.dropna(subset=['sss_pct'])
                 fs = go.Figure(go.Bar(x=ss2['week_ending'], y=ss2['sss_pct'],
@@ -979,7 +989,7 @@ with tab2:
                 fs.add_hline(y=0, line_color=BORDER, line_width=1.5)
                 fs.update_layout(**PLOTLY_THEME, height=300,
                                  title=dict(text="SSS % Over Time", font=dict(size=16, color=MUTED)))
-                st.plotly_chart(fs, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+                st.plotly_chart(fs, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
         else:
             st.info("Trend charts appear once multiple weeks of data are loaded.")
 
@@ -1071,7 +1081,7 @@ with tab3:
                                      font=dict(size=16, color=TEXT, family='Arial')),
                           legend=DEFAULT_LEGEND)
         fb1.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fb1, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fb1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     with bb2:
         ssb2 = week_bread[week_bread['fytd_sss_bread_pct'].notna()].copy()
@@ -1099,7 +1109,7 @@ with tab3:
                                      font=dict(size=16, color=TEXT, family='Arial')),
                           legend=DEFAULT_LEGEND)
         fb2.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fb2, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fb2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     # ── Avg Daily Bread side-by-side ──
     st.markdown('<div class="section-header">AVG DAILY BREAD BY STORE</div>', unsafe_allow_html=True)
@@ -1127,7 +1137,7 @@ with tab3:
                                       font=dict(size=16, color=TEXT, family='Arial')),
                            legend=DEFAULT_LEGEND)
         fbc1.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fbc1, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fbc1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     with bc2:
         bc2d = week_bread[week_bread['fytd_avg_daily_bread'].notna()].copy()
@@ -1151,7 +1161,7 @@ with tab3:
                                       font=dict(size=16, color=TEXT, family='Arial')),
                            legend=DEFAULT_LEGEND)
         fbc2.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fbc2, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fbc2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">DISCOUNT ANALYSIS</div>', unsafe_allow_html=True)
     disc = week_sales[['store_id', 'non_loyalty_disc_pct', 'loyalty_disc_pct']].copy()
@@ -1171,7 +1181,7 @@ with tab3:
     fd.update_layout(**PLOTLY_THEME, height=380, barmode='group', margin=dict(l=40,r=120,t=50,b=60),
                      title=dict(text="Discount % by Store", font=dict(size=16, color=TEXT, family='Arial')),
                      xaxis_tickangle=-40, legend=DEFAULT_LEGEND)
-    st.plotly_chart(fd, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+    st.plotly_chart(fd, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
 # ── TAB 4: LOYALTY ────────────────────────────────────────────────────────────
 with tab4:
@@ -1195,7 +1205,7 @@ with tab4:
                                 marker_color=RED, hovertemplate='<b>%{y}</b><br>Transactions: %{x:,}<extra></extra>'))
         flt.update_layout(**PLOTLY_THEME, height=500,
                           title=dict(text="Loyalty Transactions This Week", font=dict(size=16, color=MUTED)))
-        st.plotly_chart(flt, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(flt, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
     with col_b:
         pc = week_loyalty.copy()
         pc['label'] = pc['store_id'] + ' · ' + pc['store_id'].map(STORE_NAMES).fillna('')
@@ -1206,7 +1216,7 @@ with tab4:
         fpts.update_layout(**PLOTLY_THEME, height=500, barmode='group',
                            title=dict(text="Points Earned vs Redeemed", font=dict(size=16, color=MUTED)),
                            xaxis_tickangle=-40, xaxis_tickfont=dict(size=9))
-        st.plotly_chart(fpts, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fpts, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">LOYALTY SALES % VS NET SALES</div>', unsafe_allow_html=True)
     ls = week_sales[['store_id', 'net_sales', 'loyalty_sales_pct']].copy()
@@ -1216,7 +1226,7 @@ with tab4:
     fls.update_traces(marker_color=RED, textfont_size=9, textposition='top center')
     fls.update_layout(**PLOTLY_THEME, height=400,
                       title=dict(text="Loyalty Sales % vs Net Sales", font=dict(size=16, color=MUTED)))
-    st.plotly_chart(fls, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+    st.plotly_chart(fls, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
 # ── TAB 5: MAP ────────────────────────────────────────────────────────────────
 with tab5:
@@ -1550,7 +1560,7 @@ with tab6:
                                           font=dict(size=16, color=TEXT, family='Arial')))
         fig_roll.update_xaxes(tickangle=-40, tickfont=dict(size=10, family='Arial'))
         fig_roll.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": True, "responsive": True})
+        st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
         avg_comp = int(plot_df['comp_stores'].mean())
         st.markdown(f"""
