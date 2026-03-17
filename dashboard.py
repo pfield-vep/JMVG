@@ -805,111 +805,120 @@ with tab1:
     n_stores = max(len(sss_week), len(sss_fytd))
     chart_h   = max(400, n_stores * 26)
 
-    sc1, sc2 = st.columns(2)
+    # Shared legend for SSS by store
+    _sss_regions = sorted(sss_week['co_op'].str.replace('\n',' ').str.strip().unique())
+    _legend_pills = " &nbsp; ".join([
+        f"<span style='display:inline-flex;align-items:center;gap:5px;margin-right:8px;'>"
+        f"<span style='width:12px;height:12px;border-radius:2px;background:{region_color(r)};display:inline-block;'></span>"
+        f"<span style='font-size:12px;font-family:Arial;color:{TEXT};'>{r}</span></span>"
+        for r in _sss_regions
+    ])
+    st.markdown(f"<div style='margin-bottom:8px;'>{_legend_pills}</div>", unsafe_allow_html=True)
 
-    with sc1:
-        fig_sw = go.Figure()
-        for region, grp in sss_week.groupby('co_op'):
-            region_clean = str(region).replace('\n',' ').strip()
-            fig_sw.add_trace(go.Bar(
-                name=region_clean,
-                x=grp['sss_pct'], y=grp['label'], orientation='h',
-                marker_color=region_color(region_clean), marker_opacity=0.88,
-                text=[f"{v:+.1f}%" for v in grp['sss_pct']],
-                textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
-                hovertemplate='<b>%{y}</b><br>SSS: %{x:.1f}%<extra></extra>',
-                legendgroup=region_clean, legendgrouptitle=None
-            ))
-        fig_sw.add_vline(x=0, line_color=BORDER, line_width=1.5)
-        if avg_sss is not None:
-            try:
-                _sys_sss = float(avg_sss)
-                fig_sw.add_vline(x=_sys_sss, line_color=TEXT, line_width=2.5,
-                    line_dash='dash',
-                    annotation_text=f"System {_sys_sss:+.1f}%",
-                    annotation_position="top",
-                    annotation_font=dict(size=11, color=TEXT, family='Arial'))
-            except: pass
-        fig_sw.update_layout(**PLOTLY_THEME, height=chart_h,
-            margin=dict(l=10, r=70, t=55, b=80), legend=DEFAULT_LEGEND,
-            title=dict(text=f"Week ending {selected_week}", font=dict(size=16, color=TEXT, family='Arial')))
-        fig_sw.update_xaxes(tickfont=dict(size=11, family='Arial'))
-        fig_sw.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
-        st.plotly_chart(fig_sw, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    # Weekly — full width
+    fig_sw = go.Figure()
+    for region, grp in sss_week.groupby('co_op'):
+        region_clean = str(region).replace('\n',' ').strip()
+        fig_sw.add_trace(go.Bar(
+            name=region_clean, showlegend=False,
+            x=grp['sss_pct'], y=grp['label'], orientation='h',
+            marker_color=region_color(region_clean), marker_opacity=0.88,
+            text=[f"{v:+.1f}%" for v in grp['sss_pct']],
+            textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
+            hovertemplate='<b>%{y}</b><br>SSS: %{x:.1f}%<extra></extra>'
+        ))
+    fig_sw.add_vline(x=0, line_color=BORDER, line_width=1.5)
+    if avg_sss is not None:
+        try:
+            _sys_sss = float(avg_sss)
+            fig_sw.add_vline(x=_sys_sss, line_color=TEXT, line_width=2.5, line_dash='dash',
+                annotation_text=f"System {_sys_sss:+.1f}%", annotation_position="top",
+                annotation_font=dict(size=11, color=TEXT, family='Arial'))
+        except: pass
+    fig_sw.update_layout(**PLOTLY_THEME, height=chart_h,
+        margin=dict(l=10, r=70, t=45, b=20), showlegend=False,
+        title=dict(text=f"Week ending {selected_week}", font=dict(size=15, color=TEXT, family='Arial')))
+    fig_sw.update_xaxes(tickfont=dict(size=11, family='Arial'))
+    fig_sw.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
+    st.plotly_chart(fig_sw, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
-    with sc2:
-        fig_sf = go.Figure()
-        for region, grp in sss_fytd.groupby('co_op'):
-            region_clean = str(region).replace('\n',' ').strip()
-            fig_sf.add_trace(go.Bar(
-                name=region_clean,
-                x=grp['fytd_sss_pct'], y=grp['label'], orientation='h',
-                marker_color=region_color(region_clean), marker_opacity=0.88,
-                text=[f"{v:+.1f}%" for v in grp['fytd_sss_pct']],
-                textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
-                hovertemplate='<b>%{y}</b><br>FYTD SSS: %{x:.1f}%<extra></extra>'
-            ))
-        fig_sf.add_vline(x=0, line_color=BORDER, line_width=1.5)
-        if fytd_sss is not None:
-            try:
-                _sys_fytd = float(fytd_sss)
-                fig_sf.add_vline(x=_sys_fytd, line_color=TEXT, line_width=2.5,
-                    line_dash='dash',
-                    annotation_text=f"System {_sys_fytd:+.1f}%",
-                    annotation_position="top",
-                    annotation_font=dict(size=11, color=TEXT, family='Arial'))
-            except: pass
-        fig_sf.update_layout(**PLOTLY_THEME, height=chart_h,
-            margin=dict(l=10, r=70, t=55, b=80), legend=DEFAULT_LEGEND,
-            title=dict(text=f"Year to Date (as of {selected_week})", font=dict(size=16, color=TEXT, family='Arial')))
-        fig_sf.update_xaxes(tickfont=dict(size=11, family='Arial'))
-        fig_sf.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
-        st.plotly_chart(fig_sf, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    # YTD — full width below
+    fig_sf = go.Figure()
+    for region, grp in sss_fytd.groupby('co_op'):
+        region_clean = str(region).replace('\n',' ').strip()
+        fig_sf.add_trace(go.Bar(
+            name=region_clean, showlegend=False,
+            x=grp['fytd_sss_pct'], y=grp['label'], orientation='h',
+            marker_color=region_color(region_clean), marker_opacity=0.88,
+            text=[f"{v:+.1f}%" for v in grp['fytd_sss_pct']],
+            textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
+            hovertemplate='<b>%{y}</b><br>FYTD SSS: %{x:.1f}%<extra></extra>'
+        ))
+    fig_sf.add_vline(x=0, line_color=BORDER, line_width=1.5)
+    if fytd_sss is not None:
+        try:
+            _sys_fytd = float(fytd_sss)
+            fig_sf.add_vline(x=_sys_fytd, line_color=TEXT, line_width=2.5, line_dash='dash',
+                annotation_text=f"System {_sys_fytd:+.1f}%", annotation_position="top",
+                annotation_font=dict(size=11, color=TEXT, family='Arial'))
+        except: pass
+    fig_sf.update_layout(**PLOTLY_THEME, height=chart_h,
+        margin=dict(l=10, r=70, t=45, b=20), showlegend=False,
+        title=dict(text=f"Year to Date (as of {selected_week})", font=dict(size=15, color=TEXT, family='Arial')))
+    fig_sf.update_xaxes(tickfont=dict(size=11, family='Arial'))
+    fig_sf.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
+    st.plotly_chart(fig_sf, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">NET SALES BY STORE</div>', unsafe_allow_html=True)
-    col_a, col_b = st.columns(2)
-    with col_a:
-        ns = week_sales[['store_id', 'net_sales', 'co_op']].copy()
-        ns['label'] = ns['store_id'] + ' · ' + ns['store_id'].map(STORE_NAMES).fillna('')
-        ns['color'] = ns['co_op'].apply(region_color)
-        ns['region'] = ns['co_op'].str.replace('\n',' ').str.strip()
-        ns = ns.sort_values('net_sales', ascending=False)
-        # Build one trace per region for legend
-        fig2 = go.Figure()
-        for region, grp in ns.groupby('region'):
-            fig2.add_trace(go.Bar(
-                name=region, x=grp['label'], y=grp['net_sales'],
-                marker_color=grp['color'].iloc[0], marker_opacity=0.9,
-                hovertemplate='<b>%{x}</b><br>$%{y:,.0f}<extra></extra>'
-            ))
-        fig2.update_layout(**PLOTLY_THEME, height=420, barmode='overlay',
-                           title=dict(text=f"Weekly Net Sales — Week ending {selected_week}",
-                                      font=dict(size=16, color=TEXT, family='Arial')),
-                           xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
-                           legend=DEFAULT_LEGEND,
-                           margin=DEFAULT_MARGIN)
-        st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    # Shared legend for Net Sales
+    _ns = week_sales[['store_id', 'net_sales', 'co_op']].copy()
+    _ns['label'] = _ns['store_id'] + ' · ' + _ns['store_id'].map(STORE_NAMES).fillna('')
+    _ns['region'] = _ns['co_op'].str.replace('\n',' ').str.strip()
+    _ns_regions = sorted(_ns['region'].unique())
+    _ns_pills = " &nbsp; ".join([
+        f"<span style='display:inline-flex;align-items:center;gap:5px;margin-right:8px;'>"
+        f"<span style='width:12px;height:12px;border-radius:2px;background:{region_color(r)};display:inline-block;'></span>"
+        f"<span style='font-size:12px;font-family:Arial;color:{TEXT};'>{r}</span></span>"
+        for r in _ns_regions
+    ])
+    st.markdown(f"<div style='margin-bottom:8px;'>{_ns_pills}</div>", unsafe_allow_html=True)
 
-    with col_b:
-        ns2 = week_sales[['store_id', 'fytd_net_sales', 'co_op']].copy()
-        ns2['label'] = ns2['store_id'] + ' · ' + ns2['store_id'].map(STORE_NAMES).fillna('')
-        ns2['color'] = ns2['co_op'].apply(region_color)
-        ns2['region'] = ns2['co_op'].str.replace('\n',' ').str.strip()
-        ns2 = ns2.sort_values('fytd_net_sales', ascending=False)
-        fig2b = go.Figure()
-        for region, grp in ns2.groupby('region'):
-            fig2b.add_trace(go.Bar(
-                name=region, x=grp['label'], y=grp['fytd_net_sales'],
-                marker_color=grp['color'].iloc[0], marker_opacity=0.9,
-                hovertemplate='<b>%{x}</b><br>$%{y:,.0f}<extra></extra>'
-            ))
-        fig2b.update_layout(**PLOTLY_THEME, height=420, barmode='overlay',
-                            title=dict(text=f"YTD Net Sales (as of {selected_week})",
-                                       font=dict(size=16, color=TEXT, family='Arial')),
-                            xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
-                            legend=DEFAULT_LEGEND,
-                            margin=DEFAULT_MARGIN)
-        st.plotly_chart(fig2b, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    # Weekly Net Sales — full width
+    ns = _ns.sort_values('net_sales', ascending=False)
+    fig2 = go.Figure()
+    for region, grp in ns.groupby('region'):
+        fig2.add_trace(go.Bar(
+            name=region, showlegend=False,
+            x=grp['label'], y=grp['net_sales'],
+            marker_color=region_color(region), marker_opacity=0.9,
+            hovertemplate='<b>%{x}</b><br>$%{y:,.0f}<extra></extra>'
+        ))
+    fig2.update_layout(**PLOTLY_THEME, height=420, barmode='overlay', showlegend=False,
+                       title=dict(text=f"Weekly Net Sales — Week ending {selected_week}",
+                                  font=dict(size=15, color=TEXT, family='Arial')),
+                       xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
+                       margin=dict(l=40, r=20, t=45, b=60))
+    st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+
+    # YTD Net Sales — full width below
+    ns2 = week_sales[['store_id', 'fytd_net_sales', 'co_op']].copy()
+    ns2['label'] = ns2['store_id'] + ' · ' + ns2['store_id'].map(STORE_NAMES).fillna('')
+    ns2['region'] = ns2['co_op'].str.replace('\n',' ').str.strip()
+    ns2 = ns2.sort_values('fytd_net_sales', ascending=False)
+    fig2b = go.Figure()
+    for region, grp in ns2.groupby('region'):
+        fig2b.add_trace(go.Bar(
+            name=region, showlegend=False,
+            x=grp['label'], y=grp['fytd_net_sales'],
+            marker_color=region_color(region), marker_opacity=0.9,
+            hovertemplate='<b>%{x}</b><br>$%{y:,.0f}<extra></extra>'
+        ))
+    fig2b.update_layout(**PLOTLY_THEME, height=420, barmode='overlay', showlegend=False,
+                        title=dict(text=f"YTD Net Sales (as of {selected_week})",
+                                   font=dict(size=15, color=TEXT, family='Arial')),
+                        xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
+                        margin=dict(l=40, r=20, t=45, b=60))
+    st.plotly_chart(fig2b, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">AVERAGE SALES CHANNEL MIX</div>', unsafe_allow_html=True)
     don_a, don_b = st.columns(2)
