@@ -726,20 +726,20 @@ with tab1:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'sss_pct',
             f"SS Sales % — Week ending {selected_week}", "SS Sales %",
-            system_avg=sys_sss, config={"scrollZoom": True, "responsive": True}),
-            use_container_width=True)
+            system_avg=sys_sss),
+            use_container_width=True, config={"scrollZoom": True, "responsive": True})
     with rw2:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'same_store_ticket_pct',
             f"SS Transactions % — Week ending {selected_week}", "SS Transactions %",
-            system_avg=sys_txn, config={"scrollZoom": True, "responsive": True}),
-            use_container_width=True)
+            system_avg=sys_txn),
+            use_container_width=True, config={"scrollZoom": True, "responsive": True})
     with rw3:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'same_store_txn_pct',
             f"SS Avg Ticket % — Week ending {selected_week}", "SS Avg Ticket %",
-            system_avg=sys_ticket, config={"scrollZoom": True, "responsive": True}),
-            use_container_width=True)
+            system_avg=sys_ticket),
+            use_container_width=True, config={"scrollZoom": True, "responsive": True})
 
     # ── YTD: Sales | Transactions | Avg Ticket ───────────────────────────────
     st.markdown('<div class="section-header">SAME STORE METRICS BY REGION — YEAR TO DATE</div>', unsafe_allow_html=True)
