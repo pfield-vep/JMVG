@@ -685,7 +685,7 @@ with tab1:
     reg_raw['label'] = reg_raw['market'] + ' (' + reg_raw['store_count'].astype(int).astype(str) + ')'
     reg_raw['color'] = reg_raw['market'].apply(region_color)
 
-    def make_regional_vertical(df, col, title, hover_label, system_avg=None):
+    def make_regional_vertical(df, col, title, hover_label, system_avg=None, show_legend=False):
         """Build a vertical bar chart for a regional metric, sorted high to low."""
         d = df.dropna(subset=[col]).sort_values(col, ascending=False).copy()
         fig = go.Figure()
@@ -700,7 +700,7 @@ with tab1:
                 textposition='outside',
                 textfont=dict(size=14, color=TEXT, family='Arial'),
                 hovertemplate=f"<b>%{{x}}</b><br>{hover_label}: %{{y:.1f}}%<extra></extra>",
-                showlegend=True,
+                showlegend=show_legend,
             ))
         fig.add_hline(y=0, line_color=BORDER, line_width=1.5)
         if system_avg is not None:
@@ -711,13 +711,17 @@ with tab1:
                     annotation_position="right",
                     annotation_font=dict(size=11, color=TEXT, family='Arial'))
             except: pass
-        fig.update_layout(**PLOTLY_THEME, height=340,
-            margin=dict(l=20, r=60, t=55, b=60),
-            legend=DEFAULT_LEGEND,
-            title=dict(text=title, font=dict(size=16, color=TEXT, family='Arial')),
+        fig.update_layout(**PLOTLY_THEME, height=300,
+            margin=dict(l=20, r=80, t=45, b=50),
+            showlegend=show_legend,
+            legend=dict(orientation='h', yanchor='bottom', y=1.05,
+                       xanchor='center', x=0.5,
+                       font=dict(size=11, family='Arial'),
+                       bgcolor='rgba(255,255,255,0.9)'),
+            title=dict(text=title, font=dict(size=14, color=TEXT, family='Arial')),
             barmode='group')
-        fig.update_xaxes(tickfont=dict(size=13, family='Arial', color=TEXT))
-        fig.update_yaxes(tickfont=dict(size=12, family='Arial'),
+        fig.update_xaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
+        fig.update_yaxes(tickfont=dict(size=11, family='Arial'),
                          zeroline=True, zerolinecolor=BORDER, zerolinewidth=1.5)
         return fig
 
@@ -731,6 +735,17 @@ with tab1:
 
     # ── WEEKLY: Sales | Transactions | Avg Ticket ────────────────────────────
     st.markdown('<div class="section-header">SAME STORE METRICS BY REGION — WEEKLY</div>', unsafe_allow_html=True)
+
+    # Shared legend for regional charts
+    _legend_items = ' '.join([
+        f"<span style='display:inline-flex;align-items:center;margin-right:16px;'>"
+        f"<span style='width:14px;height:14px;border-radius:3px;background:{row['color']};display:inline-block;margin-right:6px;'></span>"
+        f"<span style='font-family:Arial;font-size:12px;color:{TEXT};'>{row['market']}</span></span>"
+        for _, row in reg_raw.iterrows()
+    ])
+    st.markdown(f"<div style='margin-bottom:8px;margin-top:4px;'>{_legend_items}</div>",
+                unsafe_allow_html=True)
+
     rw1, rw2, rw3 = st.columns(3)
     with rw1:
         st.plotly_chart(make_regional_vertical(
@@ -753,6 +768,8 @@ with tab1:
 
     # ── YTD: Sales | Transactions | Avg Ticket ───────────────────────────────
     st.markdown('<div class="section-header">SAME STORE METRICS BY REGION — YEAR TO DATE</div>', unsafe_allow_html=True)
+    st.markdown(f"<div style='margin-bottom:8px;margin-top:4px;'>{_legend_items}</div>",
+                unsafe_allow_html=True)
     ry1, ry2, ry3 = st.columns(3)
     with ry1:
         st.plotly_chart(make_regional_vertical(
