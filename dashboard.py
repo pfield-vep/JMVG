@@ -1469,11 +1469,10 @@ with tab6:
 
     # If a specific store is selected, show that store's individual trend instead
     if selected_store:
-        trend_df = compute_sss_trend(selected_market, selected_grouping)  # still compute for context
         _store_name = STORE_NAMES.get(selected_store, selected_store)
-        st.markdown(f'<div class="section-header">STORE TREND — {selected_store} · {_store_name.upper()}</div>', unsafe_allow_html=True)
-
         import pandas as _spd
+
+        # Load full history for this store
         _conn2, _ = get_db_connection()
         _sh = _spd.read_sql(
             f"SELECT week_ending, net_sales, transactions FROM weekly_store_history "
@@ -1485,76 +1484,83 @@ with tab6:
         else:
             _sh['week_ending'] = _spd.to_datetime(_sh['week_ending'])
             _sh = _sh.sort_values('week_ending')
-            # Calculate YoY % vs 364 days prior
             _sh_idx = _sh.set_index('week_ending')
-            _yoy_sales = []; _yoy_txns = []
+
+            # Compute YoY SSS, SS Transactions, SS Avg Ticket per week
+            _sss_list = []; _txn_list = []; _tkt_list = []
             for _wk, _row in _sh_idx.iterrows():
                 _pr = _wk - _spd.Timedelta(days=364)
-                if _pr in _sh_idx.index and _sh_idx.loc[_pr, 'net_sales'] > 0:
-                    _yoy_sales.append((_row['net_sales'] / _sh_idx.loc[_pr, 'net_sales'] - 1) * 100)
-                    _yoy_txns.append((_row['transactions'] / _sh_idx.loc[_pr, 'transactions'] - 1) * 100 if _sh_idx.loc[_pr, 'transactions'] > 0 else None)
+                if _pr in _sh_idx.index and _sh_idx.loc[_pr, 'net_sales'] > 0 and _sh_idx.loc[_pr, 'transactions'] > 0:
+                    _s = (_row['net_sales'] / _sh_idx.loc[_pr, 'net_sales'] - 1) * 100
+                    _t = (_row['transactions'] / _sh_idx.loc[_pr, 'transactions'] - 1) * 100
+                    _k = ((1 + _s/100) / (1 + _t/100) - 1) * 100
+                    _sss_list.append(round(_s, 2))
+                    _txn_list.append(round(_t, 2))
+                    _tkt_list.append(round(_k, 2))
                 else:
-                    _yoy_sales.append(None)
-                    _yoy_txns.append(None)
-            _sh['yoy_sales'] = _yoy_sales
-            _sh['yoy_txns'] = _yoy_txns
+                    _sss_list.append(None); _txn_list.append(None); _tkt_list.append(None)
+
+            _sh['sss_pct'] = _sss_list
+            _sh['ss_txn_pct'] = _txn_list
+            _sh['ss_ticket_pct'] = _tkt_list
             _sh['week_str'] = _sh['week_ending'].dt.strftime('%Y-%m-%d')
+            _plot = _sh.dropna(subset=['sss_pct']).copy()
 
-            # Net Sales trend
-            _fig_s = go.Figure()
-            _fig_s.add_trace(go.Bar(x=_sh['week_str'], y=_sh['net_sales'],
-                name='Net Sales', marker_color=RED, opacity=0.8,
-                hovertemplate='Week: %{x}<br>Sales: $%{y:,.0f}<extra></extra>'))
-            _fig_s.update_layout(**PLOTLY_THEME, height=320,
-                margin=dict(l=40,r=20,t=45,b=60), showlegend=False,
-                title=dict(text=f"Weekly Net Sales — {_store_name}", font=dict(size=15, color=TEXT, family='Arial')))
-            _fig_s.update_xaxes(tickangle=-40, tickfont=dict(size=9))
-            _fig_s.update_yaxes(tickprefix='$', tickformat=',.0f')
-            st.plotly_chart(_fig_s, use_container_width=True,
-                config={"scrollZoom": True, "responsive": True, "displayModeBar": True,
-                        "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage"]})
+            # Apply same time range filter as system view
+            _active_lbl2 = st.session_state.get('trend_weeks', '26 weeks')
+            _nw_opts2 = {'13 weeks': 13, '26 weeks': 26, '52 weeks': 52, 'All history': len(_plot)}
+            _nw2 = _nw_opts2.get(_active_lbl2, 26)
+            _plot = _plot.tail(_nw2)
 
-            # YoY Sales %
-            _yoy_plot = _sh.dropna(subset=['yoy_sales'])
-            if len(_yoy_plot) > 0:
-                _fig_yoy = go.Figure(go.Bar(
-                    x=_yoy_plot['week_str'], y=_yoy_plot['yoy_sales'],
-                    marker_color=[GREEN if v >= 0 else DANGER for v in _yoy_plot['yoy_sales']],
-                    text=[f"{v:+.1f}%" for v in _yoy_plot['yoy_sales']],
-                    textposition='outside', textfont=dict(size=9, color=TEXT),
-                    hovertemplate='Week: %{x}<br>YoY: %{y:+.1f}%<extra></extra>'
+            def _store_bar(x, y, title):
+                _colors = [GREEN if v >= 0 else DANGER for v in y]
+                _fig = go.Figure(go.Bar(
+                    x=x, y=y,
+                    marker_color=_colors,
+                    text=[f"{v:+.1f}%" for v in y],
+                    textposition='outside',
+                    textfont=dict(size=_bar_font, family='Arial', color=TEXT),
+                    hovertemplate=f"Week: %{{x}}<br>{title}: %{{y:+.1f}}%<extra></extra>"
                 ))
-                _fig_yoy.add_hline(y=0, line_color=TEXT, line_width=2)
-                _fig_yoy.update_layout(**PLOTLY_THEME, height=320,
-                    margin=dict(l=40,r=20,t=45,b=60), showlegend=False,
-                    title=dict(text=f"YoY Sales % — {_store_name}", font=dict(size=15, color=TEXT, family='Arial')))
-                _fig_yoy.update_xaxes(tickangle=-40, tickfont=dict(size=9))
-                _fig_yoy.update_yaxes(ticksuffix='%')
-                st.plotly_chart(_fig_yoy, use_container_width=True,
-                    config={"scrollZoom": True, "responsive": True, "displayModeBar": True,
-                            "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage"]})
+                _fig.add_hline(y=0, line_color=TEXT, line_width=2, line_dash='solid')
+                _fig.update_layout(**PLOTLY_THEME, height=380,
+                    margin=dict(l=20,r=20,t=55,b=60), showlegend=False,
+                    title=dict(text=f"{title} — {_store_name} ({_active_lbl2})",
+                               font=dict(size=16, color=TEXT, family='Arial')))
+                _fig.update_xaxes(tickangle=-40, tickfont=dict(size=max(_bar_font-1,8), family='Arial'))
+                _fig.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
+                return _fig
 
-            # YoY Transactions %
-            _yoy_t = _sh.dropna(subset=['yoy_txns'])
-            if len(_yoy_t) > 0:
-                _fig_t = go.Figure(go.Bar(
-                    x=_yoy_t['week_str'], y=_yoy_t['yoy_txns'],
-                    marker_color=[GREEN if v >= 0 else DANGER for v in _yoy_t['yoy_txns']],
-                    text=[f"{v:+.1f}%" for v in _yoy_t['yoy_txns']],
-                    textposition='outside', textfont=dict(size=9, color=TEXT),
-                    hovertemplate='Week: %{x}<br>YoY Txns: %{y:+.1f}%<extra></extra>'
-                ))
-                _fig_t.add_hline(y=0, line_color=TEXT, line_width=2)
-                _fig_t.update_layout(**PLOTLY_THEME, height=320,
-                    margin=dict(l=40,r=20,t=45,b=60), showlegend=False,
-                    title=dict(text=f"YoY Transactions % — {_store_name}", font=dict(size=15, color=TEXT, family='Arial')))
-                _fig_t.update_xaxes(tickangle=-40, tickfont=dict(size=9))
-                _fig_t.update_yaxes(ticksuffix='%')
-                st.plotly_chart(_fig_t, use_container_width=True,
-                    config={"scrollZoom": True, "responsive": True, "displayModeBar": True,
-                            "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage"]})
+            # Show time range buttons (same as system view)
+            _n_weeks_options2 = {'13 weeks': 13, '26 weeks': 26, '52 weeks': 52, 'All history': len(_sh.dropna(subset=['sss_pct']))}
+            _active_lbl2b = st.session_state.get('trend_weeks', '26 weeks')
+            _btn_css2 = []
+            for _bi2, _bopt2 in enumerate(_n_weeks_options2.keys()):
+                if _bopt2 == _active_lbl2b:
+                    _sel2 = "div[data-testid=\"column\"]:nth-child(" + str(_bi2+1) + ") button"
+                    _btn_css2.append(_sel2 + " { background-color: #134A7C !important; color: white !important; border: 2px solid #134A7C !important; font-weight: 700 !important; }")
+            if _btn_css2:
+                st.markdown("<style>" + " ".join(_btn_css2) + "</style>", unsafe_allow_html=True)
+            _bcols2 = st.columns(len(_n_weeks_options2))
+            for _bi2, _bopt2 in enumerate(_n_weeks_options2.keys()):
+                with _bcols2[_bi2]:
+                    if st.button(_bopt2, key=f"store_trend_btn_{_bi2}", use_container_width=True):
+                        st.session_state['trend_weeks'] = _bopt2
+                        st.rerun()
+            _bar_font = 16 if _nw2 <= 13 else 13 if _nw2 <= 26 else 11 if _nw2 <= 52 else 9
+
+            _cfg = {"scrollZoom": True, "responsive": True, "displayModeBar": True,
+                    "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud"]}
+            st.plotly_chart(_store_bar(_plot['week_str'], _plot['sss_pct'], "Same Store Sales %"),
+                use_container_width=True, config=_cfg)
+            st.plotly_chart(_store_bar(_plot['week_str'], _plot['ss_txn_pct'], "Same Store Transactions %"),
+                use_container_width=True, config=_cfg)
+            st.plotly_chart(_store_bar(_plot['week_str'], _plot['ss_ticket_pct'], "Same Store Avg Ticket %"),
+                use_container_width=True, config=_cfg)
+
     else:
         trend_df = compute_sss_trend(selected_market, selected_grouping)
+
 
     if not selected_store:
         # ── Roll forward: append PDF weeks not yet in history ────────────────────
