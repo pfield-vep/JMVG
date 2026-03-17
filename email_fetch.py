@@ -14,6 +14,7 @@ import requests
 from datetime import datetime, timedelta
 
 CLIENT_ID     = os.environ.get("AZURE_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")
 TENANT_ID     = os.environ.get("AZURE_TENANT_ID")
 REFRESH_TOKEN = os.environ.get("AZURE_REFRESH_TOKEN")
 USER_EMAIL    = os.environ.get("AZURE_USER_EMAIL")
@@ -32,6 +33,7 @@ def get_access_token():
     data = {
         "grant_type":    "refresh_token",
         "client_id":     CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
         "refresh_token": REFRESH_TOKEN,
         "scope":         "Mail.Read offline_access",
     }
@@ -122,7 +124,7 @@ def run():
     print(f"Jersey Mike's Weekly Update — {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"{'='*60}\n")
 
-    missing = [k for k in ["AZURE_CLIENT_ID","AZURE_TENANT_ID","AZURE_REFRESH_TOKEN",
+    missing = [k for k in ["AZURE_CLIENT_ID","AZURE_CLIENT_SECRET","AZURE_TENANT_ID","AZURE_REFRESH_TOKEN",
                             "AZURE_USER_EMAIL","SUPABASE_HOST","SUPABASE_USER","SUPABASE_PASSWORD"]
                if not os.environ.get(k)]
     if missing:

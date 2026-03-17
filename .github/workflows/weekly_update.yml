@@ -2,7 +2,7 @@ name: Weekly Jersey Mike's Update
 
 on:
   schedule:
-    - cron: '0 18 * * 1'  # Every Monday 10am Pacific
+    - cron: '0 18 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -18,6 +18,7 @@ jobs:
       - name: Run email fetch and load
         env:
           AZURE_CLIENT_ID:     ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID:     ${{ secrets.AZURE_TENANT_ID }}
           AZURE_REFRESH_TOKEN: ${{ secrets.AZURE_REFRESH_TOKEN }}
           AZURE_USER_EMAIL:    ${{ secrets.AZURE_USER_EMAIL }}
