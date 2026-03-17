@@ -16,6 +16,24 @@ import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "jerseymikes.db")
 
+SAN_DIEGO_STORE_IDS = ['20071', '20091', '20171', '20177', '20291', '20292', '20300']
+
+def get_db_connection():
+    """Returns (connection, dialect) — Supabase if secrets available, else SQLite."""
+    try:
+        import psycopg2
+        s = st.secrets["supabase"]
+        conn = psycopg2.connect(
+            host=s["host"], port=int(s["port"]),
+            dbname=s["dbname"], user=s["user"],
+            password=s["password"], sslmode="require"
+        )
+        return conn, "postgres"
+    except Exception:
+        import sqlite3
+        return sqlite3.connect(DB_PATH), "sqlite"
+
+
 st.set_page_config(
     page_title="Jersey Mike's | Valley Group",
     page_icon="🥖",
@@ -235,6 +253,13 @@ STORE_COORDS = {
     '20335': (34.4401, -119.8278, '163 N Fairview Ave, Goleta CA 93117'),
     '20360': (34.4348, -119.7805, '199 S Turnpike Rd, Santa Barbara CA 93111'),
     '20424': (34.1478, -118.3823, '11990 Ventura Blvd, Studio City CA 91604'),
+    '20177': (33.5636, -117.1490, '29910 Murrieta Hot Springs Rd, Murrieta CA 92563'),
+    '20171': (33.5174, -117.1543, '26475 Ynez Road, Temecula CA 92591'),
+    '20091': (33.4785, -117.0827, '32068 Temecula Parkway, Temecula CA 92592'),
+    '20071': (33.1367, -117.0700, '1829 Centre City Pkwy, Escondido CA 92025'),
+    '20300': (33.1285, -117.0456, '1497 East Valley Pkwy, Escondido CA 92027'),
+    '20292': (33.0422, -116.8734, '1664 Main Street, Ramona CA 92065'),
+    '20291': (33.5363, -117.1308, '30680 Rancho California Rd, Temecula CA 92591'),
     '20013': (34.6140, -120.1921, '211 E Highway 246, Buellton CA 93427'),
 }
 
@@ -264,12 +289,14 @@ STORE_NAMES = {
     '20048': 'Janss', '20245': 'Wendy', '20381': 'Sylmar',
     '20116': 'Encino', '20388': 'Lake Arrowhead', '20075': 'Isla Vista',
     '20335': 'Goleta', '20360': 'Santa Barbara', '20424': 'Studio City',
+    '20177': 'SD1', '20171': 'SD2', '20091': 'SD3', '20071': 'SD4',
+    '20300': 'SD5', '20292': 'SD6', '20291': 'SD7',
     '20013': 'Buellton',
 }
 
 @st.cache_data(ttl=300)
 def load_data():
-    conn = sqlite3.connect(DB_PATH)
+    conn, _ = get_db_connection()
     stores = pd.read_sql("SELECT * FROM stores", conn)
     stores['co_op'] = stores['co_op'].str.replace('\n', ' ').str.strip()
     sales = pd.read_sql("""
@@ -323,18 +350,26 @@ st.markdown(f"""
 
 weeks_available = sorted(sales_df['week_ending'].unique(), reverse=True)
 
-fc1, fc2, fc3, fc4 = st.columns([1.2, 1.2, 2, 0.6])
+fc1, fc_grp, fc2, fc3, fc4 = st.columns([1.2, 1.2, 1.2, 2, 0.6])
 with fc1:
     selected_week = st.selectbox("📅  WEEK ENDING", weeks_available)
+with fc_grp:
+    groupings = ["All Stores", "Organic Stores", "Acquisition Stores"]
+    selected_grouping = st.selectbox("🏷️  GROUPING", groupings)
 with fc2:
     markets = ["All Markets"] + sorted(stores_df['co_op'].unique().tolist())
     selected_market = st.selectbox("🗺️  MARKET", markets)
 
 all_stores = stores_df.copy()
+if selected_grouping == "Organic Stores":
+    all_stores = all_stores[~all_stores['store_id'].isin(SAN_DIEGO_STORE_IDS)]
+elif selected_grouping == "Acquisition Stores":
+    all_stores = all_stores[all_stores['store_id'].isin(SAN_DIEGO_STORE_IDS)]
 if selected_market != "All Markets":
-    all_stores = all_stores[all_stores['co_op'] == selected_market]
+    all_stores = all_stores[all_stores['co_op'].str.replace('\n',' ').str.strip() == selected_market.replace('\n',' ').strip()]
 store_options = {f"{r['store_id']} — {STORE_NAMES.get(r['store_id'], r['city'])}": r['store_id']
                  for _, r in all_stores.iterrows()}
+st.session_state['selected_grouping'] = selected_grouping
 with fc3:
     selected_store_label = st.selectbox("🏪  STORE (detail view)",
                                         ["All Stores"] + list(store_options.keys()))
@@ -350,15 +385,19 @@ with fc4:
 st.markdown("<hr style='margin:0 0 1rem 0; border:none; border-top:1px solid #E0E3E8;'>",
             unsafe_allow_html=True)
 
-def filter_df(df, week, market):
+def filter_df(df, week, market, grouping="All Stores"):
     d = df[df['week_ending'] == week].copy()
+    if grouping == "Organic Stores":
+        d = d[~d['store_id'].isin(SAN_DIEGO_STORE_IDS)]
+    elif grouping == "Acquisition Stores":
+        d = d[d['store_id'].isin(SAN_DIEGO_STORE_IDS)]
     if market != "All Markets":
-        d = d[d['co_op'] == market]
+        d = d[d['co_op'].str.replace('\n',' ').str.strip() == market.replace('\n',' ').strip()]
     return d
 
-week_sales   = filter_df(sales_df,   selected_week, selected_market)
-week_bread   = filter_df(bread_df,   selected_week, selected_market)
-week_loyalty = filter_df(loyalty_df, selected_week, selected_market)
+week_sales   = filter_df(sales_df,   selected_week, selected_market, selected_grouping)
+week_bread   = filter_df(bread_df,   selected_week, selected_market, selected_grouping)
+week_loyalty = filter_df(loyalty_df, selected_week, selected_market, selected_grouping)
 
 # Market totals for selected week — use CA/Grand Total row when All Markets
 week_mkt = mkt_df[mkt_df['week_ending'] == selected_week].copy()
@@ -368,20 +407,18 @@ if len(week_bread_totals) == 0:
     most_recent_bt = bread_totals_df['week_ending'].max() if len(bread_totals_df) > 0 else None
     if most_recent_bt:
         week_bread_totals = bread_totals_df[bread_totals_df['week_ending'] == most_recent_bt].copy()
-if selected_market != "All Markets":
+if selected_market in ("All Markets", "!Organic Stores"):
+    week_mkt_total = week_mkt[week_mkt['market'].str.upper().str.contains('CA|GRAND', na=False)]                        .sort_values('store_count', ascending=False).head(1)
+else:
     week_mkt = week_mkt[week_mkt['market'].str.contains(
         selected_market.split('/')[0].strip(), case=False, na=False)]
-    # Use the market subtotal that best matches (largest store count)
     week_mkt_total = week_mkt.sort_values('store_count', ascending=False).head(1)
-else:
-    # Use the CA Total / grand total row
-    week_mkt_total = week_mkt[week_mkt['market'].str.upper().str.contains('CA|GRAND', na=False)]                        .sort_values('store_count', ascending=False).head(1)
 
 st.markdown(f"""
     <div class="page-header">
         <span style='font-family:Arial,sans-serif; font-size:28px;
                      font-weight:800; color:{TEXT};'>
-            {selected_market if selected_market != "All Markets" else "All Markets"}
+            {selected_grouping if selected_grouping != "All Stores" else ""}{" · " if selected_grouping != "All Stores" and selected_market != "All Markets" else ""}{selected_market if selected_market != "All Markets" else ("All Markets" if selected_grouping == "All Stores" else "")}
         </span>
         <span style='font-family:Arial,sans-serif; font-size:13px;
                      letter-spacing:1px; color:{MUTED};
@@ -461,17 +498,21 @@ def color_pct(val):
         return f'color: {GREEN}' if val > 0 else f'color: {DANGER}'
     return ''
 
-tab1, tab5, tab6, tab3, tab4, tab2 = st.tabs([
-    "OVERVIEW", "MAP", "TRENDS", "BREAD & OPS", "LOYALTY", "STORE DETAIL"
+tab1, tab6, tab5, tab3, tab4, tab2 = st.tabs([
+    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL"
 ])
 
 # ── TAB 1: OVERVIEW ───────────────────────────────────────────────────────────
 with tab1:
     # ── Totals from weekly_sales ──
     total_sales  = week_sales['net_sales'].sum()
-    avg_loyalty  = week_sales['loyalty_sales_pct'].mean()
-    avg_online   = week_sales['online_sales_pct'].mean()
-    avg_3p       = week_sales['third_party_sales_pct'].mean()
+    import math as _math
+    def safe_mean(series):
+        v = series.mean()
+        return None if (v is None or (isinstance(v, float) and _math.isnan(v))) else v
+    avg_loyalty  = safe_mean(week_sales['loyalty_sales_pct'])
+    avg_online   = safe_mean(week_sales['online_sales_pct'])
+    avg_3p       = safe_mean(week_sales['third_party_sales_pct'])
     total_bread  = week_bread['bread_count'].sum()
     fytd_sales   = week_sales['fytd_net_sales'].sum()
     fytd_loyalty = week_sales['loyalty_sales_pct'].mean()
@@ -481,9 +522,17 @@ with tab1:
 
     # ── SSS / Ticket / Txn from market totals (correct comparable-store methodology) ──
     def mkt_val(col):
+        import math
+        # Acquisition Stores have no PDF data — return None for all PDF-derived metrics
+        if selected_grouping == "Acquisition Stores":
+            return None
         if len(week_mkt_total) == 0: return None
         v = week_mkt_total[col].values[0]
-        return None if (v is None or (hasattr(v,'__class__') and str(type(v))=="<class 'float'>" and __import__('math').isnan(v))) else v
+        if v is None: return None
+        try:
+            fv = float(v)
+            return None if math.isnan(fv) else fv
+        except: return None
 
     avg_sss  = mkt_val('sss_pct')
     avg_tkt  = mkt_val('same_store_ticket_pct')
@@ -525,19 +574,19 @@ with tab1:
                         blue=True, sss_color=True),
                     unsafe_allow_html=True)
         st.markdown(kpi("Loyalty Sales %",
-                        f"{avg_loyalty:.1f}", week_suffix="%",
-                        ytd_val=f"{fytd_loyalty:.1f}", ytd_suffix="%",
+                        f"{avg_loyalty:.1f}" if avg_loyalty is not None else "—", week_suffix="%" if avg_loyalty is not None else "",
+                        ytd_val=f"{fytd_loyalty:.1f}" if fytd_loyalty is not None else "—", ytd_suffix="%" if fytd_loyalty is not None else "",
                         orange=True),
                     unsafe_allow_html=True)
     with col4:
         st.markdown(kpi("Online Sales %",
-                        f"{avg_online:.1f}", week_suffix="%",
-                        ytd_val=f"{fytd_online:.1f}", ytd_suffix="%",
+                        f"{avg_online:.1f}" if avg_online is not None else "—", week_suffix="%" if avg_online is not None else "",
+                        ytd_val=f"{fytd_online:.1f}" if fytd_online is not None else "—", ytd_suffix="%" if fytd_online is not None else "",
                         orange=True),
                     unsafe_allow_html=True)
         st.markdown(kpi("3rd Party Sales %",
-                        f"{avg_3p:.1f}", week_suffix="%",
-                        ytd_val=f"{fytd_3p:.1f}", ytd_suffix="%",
+                        f"{avg_3p:.1f}" if avg_3p is not None else "—", week_suffix="%" if avg_3p is not None else "",
+                        ytd_val=f"{fytd_3p:.1f}" if fytd_3p is not None else "—", ytd_suffix="%" if fytd_3p is not None else "",
                         orange=True),
                     unsafe_allow_html=True)
 
@@ -1130,9 +1179,10 @@ with tab5:
     }
     col_name, col_label, is_dollar = metric_col_map[map_metric]
 
-    # Build map dataframe
-    map_data = week_sales[['store_id', 'city', 'co_op', 'net_sales',
-                            'sss_pct', 'fytd_weekly_auv', 'fytd_sss_pct']].copy()
+    # Build map dataframe from ALL stores (so San Diego appears even without PDF data)
+    _all = stores_df[['store_id', 'city', 'co_op']].copy()
+    _pdf = week_sales[['store_id', 'net_sales', 'sss_pct', 'fytd_weekly_auv', 'fytd_sss_pct']].copy()
+    map_data = _all.merge(_pdf, on='store_id', how='left')
     map_data['store_name'] = map_data['store_id'].map(STORE_NAMES).fillna(map_data['city'])
     map_data['lat']     = map_data['store_id'].map(lambda x: STORE_COORDS.get(x, (None, None, ''))[0])
     map_data['lon']     = map_data['store_id'].map(lambda x: STORE_COORDS.get(x, (None, None, ''))[1])
@@ -1218,12 +1268,7 @@ with tab5:
             center=dict(lat=34.25, lon=-118.50),
             zoom=8.0,
         ),
-        legend=dict(
-            bgcolor="rgba(255,255,255,0.9)",
-            bordercolor=BORDER, borderwidth=1,
-            font=dict(size=18, color=TEXT),
-            x=0.01, y=0.99, xanchor='left', yanchor='top',
-        ),
+        showlegend=False,
         margin=dict(l=0, r=0, t=0, b=0),
         height=620,
         paper_bgcolor=WHITE,
@@ -1248,9 +1293,9 @@ with tab6:
     from datetime import timedelta as _td
 
     @st.cache_data(ttl=300)
-    def compute_sss_trend(market_filter):
-        import sqlite3 as _sq, pandas as _pd
-        _conn = _sq.connect(DB_PATH)
+    def compute_sss_trend(market_filter, grouping_filter='All Stores'):
+        import pandas as _pd
+        _conn, _ = get_db_connection()
         _df = _pd.read_sql(
             "SELECT h.store_id, h.week_ending, h.net_sales, h.transactions, s.co_op "
             "FROM weekly_store_history h JOIN stores s ON h.store_id = s.store_id "
@@ -1259,6 +1304,10 @@ with tab6:
         _conn.close()
         _df['week_ending'] = _pd.to_datetime(_df['week_ending'])
         _df['co_op'] = _df['co_op'].str.replace('\n',' ').str.strip()
+        if grouping_filter == "Organic Stores":
+            _df = _df[~_df['store_id'].isin(SAN_DIEGO_STORE_IDS)]
+        elif grouping_filter == "Acquisition Stores":
+            _df = _df[_df['store_id'].isin(SAN_DIEGO_STORE_IDS)]
         if market_filter != "All Markets":
             _df = _df[_df['co_op'].str.contains(market_filter.split('/')[0].strip(), case=False, na=False)]
         _first = _df.groupby('store_id')['week_ending'].min()
@@ -1288,15 +1337,15 @@ with tab6:
                           'total_sales': round(_c['net_sales'].sum(),0)})
         return _pd.DataFrame(_rows)
 
-    trend_df = compute_sss_trend(selected_market)
+    trend_df = compute_sss_trend(selected_market, selected_grouping)
 
     # ── Roll forward: append PDF weeks not yet in history ────────────────────
     # PDF data uses store-level sales but no prior-year transactions,
     # so we use the market totals (from PDF summary rows) for the most recent weeks
     @st.cache_data(ttl=300)
     def get_pdf_trend_rows(market_filter):
-        import sqlite3 as _sq, pandas as _pd, math as _m
-        _conn = _sq.connect(DB_PATH)
+        import pandas as _pd, math as _m
+        _conn, _ = get_db_connection()
         _mkt = _pd.read_sql(
             "SELECT week_ending, market, store_count, sss_pct, same_store_ticket_pct, "
             "same_store_txn_pct FROM weekly_market_totals ORDER BY week_ending", _conn)
@@ -1343,13 +1392,30 @@ with tab6:
     else:
         st.markdown('<div class="section-header">SAME STORE PERFORMANCE TRENDS</div>', unsafe_allow_html=True)
 
+        if 'trend_weeks' not in st.session_state:
+            st.session_state['trend_weeks'] = '52 weeks'
         n_weeks_options = {'13 weeks': 13, '26 weeks': 26, '52 weeks': 52, 'All history': len(trend_df)}
-        n_weeks_label = st.radio("Show:", list(n_weeks_options.keys()), index=2, horizontal=True)
+        st.markdown(
+            f"<div style='font-family:Arial,sans-serif; font-size:18px; font-weight:700;"
+            f"color:{TEXT}; margin-bottom:10px;'>Show:</div>",
+            unsafe_allow_html=True)
+        btn_cols2 = st.columns(len(n_weeks_options))
+        for _i, _opt in enumerate(n_weeks_options.keys()):
+            with btn_cols2[_i]:
+                _active = st.session_state['trend_weeks'] == _opt
+                if st.button(_opt, key=f"trend_btn_{_i}", use_container_width=True):
+                    st.session_state['trend_weeks'] = _opt
+                    st.rerun()
+        n_weeks_label = st.session_state['trend_weeks']
+        if n_weeks_label not in n_weeks_options:
+            n_weeks_label = '52 weeks'
         n_weeks = n_weeks_options[n_weeks_label]
         plot_df = trend_df.tail(n_weeks).copy()
 
         def bar_colors(vals):
             return [GREEN if v >= 0 else DANGER for v in vals]
+
+        _bar_font = 16 if n_weeks <= 13 else 13 if n_weeks <= 26 else 11 if n_weeks <= 52 else 9
 
         def sss_bar(df, col, title, hover_label):
             fig = go.Figure(go.Bar(
@@ -1357,14 +1423,14 @@ with tab6:
                 marker_color=bar_colors(df[col]),
                 text=[f"{v:+.1f}%" for v in df[col]],
                 textposition='outside',
-                textfont=dict(size=10, family='Arial', color=TEXT),
+                textfont=dict(size=_bar_font, family='Arial', color=TEXT),
                 hovertemplate=f"Week: %{{x}}<br>{hover_label}: %{{y:+.1f}}%<extra></extra>"
             ))
             fig.add_hline(y=0, line_color=TEXT, line_width=2, line_dash='solid')
             fig.update_layout(**PLOTLY_THEME, height=380,
                               margin=dict(l=20,r=20,t=55,b=60),
                               title=dict(text=title, font=dict(size=16, color=TEXT, family='Arial')))
-            fig.update_xaxes(tickangle=-40, tickfont=dict(size=10, family='Arial'))
+            fig.update_xaxes(tickangle=-40, tickfont=dict(size=max(_bar_font-1,8), family='Arial'))
             fig.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
             return fig
 
