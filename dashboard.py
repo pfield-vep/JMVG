@@ -70,7 +70,7 @@ DEFAULT_LEGEND = dict(
     orientation='h',          # horizontal legend — takes less vertical space
     yanchor='bottom', y=1.02, xanchor='right', x=1
 )
-DEFAULT_MARGIN = dict(l=40, r=20, t=60, b=60)
+DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
 st.markdown(f"""
 <style>
@@ -817,7 +817,8 @@ with tab1:
                 marker_color=region_color(region_clean), marker_opacity=0.88,
                 text=[f"{v:+.1f}%" for v in grp['sss_pct']],
                 textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
-                hovertemplate='<b>%{y}</b><br>SSS: %{x:.1f}%<extra></extra>'
+                hovertemplate='<b>%{y}</b><br>SSS: %{x:.1f}%<extra></extra>',
+                legendgroup=region_clean, legendgrouptitle=None
             ))
         fig_sw.add_vline(x=0, line_color=BORDER, line_width=1.5)
         if avg_sss is not None:
@@ -830,7 +831,7 @@ with tab1:
                     annotation_font=dict(size=11, color=TEXT, family='Arial'))
             except: pass
         fig_sw.update_layout(**PLOTLY_THEME, height=chart_h,
-            margin=dict(l=10, r=70, t=55, b=20), legend=DEFAULT_LEGEND,
+            margin=dict(l=10, r=70, t=55, b=80), legend=DEFAULT_LEGEND,
             title=dict(text=f"Week ending {selected_week}", font=dict(size=16, color=TEXT, family='Arial')))
         fig_sw.update_xaxes(tickfont=dict(size=11, family='Arial'))
         fig_sw.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
@@ -859,7 +860,7 @@ with tab1:
                     annotation_font=dict(size=11, color=TEXT, family='Arial'))
             except: pass
         fig_sf.update_layout(**PLOTLY_THEME, height=chart_h,
-            margin=dict(l=10, r=70, t=55, b=20), legend=DEFAULT_LEGEND,
+            margin=dict(l=10, r=70, t=55, b=80), legend=DEFAULT_LEGEND,
             title=dict(text=f"Year to Date (as of {selected_week})", font=dict(size=16, color=TEXT, family='Arial')))
         fig_sf.update_xaxes(tickfont=dict(size=11, family='Arial'))
         fig_sf.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
@@ -1093,7 +1094,7 @@ with tab3:
                 annotation_text=f"System {ss_bread_week:+.1f}%",
                 annotation_position="top right",
                 annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fb1.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=70,t=55,b=20),
+        fb1.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=70,t=55,b=80),
                           title=dict(text=f"SS Bread % — Week ending {selected_week}",
                                      font=dict(size=16, color=TEXT, family='Arial')),
                           legend=DEFAULT_LEGEND)
@@ -1121,7 +1122,7 @@ with tab3:
                 annotation_text=f"System {ss_bread_fytd:+.1f}%",
                 annotation_position="top right",
                 annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fb2.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=70,t=55,b=20),
+        fb2.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=70,t=55,b=80),
                           title=dict(text=f"SS Bread % YTD (as of {selected_week})",
                                      font=dict(size=16, color=TEXT, family='Arial')),
                           legend=DEFAULT_LEGEND)
@@ -1149,7 +1150,7 @@ with tab3:
             annotation_text=f"System {_sys_adb_week:.0f}",
             annotation_position="top right",
             annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fbc1.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=40,t=55,b=20),
+        fbc1.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=40,t=55,b=80),
                            title=dict(text=f"Avg Daily Bread — Week ending {selected_week}",
                                       font=dict(size=16, color=TEXT, family='Arial')),
                            legend=DEFAULT_LEGEND)
@@ -1173,7 +1174,7 @@ with tab3:
                 annotation_text=f"System {fytd_adb:.0f}",
                 annotation_position="top right",
                 annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fbc2.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=40,t=55,b=20),
+        fbc2.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=40,t=55,b=80),
                            title=dict(text=f"Avg Daily Bread YTD (as of {selected_week})",
                                       font=dict(size=16, color=TEXT, family='Arial')),
                            legend=DEFAULT_LEGEND)
