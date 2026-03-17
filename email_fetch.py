@@ -37,7 +37,14 @@ def get_access_token():
         "refresh_token": REFRESH_TOKEN,
         "scope":         "Mail.Read offline_access",
     }
+    print(f"[DEBUG] CLIENT_ID: {CLIENT_ID}")
+    print(f"[DEBUG] TENANT_ID: {TENANT_ID}")
+    print(f"[DEBUG] CLIENT_SECRET present: {bool(CLIENT_SECRET)}")
+    print(f"[DEBUG] REFRESH_TOKEN present: {bool(REFRESH_TOKEN)}")
+    print(f"[DEBUG] REFRESH_TOKEN first 20 chars: {REFRESH_TOKEN[:20] if REFRESH_TOKEN else 'None'}")
     resp = requests.post(url, data=data)
+    print(f"[DEBUG] Token response status: {resp.status_code}")
+    print(f"[DEBUG] Token response: {resp.text[:500]}")
     resp.raise_for_status()
     result = resp.json()
     token = result.get("access_token")
