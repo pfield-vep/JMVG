@@ -1076,119 +1076,122 @@ with tab3:
             ytd_val=f"${avg_spl_ytd:.2f}" if avg_spl_ytd else "—"),
             unsafe_allow_html=True)
 
-    # ── SS Bread % side-by-side ──
+    # ── SS Bread % stacked ──
     st.markdown('<div class="section-header">SAME STORE BREAD % BY STORE</div>', unsafe_allow_html=True)
     n_bread = week_bread['same_store_bread_pct'].notna().sum()
-    bread_h = max(420, int(n_bread) * 26 + 80)
+    bread_h = max(420, int(n_bread) * 26 + 60)
 
-    bb1, bb2 = st.columns(2)
-    with bb1:
-        ssb = week_bread[week_bread['same_store_bread_pct'].notna()].copy()
-        ssb['label'] = ssb['store_id'] + ' · ' + ssb['store_id'].map(STORE_NAMES).fillna('')
-        ssb['region'] = ssb['co_op'].str.replace('\n',' ').str.strip()
-        ssb = ssb.sort_values('same_store_bread_pct', ascending=True)
-        fb1 = go.Figure()
-        for region, grp in ssb.groupby('region'):
-            fb1.add_trace(go.Bar(
-                name=region, x=grp['same_store_bread_pct'], y=grp['label'],
-                orientation='h',
-                marker_color=region_color(region),
-                text=[f"{v:+.1f}%" for v in grp['same_store_bread_pct']],
-                textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
-                hovertemplate='<b>%{y}</b><br>SS Bread: %{x:.1f}%<extra></extra>'
-            ))
-        fb1.add_vline(x=0, line_color=BORDER, line_width=1.5)
-        if ss_bread_week is not None:
-            fb1.add_vline(x=ss_bread_week, line_color=TEXT, line_width=2.5, line_dash='dash',
-                annotation_text=f"System {ss_bread_week:+.1f}%",
-                annotation_position="top right",
-                annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fb1.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=70,t=55,b=80),
-                          title=dict(text=f"SS Bread % — Week ending {selected_week}",
-                                     font=dict(size=16, color=TEXT, family='Arial')),
-                          legend=DEFAULT_LEGEND)
-        fb1.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fb1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    _bread_regions = sorted(set(week_bread['co_op'].str.replace('\n',' ').str.strip().dropna()))
+    _bread_pills = " &nbsp; ".join([
+        "<span style='display:inline-flex;align-items:center;gap:5px;margin-right:8px;'>"
+        f"<span style='width:12px;height:12px;border-radius:2px;background:{region_color(r)};display:inline-block;'></span>"
+        f"<span style='font-size:12px;font-family:Arial;color:{TEXT};'>{r}</span></span>"
+        for r in _bread_regions
+    ])
+    st.markdown(f"<div style='margin-bottom:8px;'>{_bread_pills}</div>", unsafe_allow_html=True)
 
-    with bb2:
-        ssb2 = week_bread[week_bread['fytd_sss_bread_pct'].notna()].copy()
-        ssb2['label'] = ssb2['store_id'] + ' · ' + ssb2['store_id'].map(STORE_NAMES).fillna('')
-        ssb2['region'] = ssb2['co_op'].str.replace('\n',' ').str.strip()
-        ssb2 = ssb2.sort_values('fytd_sss_bread_pct', ascending=True)
-        fb2 = go.Figure()
-        for region, grp in ssb2.groupby('region'):
-            fb2.add_trace(go.Bar(
-                name=region, x=grp['fytd_sss_bread_pct'], y=grp['label'],
-                orientation='h',
-                marker_color=region_color(region),
-                text=[f"{v:+.1f}%" for v in grp['fytd_sss_bread_pct']],
-                textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
-                hovertemplate='<b>%{y}</b><br>FYTD SS Bread: %{x:.1f}%<extra></extra>'
-            ))
-        fb2.add_vline(x=0, line_color=BORDER, line_width=1.5)
-        if ss_bread_fytd is not None:
-            fb2.add_vline(x=ss_bread_fytd, line_color=TEXT, line_width=2.5, line_dash='dash',
-                annotation_text=f"System {ss_bread_fytd:+.1f}%",
-                annotation_position="top right",
-                annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fb2.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=70,t=55,b=80),
-                          title=dict(text=f"SS Bread % YTD (as of {selected_week})",
-                                     font=dict(size=16, color=TEXT, family='Arial')),
-                          legend=DEFAULT_LEGEND)
-        fb2.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fb2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
-
-    # ── Avg Daily Bread side-by-side ──
-    st.markdown('<div class="section-header">AVG DAILY BREAD BY STORE</div>', unsafe_allow_html=True)
-    bc1, bc2 = st.columns(2)
-
-    with bc1:
-        bc = week_bread.copy()
-        bc['label'] = bc['store_id'] + ' · ' + bc['store_id'].map(STORE_NAMES).fillna('')
-        bc['region'] = bc['co_op'].str.replace('\n',' ').str.strip()
-        bc = bc.sort_values('avg_daily_bread', ascending=True)
-        fbc1 = go.Figure()
-        for region, grp in bc.groupby('region'):
-            fbc1.add_trace(go.Bar(
-                name=region, x=grp['avg_daily_bread'], y=grp['label'],
-                orientation='h', marker_color=region_color(region), marker_opacity=0.88,
-                hovertemplate='<b>%{y}</b><br>Avg Daily Bread: %{x:.0f}<extra></extra>'
-            ))
-        _sys_adb_week = week_bread['avg_daily_bread'].mean()
-        fbc1.add_vline(x=_sys_adb_week, line_color=TEXT, line_width=2.5, line_dash='dash',
-            annotation_text=f"System {_sys_adb_week:.0f}",
-            annotation_position="top right",
+    ssb = week_bread[week_bread['same_store_bread_pct'].notna()].copy()
+    ssb['label'] = ssb['store_id'] + ' · ' + ssb['store_id'].map(STORE_NAMES).fillna('')
+    ssb['region'] = ssb['co_op'].str.replace('\n',' ').str.strip()
+    ssb = ssb.sort_values('same_store_bread_pct', ascending=True)
+    fb1 = go.Figure()
+    for region, grp in ssb.groupby('region'):
+        fb1.add_trace(go.Bar(
+            name=region, showlegend=False,
+            x=grp['same_store_bread_pct'], y=grp['label'], orientation='h',
+            marker_color=region_color(region),
+            text=[f"{v:+.1f}%" for v in grp['same_store_bread_pct']],
+            textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
+            hovertemplate='<b>%{y}</b><br>SS Bread: %{x:.1f}%<extra></extra>'
+        ))
+    fb1.add_vline(x=0, line_color=BORDER, line_width=1.5)
+    if ss_bread_week is not None:
+        fb1.add_vline(x=ss_bread_week, line_color=TEXT, line_width=2.5, line_dash='dash',
+            annotation_text=f"System {ss_bread_week:+.1f}%", annotation_position="top right",
             annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fbc1.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=40,t=55,b=80),
-                           title=dict(text=f"Avg Daily Bread — Week ending {selected_week}",
-                                      font=dict(size=16, color=TEXT, family='Arial')),
-                           legend=DEFAULT_LEGEND)
-        fbc1.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fbc1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    fb1.update_layout(**PLOTLY_THEME, height=bread_h, showlegend=False,
+                      margin=dict(l=10,r=70,t=45,b=20),
+                      title=dict(text=f"SS Bread % — Week ending {selected_week}",
+                                 font=dict(size=15, color=TEXT, family='Arial')))
+    fb1.update_yaxes(tickfont=dict(size=11, family='Arial'))
+    st.plotly_chart(fb1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
 
-    with bc2:
-        bc2d = week_bread[week_bread['fytd_avg_daily_bread'].notna()].copy()
-        bc2d['label'] = bc2d['store_id'] + ' · ' + bc2d['store_id'].map(STORE_NAMES).fillna('')
-        bc2d['region'] = bc2d['co_op'].str.replace('\n',' ').str.strip()
-        bc2d = bc2d.sort_values('fytd_avg_daily_bread', ascending=True)
-        fbc2 = go.Figure()
-        for region, grp in bc2d.groupby('region'):
-            fbc2.add_trace(go.Bar(
-                name=region, x=grp['fytd_avg_daily_bread'], y=grp['label'],
-                orientation='h', marker_color=region_color(region), marker_opacity=0.88,
-                hovertemplate='<b>%{y}</b><br>FYTD Avg Daily Bread: %{x:.0f}<extra></extra>'
-            ))
-        if fytd_adb:
-            fbc2.add_vline(x=fytd_adb, line_color=TEXT, line_width=2.5, line_dash='dash',
-                annotation_text=f"System {fytd_adb:.0f}",
-                annotation_position="top right",
-                annotation_font=dict(size=11, color=TEXT, family='Arial'))
-        fbc2.update_layout(**PLOTLY_THEME, height=bread_h, margin=dict(l=10,r=40,t=55,b=80),
-                           title=dict(text=f"Avg Daily Bread YTD (as of {selected_week})",
-                                      font=dict(size=16, color=TEXT, family='Arial')),
-                           legend=DEFAULT_LEGEND)
-        fbc2.update_yaxes(tickfont=dict(size=11, family='Arial'))
-        st.plotly_chart(fbc2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+    ssb2 = week_bread[week_bread['fytd_sss_bread_pct'].notna()].copy()
+    ssb2['label'] = ssb2['store_id'] + ' · ' + ssb2['store_id'].map(STORE_NAMES).fillna('')
+    ssb2['region'] = ssb2['co_op'].str.replace('\n',' ').str.strip()
+    ssb2 = ssb2.sort_values('fytd_sss_bread_pct', ascending=True)
+    fb2 = go.Figure()
+    for region, grp in ssb2.groupby('region'):
+        fb2.add_trace(go.Bar(
+            name=region, showlegend=False,
+            x=grp['fytd_sss_bread_pct'], y=grp['label'], orientation='h',
+            marker_color=region_color(region),
+            text=[f"{v:+.1f}%" for v in grp['fytd_sss_bread_pct']],
+            textposition='outside', textfont=dict(size=11, color=TEXT, family='Arial'),
+            hovertemplate='<b>%{y}</b><br>FYTD SS Bread: %{x:.1f}%<extra></extra>'
+        ))
+    fb2.add_vline(x=0, line_color=BORDER, line_width=1.5)
+    if ss_bread_fytd is not None:
+        fb2.add_vline(x=ss_bread_fytd, line_color=TEXT, line_width=2.5, line_dash='dash',
+            annotation_text=f"System {ss_bread_fytd:+.1f}%", annotation_position="top right",
+            annotation_font=dict(size=11, color=TEXT, family='Arial'))
+    fb2.update_layout(**PLOTLY_THEME, height=bread_h, showlegend=False,
+                      margin=dict(l=10,r=70,t=45,b=20),
+                      title=dict(text=f"SS Bread % YTD (as of {selected_week})",
+                                 font=dict(size=15, color=TEXT, family='Arial')))
+    fb2.update_yaxes(tickfont=dict(size=11, family='Arial'))
+    st.plotly_chart(fb2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+
+    # ── Avg Daily Bread stacked ──
+    st.markdown('<div class="section-header">AVG DAILY BREAD BY STORE</div>', unsafe_allow_html=True)
+    st.markdown(f"<div style='margin-bottom:8px;'>{_bread_pills}</div>", unsafe_allow_html=True)
+
+    bc = week_bread.copy()
+    bc['label'] = bc['store_id'] + ' · ' + bc['store_id'].map(STORE_NAMES).fillna('')
+    bc['region'] = bc['co_op'].str.replace('\n',' ').str.strip()
+    bc = bc.sort_values('avg_daily_bread', ascending=True)
+    fbc1 = go.Figure()
+    for region, grp in bc.groupby('region'):
+        fbc1.add_trace(go.Bar(
+            name=region, showlegend=False,
+            x=grp['avg_daily_bread'], y=grp['label'],
+            orientation='h', marker_color=region_color(region), marker_opacity=0.88,
+            hovertemplate='<b>%{y}</b><br>Avg Daily Bread: %{x:.0f}<extra></extra>'
+        ))
+    _sys_adb_week = week_bread['avg_daily_bread'].mean()
+    fbc1.add_vline(x=_sys_adb_week, line_color=TEXT, line_width=2.5, line_dash='dash',
+        annotation_text=f"System {_sys_adb_week:.0f}", annotation_position="top right",
+        annotation_font=dict(size=11, color=TEXT, family='Arial'))
+    fbc1.update_layout(**PLOTLY_THEME, height=bread_h, showlegend=False,
+                       margin=dict(l=10,r=40,t=45,b=20),
+                       title=dict(text=f"Avg Daily Bread — Week ending {selected_week}",
+                                  font=dict(size=15, color=TEXT, family='Arial')))
+    fbc1.update_yaxes(tickfont=dict(size=11, family='Arial'))
+    st.plotly_chart(fbc1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+
+    bc2d = week_bread[week_bread['fytd_avg_daily_bread'].notna()].copy()
+    bc2d['label'] = bc2d['store_id'] + ' · ' + bc2d['store_id'].map(STORE_NAMES).fillna('')
+    bc2d['region'] = bc2d['co_op'].str.replace('\n',' ').str.strip()
+    bc2d = bc2d.sort_values('fytd_avg_daily_bread', ascending=True)
+    fbc2 = go.Figure()
+    for region, grp in bc2d.groupby('region'):
+        fbc2.add_trace(go.Bar(
+            name=region, showlegend=False,
+            x=grp['fytd_avg_daily_bread'], y=grp['label'],
+            orientation='h', marker_color=region_color(region), marker_opacity=0.88,
+            hovertemplate='<b>%{y}</b><br>FYTD Avg Daily Bread: %{x:.0f}<extra></extra>'
+        ))
+    if fytd_adb:
+        fbc2.add_vline(x=fytd_adb, line_color=TEXT, line_width=2.5, line_dash='dash',
+            annotation_text=f"System {fytd_adb:.0f}", annotation_position="top right",
+            annotation_font=dict(size=11, color=TEXT, family='Arial'))
+    fbc2.update_layout(**PLOTLY_THEME, height=bread_h, showlegend=False,
+                       margin=dict(l=10,r=40,t=45,b=20),
+                       title=dict(text=f"Avg Daily Bread YTD (as of {selected_week})",
+                                  font=dict(size=15, color=TEXT, family='Arial')))
+    fbc2.update_yaxes(tickfont=dict(size=11, family='Arial'))
+    st.plotly_chart(fbc2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": False})
+
 
     st.markdown('<div class="section-header">DISCOUNT ANALYSIS</div>', unsafe_allow_html=True)
     disc = week_sales[['store_id', 'non_loyalty_disc_pct', 'loyalty_disc_pct']].copy()
