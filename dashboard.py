@@ -1509,22 +1509,30 @@ with tab6:
         st.markdown('<div class="section-header">SAME STORE PERFORMANCE TRENDS</div>', unsafe_allow_html=True)
 
         if 'trend_weeks' not in st.session_state:
-            st.session_state['trend_weeks'] = '52 weeks'
+            st.session_state['trend_weeks'] = '26 weeks'
         n_weeks_options = {'13 weeks': 13, '26 weeks': 26, '52 weeks': 52, 'All history': len(trend_df)}
         st.markdown(
             f"<div style='font-family:Arial,sans-serif; font-size:18px; font-weight:700;"
             f"color:{TEXT}; margin-bottom:10px;'>Show:</div>",
             unsafe_allow_html=True)
+        _active_lbl = st.session_state.get('trend_weeks', '26 weeks')
+        _btn_css = []
+        for _bi, _bopt in enumerate(n_weeks_options.keys()):
+            if _bopt == _active_lbl:
+                _sel = "div[data-testid=\"column\"]:nth-child(" + str(_bi+1) + ") button"
+                _rule = _sel + " { background-color: #134A7C !important; color: white !important; border: 2px solid #134A7C !important; font-weight: 700 !important; }"
+                _btn_css.append(_rule)
+        if _btn_css:
+            st.markdown("<style>" + " ".join(_btn_css) + "</style>", unsafe_allow_html=True)
         btn_cols2 = st.columns(len(n_weeks_options))
         for _i, _opt in enumerate(n_weeks_options.keys()):
             with btn_cols2[_i]:
-                _active = st.session_state['trend_weeks'] == _opt
                 if st.button(_opt, key=f"trend_btn_{_i}", use_container_width=True):
                     st.session_state['trend_weeks'] = _opt
                     st.rerun()
         n_weeks_label = st.session_state['trend_weeks']
         if n_weeks_label not in n_weeks_options:
-            n_weeks_label = '52 weeks'
+            n_weeks_label = '26 weeks'
         n_weeks = n_weeks_options[n_weeks_label]
         plot_df = trend_df.tail(n_weeks).copy()
 
