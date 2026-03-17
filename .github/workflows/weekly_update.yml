@@ -2,45 +2,27 @@ name: Weekly Jersey Mike's Update
 
 on:
   schedule:
-    # Runs every Monday at 10:00 AM Pacific (18:00 UTC)
-    # Adjust if emails arrive at a different time
-    - cron: '0 18 * * 1'
-
-  # Allow manual trigger from GitHub Actions tab
+    - cron: '0 18 * * 1'  # Every Monday 10am Pacific
   workflow_dispatch:
 
 jobs:
   update-dashboard:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install dependencies
-        run: |
-          pip install requests psycopg2-binary pdfplumber
-
+        run: pip install requests psycopg2-binary pdfplumber
       - name: Run email fetch and load
         env:
           AZURE_CLIENT_ID:     ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID:     ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_REFRESH_TOKEN: ${{ secrets.AZURE_REFRESH_TOKEN }}
           AZURE_USER_EMAIL:    ${{ secrets.AZURE_USER_EMAIL }}
           SUPABASE_HOST:       ${{ secrets.SUPABASE_HOST }}
           SUPABASE_USER:       ${{ secrets.SUPABASE_USER }}
           SUPABASE_PASSWORD:   ${{ secrets.SUPABASE_PASSWORD }}
           SUPABASE_DBNAME:     ${{ secrets.SUPABASE_DBNAME }}
-        run: |
-          python email_fetch.py
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "Weekly update failed. Check the Actions log for details."
-          echo "You can re-run manually from the Actions tab on GitHub."
+        run: python email_fetch.py
