@@ -10,6 +10,24 @@ import argparse
 
 DB_PATH = "jerseymikes.db"
 
+def get_supabase_conn():
+    """Try to connect to Supabase via .streamlit/secrets.toml. Returns None if not available."""
+    try:
+        import psycopg2
+        import tomllib
+        secrets_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.streamlit', 'secrets.toml')
+        with open(secrets_path, 'rb') as f:
+            secrets = tomllib.load(f)
+        s = secrets['supabase']
+        conn = psycopg2.connect(
+            host=s['host'], port=int(s['port']),
+            dbname=s['dbname'], user=s['user'],
+            password=s['password'], sslmode='require'
+        )
+        return conn
+    except Exception as e:
+        return None
+
 def clean_money(val):
     if not val or not str(val).strip(): return None
     try: return float(re.sub(r'[$,]', '', str(val).strip()))
@@ -61,13 +79,37 @@ def is_total_row(row):
             return True, market, count
     return False, None, None
 
-def get_db(): return sqlite3.connect(DB_PATH)
+def get_db():
+    """Returns (connection, is_postgres) tuple."""
+    pg = get_supabase_conn()
+    if pg:
+        print("  [DB] Connected to Supabase")
+        return pg, True
+    print("  [DB] Supabase unavailable — using local SQLite")
+    return sqlite3.connect(DB_PATH), False
 
-def upsert_store(conn, store_id, city, state, co_op, franchisee):
-    conn.execute("INSERT OR IGNORE INTO stores (store_id, city, state, co_op, franchisee) VALUES (?,?,?,?,?)",
-                 (store_id, city, state, co_op, franchisee))
+def sql(conn, query, params=(), is_pg=False):
+    """Execute with correct placeholder style for dialect. Returns cursor."""
+    if is_pg:
+        query = re.sub(r'(?i)INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', query)
+        query = re.sub(r'(?i)INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', query)
+        query = re.sub(r'\?', '%s', query)
+        if query.strip().upper().startswith("INSERT INTO") and "ON CONFLICT" not in query.upper():
+            query = query.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+    cur = conn.cursor()
+    cur.execute(query, params)
+    return cur
 
-def parse_sales_detail(pdf_path, week_ending, conn):
+def upsert_store(conn, store_id, city, state, co_op, franchisee, is_pg=False):
+    if is_pg:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO stores (store_id, city, state, co_op, franchisee) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (store_id) DO NOTHING",
+                    (store_id, city, state, co_op, franchisee))
+    else:
+        conn.execute("INSERT OR IGNORE INTO stores (store_id, city, state, co_op, franchisee) VALUES (?,?,?,?,?)",
+                     (store_id, city, state, co_op, franchisee))
+
+def parse_sales_detail(pdf_path, week_ending, conn, is_pg=False):
     store_rows = 0; total_rows = 0
     current_state = None; current_coop = None
 
@@ -88,7 +130,7 @@ def parse_sales_detail(pdf_path, week_ending, conn):
                         upsert_store(conn, store_id,
                                      row[3].strip() if row[3] else None,
                                      current_state, current_coop,
-                                     row[4].strip() if row[4] else None)
+                                     row[4].strip() if row[4] else None, is_pg)
                         sss=clean_pct(row[6]); tkt=clean_pct(row[7])
                         txn=derive_txn_pct(sss,tkt)
                         fytd_sss=clean_pct(row[18]) if len(row)>18 else None
@@ -96,20 +138,20 @@ def parse_sales_detail(pdf_path, week_ending, conn):
                         fytd_txn=derive_txn_pct(fytd_sss,fytd_tkt)
                         bread,wraps=clean_bread(row[8])
                         fytd_bread,fytd_wraps=clean_bread(row[17]) if len(row)>17 else (None,None)
-                        conn.execute("""INSERT OR REPLACE INTO weekly_sales (
+                        sql(conn, """INSERT OR REPLACE INTO weekly_sales (
                             week_ending,store_id,net_sales,sss_pct,same_store_ticket_pct,same_store_txn_pct,
                             avg_daily_bread,avg_daily_wraps,online_sales_pct,third_party_sales_pct,
                             non_loyalty_disc_pct,loyalty_disc_pct,loyalty_sales_pct,
                             fytd_net_sales,fytd_weekly_auv,fytd_avg_ticket,fytd_avg_daily_bread,
                             fytd_avg_daily_wraps,fytd_sss_pct,fytd_same_store_ticket,fytd_same_store_txn_pct
                         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (week_ending,store_id,clean_money(row[5]),sss,tkt,txn,
+                     (week_ending,store_id,clean_money(row[5]),sss,tkt,txn,
                          bread,wraps,clean_pct(row[9]),clean_pct(row[10]),
                          clean_pct(row[11]),clean_pct(row[12]),clean_pct(row[13]),
                          clean_money(row[14]) if len(row)>14 else None,
                          clean_money(row[15]) if len(row)>15 else None,
                          clean_money(row[16]) if len(row)>16 else None,
-                         fytd_bread,fytd_wraps,fytd_sss,fytd_tkt,fytd_txn))
+                         fytd_bread,fytd_wraps,fytd_sss,fytd_tkt,fytd_txn), is_pg)
                         store_rows += 1
 
                     else:
@@ -122,7 +164,7 @@ def parse_sales_detail(pdf_path, week_ending, conn):
                             fytd_txn=derive_txn_pct(fytd_sss,fytd_tkt)
                             bread,_=clean_bread(row[8])
                             fytd_bread,_=clean_bread(row[17]) if len(row)>17 else (None,None)
-                            conn.execute("""INSERT OR REPLACE INTO weekly_market_totals (
+                            sql(conn, """INSERT OR REPLACE INTO weekly_market_totals (
                                 week_ending,market,store_count,net_sales,sss_pct,
                                 same_store_ticket_pct,same_store_txn_pct,avg_daily_bread,
                                 online_sales_pct,third_party_sales_pct,non_loyalty_disc_pct,
@@ -130,19 +172,19 @@ def parse_sales_detail(pdf_path, week_ending, conn):
                                 fytd_avg_ticket,fytd_avg_daily_bread,fytd_sss_pct,
                                 fytd_same_store_ticket,fytd_same_store_txn_pct
                             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            (week_ending,market,store_count,clean_money(row[5]),sss,tkt,txn,bread,
+                     (week_ending,market,store_count,clean_money(row[5]),sss,tkt,txn,bread,
                              clean_pct(row[9]),clean_pct(row[10]),clean_pct(row[11]),
                              clean_pct(row[12]),clean_pct(row[13]),
                              clean_money(row[14]) if len(row)>14 else None,
                              clean_money(row[15]) if len(row)>15 else None,
                              clean_money(row[16]) if len(row)>16 else None,
-                             fytd_bread,fytd_sss,fytd_tkt,fytd_txn))
+                             fytd_bread,fytd_sss,fytd_tkt,fytd_txn), is_pg)
                             total_rows += 1
 
     conn.commit()
     print(f"  ✅ Sales detail: {store_rows} store-weeks, {total_rows} market totals loaded")
 
-def parse_bread_detail(pdf_path, week_ending, conn):
+def parse_bread_detail(pdf_path, week_ending, conn, is_pg=False):
     rows_loaded = 0
     total_rows = 0
     with pdfplumber.open(pdf_path) as pdf:
@@ -151,14 +193,14 @@ def parse_bread_detail(pdf_path, week_ending, conn):
                 for row in table:
                     if is_store_row(row) and len(row) >= 16:
                         store_id = row[2].strip()
-                        conn.execute("""INSERT OR REPLACE INTO weekly_bread (
+                        sql(conn, """INSERT OR REPLACE INTO weekly_bread (
                             week_ending,store_id,bread_count,avg_daily_bread,avg_sales_per_loaf,
                             wrap_bowl_bread,wrap_bowl_avg_daily,prior_bread_count,prior_avg_daily_bread,
                             prior_avg_sales_per_loaf,prior_wrap_bowl_bread,prior_wrap_bowl_avg_daily,
                             same_store_bread_pct,fytd_bread_count,fytd_avg_daily_bread,
                             fytd_avg_sales_per_loaf,fytd_sss_bread_pct,fytd_wrap_bowl_bread,fytd_wrap_bowl_avg_daily
                         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (week_ending,store_id,clean_num(row[5]),clean_num(row[6]),clean_money(row[7]),
+                     (week_ending,store_id,clean_num(row[5]),clean_num(row[6]),clean_money(row[7]),
                          clean_num(row[8]),clean_num(row[9]),clean_num(row[10]),clean_num(row[11]),
                          clean_money(row[12]),clean_num(row[13]),clean_num(row[14]),clean_pct(row[15]),
                          clean_num(row[16]) if len(row)>16 else None,
@@ -166,29 +208,29 @@ def parse_bread_detail(pdf_path, week_ending, conn):
                          clean_money(row[18]) if len(row)>18 else None,
                          clean_pct(row[19]) if len(row)>19 else None,
                          clean_num(row[20]) if len(row)>20 else None,
-                         clean_num(row[21]) if len(row)>21 else None))
+                         clean_num(row[21]) if len(row)>21 else None), is_pg)
                         rows_loaded += 1
                     else:
                         is_tot, market, store_count = is_total_row(row)
                         if is_tot and market and len(row) >= 16:
-                            conn.execute("""INSERT OR REPLACE INTO weekly_bread_totals (
+                            sql(conn, """INSERT OR REPLACE INTO weekly_bread_totals (
                                 week_ending,market,store_count,
                                 bread_count,avg_daily_bread,avg_sales_per_loaf,
                                 same_store_bread_pct,fytd_bread_count,fytd_avg_daily_bread,
                                 fytd_avg_sales_per_loaf,fytd_sss_bread_pct
                             ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                            (week_ending,market,store_count,
+                     (week_ending,market,store_count,
                              clean_num(row[5]),clean_num(row[6]),clean_money(row[7]),
                              clean_pct(row[15]) if len(row)>15 else None,
                              clean_num(row[16]) if len(row)>16 else None,
                              clean_num(row[17]) if len(row)>17 else None,
                              clean_money(row[18]) if len(row)>18 else None,
-                             clean_pct(row[19]) if len(row)>19 else None))
+                             clean_pct(row[19]) if len(row)>19 else None), is_pg)
                             total_rows += 1
     conn.commit()
     print(f"  [OK] Bread detail: {rows_loaded} store-weeks, {total_rows} market totals loaded")
 
-def parse_loyalty_detail(pdf_path, week_ending, conn):
+def parse_loyalty_detail(pdf_path, week_ending, conn, is_pg=False):
     rows_loaded = 0
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -196,15 +238,15 @@ def parse_loyalty_detail(pdf_path, week_ending, conn):
                 for row in table:
                     if not is_store_row(row) or len(row) < 13: continue
                     store_id = row[2].strip()
-                    conn.execute("""INSERT OR REPLACE INTO weekly_loyalty (
+                    sql(conn, """INSERT OR REPLACE INTO weekly_loyalty (
                         week_ending,store_id,member_activations_current,member_activations_alltime,
                         member_transactions_current,member_transactions_alltime,
                         points_earned_current,points_earned_alltime,
                         points_redeemed_current,points_redeemed_alltime
                     ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (week_ending,store_id,clean_num(row[5]),clean_num(row[6]),
+                     (week_ending,store_id,clean_num(row[5]),clean_num(row[6]),
                      clean_num(row[7]),clean_num(row[8]),clean_num(row[9]),
-                     clean_num(row[10]),clean_num(row[11]),clean_num(row[12])))
+                     clean_num(row[10]),clean_num(row[11]),clean_num(row[12])), is_pg)
                     rows_loaded += 1
     conn.commit()
     print(f"  ✅ Loyalty detail: {rows_loaded} store-weeks loaded")
@@ -219,32 +261,34 @@ def detect_report_type(filename):
     return 'unknown'
 
 def process_pdfs(pdf_files):
-    conn = get_db()
+    conn, is_pg = get_db()
     for pdf_path in pdf_files:
         week_ending = extract_week_ending(pdf_path)
         report_type = detect_report_type(pdf_path)
         if not week_ending:
             print(f"⚠️  Could not extract date from: {pdf_path}"); continue
-        already = conn.execute("SELECT id FROM report_log WHERE week_ending=? AND report_type=?",
-                               (week_ending, report_type)).fetchone()
+        already = sql(conn, "SELECT id FROM report_log WHERE week_ending=? AND report_type=?",
+                 (week_ending, report_type), is_pg).fetchone()
         if already:
             print(f"⏭️  Already processed: {os.path.basename(pdf_path)} — skipping"); continue
         print(f"\n📄 Processing: {os.path.basename(pdf_path)}")
         print(f"   Week ending: {week_ending} | Type: {report_type}")
         try:
-            if report_type == 'sales_detail': parse_sales_detail(pdf_path, week_ending, conn)
-            elif report_type == 'bread':      parse_bread_detail(pdf_path, week_ending, conn)
-            elif report_type == 'loyalty':    parse_loyalty_detail(pdf_path, week_ending, conn)
+            if report_type == 'sales_detail': parse_sales_detail(pdf_path, week_ending, conn, is_pg)
+            elif report_type == 'bread':      parse_bread_detail(pdf_path, week_ending, conn, is_pg)
+            elif report_type == 'loyalty':    parse_loyalty_detail(pdf_path, week_ending, conn, is_pg)
             elif report_type in ('summary','sss'):
                 print(f"  ℹ️  {report_type} — data covered by sales_detail, skipping")
             else:
                 print(f"  ⚠️  Unknown type — skipping"); continue
-            conn.execute("INSERT OR IGNORE INTO report_log (week_ending,report_type,filename) VALUES (?,?,?)",
-                         (week_ending,report_type,os.path.basename(pdf_path)))
+            sql(conn, "INSERT OR IGNORE INTO report_log (week_ending,report_type,filename) VALUES (?,?,?)",
+                 (week_ending, report_type, os.path.basename(pdf_path)), is_pg)
             conn.commit()
         except Exception as e:
             print(f"  ❌ Error: {e}")
             import traceback; traceback.print_exc()
+            try: conn.rollback()
+            except: pass
     conn.close()
     print("\n✅ All PDFs processed.")
 
