@@ -49,11 +49,11 @@ def get_access_token():
     token = result.get("access_token")
     if not token:
         raise ValueError(f"No access token: {result}")
-    # Save new refresh token if rotated
+    # Save new refresh token if rotated — print full token so GitHub secret can be updated
     new_refresh = result.get("refresh_token")
     if new_refresh and new_refresh != REFRESH_TOKEN:
         print("[INFO] Refresh token rotated — update AZURE_REFRESH_TOKEN secret with new value:")
-        print(new_refresh[:40] + "...")
+        print(f"NEW_REFRESH_TOKEN={new_refresh}")
     print("[OK] Access token obtained")
     return token
 
@@ -61,29 +61,23 @@ def get_access_token():
 def find_latest_jm_email(token):
     """Find the most recent email from Jersey Mike's with attachments."""
     headers = {"Authorization": f"Bearer {token}"}
-    since = (datetime.utcnow() - timedelta(days=10)).strftime("%Y-%m-%dT00:00:00Z")
     url = (
         f"https://graph.microsoft.com/v1.0/me/messages"
-        f"?$filter=from/emailAddress/address eq '{SENDER_EMAIL}'"
-        f" and receivedDateTime ge {since}"
-        f"&$orderby=receivedDateTime desc"
-        f"&$select=id,subject,receivedDateTime,hasAttachments"
-        f"&$top=5"
+        f"?$orderby=receivedDateTime desc"
+        f"&$select=id,subject,receivedDateTime,hasAttachments,from"
+        f"&$top=25"
     )
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     messages = resp.json().get("value", [])
 
-    if not messages:
-        print(f"[WARN] No emails from {SENDER_EMAIL} in last 10 days")
-        return None
-
     for msg in messages:
-        if msg.get("hasAttachments"):
+        from_addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+        if from_addr.lower() == SENDER_EMAIL.lower() and msg.get("hasAttachments"):
             print(f"[OK] Found: '{msg['subject']}' ({msg['receivedDateTime']})")
             return msg["id"]
 
-    print("[WARN] No emails with attachments found")
+    print(f"[WARN] No emails from {SENDER_EMAIL} in last 25 messages")
     return None
 
 
