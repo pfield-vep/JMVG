@@ -1,0 +1,146 @@
+JERSEY MIKE'S VALLEY GROUP — DASHBOARD WORKFLOW GUIDE
+======================================================
+Last updated: March 2026
+
+
+LIVE DASHBOARD URL
+------------------
+https://dashboardpy-ctpsbw6xxlnhv6veehrgcx.streamlit.app/
+
+
+WEEKLY PDF WORKFLOW — NOW FULLY AUTOMATIC
+------------------------------------------
+Every Monday at 8:00 AM CT, GitHub automatically:
+  1. Checks your email for the Jersey Mike's weekly report
+  2. Downloads the PDF attachments
+  3. Loads the data into Supabase
+  4. Dashboard updates — no action needed from you
+
+You can still load PDFs manually if needed (e.g. catching up on old weeks):
+  1. Save PDF files to:
+     C:\Users\PeteFields\OneDrive - VantEdge\Vantedge Collaboration - Documents\Multi Unit Vertical\Sandwich\Jersey Mikes\JM Valley Group\Dashboard\WeeklyPDF\YYYY-MM-DD\
+  2. Open Command Prompt and run:
+     cd "C:\Users\PeteFields\OneDrive - VantEdge\Vantedge Collaboration - Documents\Multi Unit Vertical\Sandwich\Jersey Mikes\JM Valley Group\Dashboard"
+     py parse_and_load.py --folder "WeeklyPDF\YYYY-MM-DD"
+  3. Refresh the live URL to see new data.
+
+
+DASHBOARD CODE UPDATE WORKFLOW
+-------------------------------
+Use this when you've changed dashboard.py and want the live site to reflect it.
+The repo is public — no visibility toggling needed.
+
+1. Ask Claude to make the changes to dashboard.py
+
+2. Open Command Prompt:
+   cd "C:\Users\PeteFields\OneDrive - VantEdge\Vantedge Collaboration - Documents\Multi Unit Vertical\Sandwich\Jersey Mikes\JM Valley Group\Dashboard"
+   git add dashboard.py
+   git commit -m "describe what you changed"
+   git push
+
+3. Streamlit auto-redeploys in ~2 minutes.
+   Go to share.streamlit.io and wait for status to show "Running".
+
+
+ADDING A TEAM MEMBER
+--------------------
+1. Go to share.streamlit.io
+2. Click the three dots (...) next to your app
+3. Click Settings → Sharing
+4. Add their email address
+5. They'll receive an invite and need a free Streamlit account to log in
+
+
+REVERTING TO A PREVIOUS VERSION
+--------------------------------
+If something breaks, restore from backup:
+
+v1 backup: Dashboard\Backup Files\v1.zip
+v2 backup: Dashboard\Backup Files\v2.zip
+
+To restore v2:
+1. Unzip v2.zip from the Backup Files folder, copy dashboard.py to the Dashboard folder
+2. Follow the Dashboard Code Update Workflow above
+
+
+DATABASE
+--------
+Platform:  Supabase (free tier)
+Project:   jerseymikes
+Host:      aws-1-us-east-1.pooler.supabase.com
+Dashboard: https://supabase.com/dashboard/project/duxaqruvgggftxndubpn
+
+Tables:
+  - stores               (29 stores)
+  - weekly_sales         (PDF data — updated weekly)
+  - weekly_market_totals (PDF data — updated weekly)
+  - weekly_bread         (PDF data — updated weekly)
+  - weekly_bread_totals  (PDF data — updated weekly)
+  - weekly_loyalty       (PDF data — updated weekly)
+  - weekly_store_history (Excel history — 2024 to present)
+  - report_log           (tracks which PDFs have been loaded)
+  - app_settings         (stores Azure refresh token — auto-managed)
+
+
+EMAIL AUTOMATION
+----------------
+The weekly automation runs every Monday at 8:00 AM CT via GitHub Actions.
+Sender:    noreply@jerseymikes.com
+Repo:      https://github.com/pfield-vep/JMVG/actions
+
+The Microsoft refresh token is stored in Supabase (app_settings table)
+and rotates automatically — no manual updates ever needed.
+
+If the automation fails:
+  1. Go to github.com/pfield-vep/JMVG/actions
+  2. Click the failed run to see the error
+  3. Contact Claude for help diagnosing
+
+
+GITHUB REPO
+-----------
+URL:    https://github.com/pfield-vep/JMVG  (public)
+Branch: main
+
+Files in repo (code only — no data, no secrets):
+  dashboard.py             - main dashboard
+  email_fetch.py           - weekly email automation
+  parse_and_load.py        - weekly PDF loader (manual use)
+  parse_and_load_cloud.py  - PDF loader used by automation
+  load_history.py          - Excel history loader
+  requirements.txt         - Python package list
+  .gitignore               - excludes secrets, .db, .xlsx, PDFs
+
+
+LOCAL SETUP
+-----------
+Working folder: C:\Users\PeteFields\OneDrive - VantEdge\Vantedge Collaboration - Documents\Multi Unit Vertical\Sandwich\Jersey Mikes\JM Valley Group\Dashboard\
+Python command: py (not python)
+Run dashboard locally: py -m streamlit run dashboard.py
+Streamlit secrets:     .streamlit\secrets.toml (never commit this)
+
+
+STORE GROUPINGS
+---------------
+Organic Stores:     All stores EXCEPT San Diego (20071, 20091, 20171, 20177, 20291, 20292, 20300)
+Acquisition Stores: San Diego stores only
+
+San Diego store names (placeholders — update when real names available):
+  20177 = SD1  (29910 Murrieta Hot Springs Rd, Murrieta)
+  20171 = SD2  (26475 Ynez Road, Temecula)
+  20091 = SD3  (32068 Temecula Parkway, Temecula)
+  20071 = SD4  (1829 Centre City Pkwy, Escondido)
+  20300 = SD5  (1497 East Valley Pkwy, Escondido)
+  20292 = SD6  (1664 Main Street, Ramona)
+  20291 = SD7  (30680 Rancho California Rd, Temecula)
+
+To update a store name:
+  1. Ask Claude to update the STORE_NAMES dictionary in dashboard.py
+  2. Follow the Dashboard Code Update Workflow above
+
+
+CONTACTS / ACCOUNTS
+--------------------
+GitHub:    github.com/pfield-vep
+Streamlit: share.streamlit.io (login with GitHub)
+Supabase:  supabase.com (login with GitHub)
