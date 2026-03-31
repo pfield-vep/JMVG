@@ -13,10 +13,10 @@ import tempfile
 import requests
 from datetime import datetime, timedelta
 
-CLIENT_ID     = "44f09a6a-eae4-43d6-bd80-3c806a3b2d1a"  # Azure App (public client)
-CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")    # Not used for public client
-TENANT_ID     = "common"                                  # Accepts tokens from any tenant
-REFRESH_TOKEN = os.environ.get("AZURE_REFRESH_TOKEN")
+CLIENT_ID     = "44f09a6a-eae4-43d6-bd80-3c806a3b2d1a"   # Azure App (public client)
+CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")     # Not used for public client
+TENANT_ID     = "8dc59d31-158a-4afd-855d-446c26c6adc7"   # Must match token issuer tenant
+REFRESH_TOKEN = (os.environ.get("AZURE_REFRESH_TOKEN") or "").strip()
 USER_EMAIL    = os.environ.get("AZURE_USER_EMAIL")
 SENDER_EMAIL  = "noreply@jerseymikes.com"
 
@@ -29,7 +29,7 @@ DB_PASSWORD = os.environ.get("SUPABASE_PASSWORD")
 
 def get_access_token():
     """Exchange refresh token for a new access token."""
-    url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     data = {
         "grant_type":    "refresh_token",
         "client_id":     CLIENT_ID,
