@@ -33,9 +33,8 @@ def get_access_token():
     data = {
         "grant_type":    "refresh_token",
         "client_id":     CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
         "refresh_token": REFRESH_TOKEN,
-        "scope":         "Mail.Read offline_access",
+        "scope":         "https://graph.microsoft.com/Mail.Read offline_access",
     }
     print(f"[DEBUG] CLIENT_ID: {CLIENT_ID}")
     print(f"[DEBUG] TENANT_ID: {TENANT_ID}")
