@@ -13,9 +13,9 @@ import tempfile
 import requests
 from datetime import datetime, timedelta
 
-CLIENT_ID     = os.environ.get("AZURE_CLIENT_ID")
-CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")
-TENANT_ID     = os.environ.get("AZURE_TENANT_ID")
+CLIENT_ID     = "44f09a6a-eae4-43d6-bd80-3c806a3b2d1a"  # Azure App (public client)
+CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")    # Not used for public client
+TENANT_ID     = "common"                                  # Accepts tokens from any tenant
 REFRESH_TOKEN = os.environ.get("AZURE_REFRESH_TOKEN")
 USER_EMAIL    = os.environ.get("AZURE_USER_EMAIL")
 SENDER_EMAIL  = "noreply@jerseymikes.com"
