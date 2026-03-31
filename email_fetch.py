@@ -29,7 +29,7 @@ DB_PASSWORD = os.environ.get("SUPABASE_PASSWORD")
 
 def get_access_token():
     """Exchange refresh token for a new access token."""
-    url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+    url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     data = {
         "grant_type":    "refresh_token",
         "client_id":     CLIENT_ID,
