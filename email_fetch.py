@@ -27,35 +27,61 @@ DB_USER     = os.environ.get("SUPABASE_USER")
 DB_PASSWORD = os.environ.get("SUPABASE_PASSWORD")
 
 
-def get_access_token():
-    """Exchange refresh token for a new access token."""
+def get_token_from_supabase(conn):
+    """Read the current refresh token from Supabase app_settings table."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM app_settings WHERE key = 'azure_refresh_token'")
+        row = cur.fetchone()
+        return row[0].strip() if row else None
+    except Exception as e:
+        print(f"[WARN] Could not read token from Supabase: {e}")
+        return None
+
+def save_token_to_supabase(conn, token):
+    """Save rotated refresh token back to Supabase automatically."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO app_settings (key, value) VALUES ('azure_refresh_token', %s)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, (token,))
+        conn.commit()
+        print("[INFO] Refresh token auto-updated in Supabase")
+    except Exception as e:
+        print(f"[WARN] Could not save rotated token to Supabase: {e}")
+
+def get_access_token(conn):
+    """Exchange refresh token for a new access token. Auto-saves rotated token to Supabase."""
+    # Try Supabase first, fall back to env var
+    refresh_token = get_token_from_supabase(conn) or REFRESH_TOKEN
+    if not refresh_token:
+        raise ValueError("No refresh token available")
+    print(f"[INFO] Refresh token source: {'Supabase' if get_token_from_supabase(conn) else 'env var'}")
+
     url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     data = {
         "grant_type":    "refresh_token",
         "client_id":     CLIENT_ID,
-        "refresh_token": REFRESH_TOKEN,
+        "refresh_token": refresh_token,
         "scope":         "https://graph.microsoft.com/Mail.Read offline_access",
     }
-    print(f"[DEBUG] CLIENT_ID: {CLIENT_ID}")
-    print(f"[DEBUG] TENANT_ID: {TENANT_ID}")
-    print(f"[DEBUG] CLIENT_SECRET present: {bool(CLIENT_SECRET)}")
-    print(f"[DEBUG] REFRESH_TOKEN present: {bool(REFRESH_TOKEN)}")
-    print(f"[DEBUG] REFRESH_TOKEN first 20 chars: {REFRESH_TOKEN[:20] if REFRESH_TOKEN else 'None'}")
     resp = requests.post(url, data=data)
-    print(f"[DEBUG] Token response status: {resp.status_code}")
-    print(f"[DEBUG] Token response: {resp.text[:500]}")
+    print(f"[INFO] Token response status: {resp.status_code}")
+    if resp.status_code != 200:
+        print(f"[ERROR] Token response: {resp.text[:500]}")
     resp.raise_for_status()
     result = resp.json()
-    token = result.get("access_token")
-    if not token:
+    access_token = result.get("access_token")
+    if not access_token:
         raise ValueError(f"No access token: {result}")
-    # Save new refresh token if rotated — print full token so GitHub secret can be updated
+    # Auto-save rotated token back to Supabase
     new_refresh = result.get("refresh_token")
-    if new_refresh and new_refresh != REFRESH_TOKEN:
-        print("[INFO] Refresh token rotated — update AZURE_REFRESH_TOKEN secret with new value:")
-        print(f"NEW_REFRESH_TOKEN={new_refresh}")
+    if new_refresh and new_refresh != refresh_token:
+        print("[INFO] Refresh token rotated — saving automatically to Supabase")
+        save_token_to_supabase(conn, new_refresh)
     print("[OK] Access token obtained")
-    return token
+    return access_token
 
 
 def find_latest_jm_email(token):
@@ -124,22 +150,22 @@ def run():
     print(f"Jersey Mike's Weekly Update — {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"{'='*60}\n")
 
-    missing = [k for k in ["AZURE_CLIENT_ID","AZURE_CLIENT_SECRET","AZURE_TENANT_ID","AZURE_REFRESH_TOKEN",
-                            "AZURE_USER_EMAIL","SUPABASE_HOST","SUPABASE_USER","SUPABASE_PASSWORD"]
+    missing = [k for k in ["SUPABASE_HOST","SUPABASE_USER","SUPABASE_PASSWORD"]
                if not os.environ.get(k)]
     if missing:
         print(f"[ERROR] Missing environment variables: {missing}")
         sys.exit(1)
 
-    token = get_access_token()
+    conn = get_pg_connection()
+    print("[OK] Connected to Supabase")
+
+    token = get_access_token(conn)
     message_id = find_latest_jm_email(token)
 
     if not message_id:
         print("[INFO] Nothing to process.")
+        conn.close()
         sys.exit(0)
-
-    conn = get_pg_connection()
-    print("[OK] Connected to Supabase")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         pdf_paths = download_attachments(token, message_id, tmp_dir)
