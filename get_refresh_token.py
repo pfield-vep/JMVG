@@ -1,22 +1,15 @@
 """
 get_refresh_token.py
-Run this ONCE on your local machine to get a refresh token.
-The refresh token gets stored in GitHub Secrets and used by the automation.
-
-Usage:
-    py get_refresh_token.py
+Run ONCE on your local machine to get a refresh token.
+Stores it in refresh_token.txt — copy to GitHub Secrets then delete the file.
 """
-
-import json
-import urllib.parse
-import urllib.request
-import webbrowser
+import json, urllib.parse, urllib.request, webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-CLIENT_ID  = "44f09a6a-eae4-43d6-bd80-3c806a3b2d1a"
-TENANT_ID  = "8dc59d31-158a-4afd-855d-446c26c6adc7"
-REDIRECT   = "http://localhost:8765"
-SCOPES     = "Mail.Read offline_access"
+CLIENT_ID     = "44f09a6a-eae4-43d6-bd80-3c806a3b2d1a"
+TENANT_ID     = "8dc59d31-158a-4afd-855d-446c26c6adc7"
+REDIRECT      = "http://localhost:8765"
+SCOPES        = "https://graph.microsoft.com/Mail.Read offline_access"
 
 auth_code = None
 
@@ -27,13 +20,11 @@ class Handler(BaseHTTPRequestHandler):
         auth_code = params.get("code")
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"<h2>Login successful! You can close this tab.</h2>")
-
+        self.wfile.write(b"<h2>Login successful! Close this tab.</h2>")
     def log_message(self, format, *args):
-        pass  # suppress server logs
+        pass
 
 def run():
-    # Build auth URL
     auth_url = (
         f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/authorize"
         f"?client_id={CLIENT_ID}"
@@ -42,64 +33,51 @@ def run():
         f"&scope={urllib.parse.quote(SCOPES)}"
         f"&prompt=select_account"
     )
-
-    print("\n" + "="*60)
-    print("JERSEY MIKE'S — ONE-TIME LOGIN")
-    print("="*60)
     print("\nOpening browser for Microsoft login...")
-    print("Sign in with your VantEdge email account.")
-    print("\nIf browser doesn't open, visit this URL manually:")
-    print(auth_url)
-    print()
-
     webbrowser.open(auth_url)
-
-    # Start local server to catch the redirect
-    server = HTTPServer(("localhost", 8765), Handler)
     print("Waiting for login...")
-    server.handle_request()
+    HTTPServer(("localhost", 8765), Handler).handle_request()
 
     if not auth_code:
-        print("[ERROR] No auth code received. Try again.")
+        print("[ERROR] No auth code received.")
         return
 
-    print("[OK] Login successful. Exchanging code for tokens...")
+    print("[OK] Got auth code. Exchanging for tokens...")
 
-    # Exchange code for tokens
     token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     data = urllib.parse.urlencode({
-        "grant_type":    "authorization_code",
-        "client_id":     CLIENT_ID,
-        "code":          auth_code,
-        "redirect_uri":  REDIRECT,
-        "scope":         SCOPES,
+        "grant_type":   "authorization_code",
+        "client_id":    CLIENT_ID,
+        "code":         auth_code,
+        "redirect_uri": REDIRECT,
+        "scope":        SCOPES,
     }).encode()
 
     req = urllib.request.Request(token_url, data=data, method="POST")
-    with urllib.request.urlopen(req) as resp:
-        tokens = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req) as resp:
+            tokens = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        print(f"[ERROR] {e.code}: {e.read().decode()}")
+        return
 
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
-        print(f"[ERROR] No refresh token received: {tokens}")
+        print(f"[ERROR] No refresh token: {tokens}")
         return
 
     print("\n" + "="*60)
-    print("SUCCESS! Here is your refresh token:")
+    print("SUCCESS! Refresh token:")
     print("="*60)
-    print(f"\n{refresh_token}\n")
+    print(refresh_token)
     print("="*60)
-    print("\nNEXT STEPS:")
-    print("1. Go to github.com/pfield-vep/JMVG/settings/secrets/actions")
-    print("2. Click 'New repository secret'")
-    print("3. Name:  AZURE_REFRESH_TOKEN")
-    print("4. Value: paste the token above")
-    print("5. Click 'Add secret'")
-    print("\nThe token is also saved to refresh_token.txt in this folder.")
-    print("DELETE that file after copying the token to GitHub!\n")
+    print("\n1. Go to github.com/pfield-vep/JMVG/settings/secrets/actions")
+    print("2. Update AZURE_REFRESH_TOKEN with the value above")
+    print("3. Delete refresh_token.txt after copying!\n")
 
     with open("refresh_token.txt", "w") as f:
         f.write(refresh_token)
+    print("Also saved to refresh_token.txt")
 
 if __name__ == "__main__":
     run()
