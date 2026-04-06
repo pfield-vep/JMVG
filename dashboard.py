@@ -994,7 +994,8 @@ with tab2:
                  'Avg Daily Bread': '{:.0f}', 'Online %': '{:.1f}%', '3rd Party %': '{:.1f}%',
                  'Loyalty %': '{:.1f}%', 'FYTD Sales': '${:,.0f}',
                  'FYTD AUV': '${:,.0f}', 'FYTD SSS %': '{:+.1f}%'}, na_rep='—')\
-        .applymap(color_pct, subset=['SSS %', 'Transactions %', 'FYTD SSS %'])
+        .map(
+color_pct, subset=['SSS %', 'Transactions %', 'FYTD SSS %'])
     st.dataframe(styled, use_container_width=True, height=520)
 
     if selected_store:
