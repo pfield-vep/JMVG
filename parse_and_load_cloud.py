@@ -65,12 +65,14 @@ def is_total_row(row):
 def get_db(): return sqlite3.connect(DB_PATH)
 
 def upsert_store(conn, store_id, city, state, co_op, franchisee):
-    conn.execute("INSERT OR IGNORE INTO stores (store_id, city, state, co_op, franchisee) VALUES (%s,%s,%s,%s,%s)",
+    cur = conn.cursor()
+    cur.execute("INSERT INTO stores (store_id, city, state, co_op, franchisee) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (store_id) DO NOTHING",
                  (store_id, city, state, co_op, franchisee))
 
 def parse_sales_detail(pdf_path, week_ending, conn):
     store_rows = 0; total_rows = 0
     current_state = None; current_coop = None
+    cur = conn.cursor()
 
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -97,7 +99,7 @@ def parse_sales_detail(pdf_path, week_ending, conn):
                         fytd_txn=derive_txn_pct(fytd_sss,fytd_tkt)
                         bread,wraps=clean_bread(row[8])
                         fytd_bread,fytd_wraps=clean_bread(row[17]) if len(row)>17 else (None,None)
-                        conn.execute("""INSERT INTO weekly_sales (
+                        cur.execute("""INSERT INTO weekly_sales (
                             week_ending,store_id,net_sales,sss_pct,same_store_ticket_pct,same_store_txn_pct,
                             avg_daily_bread,avg_daily_wraps,online_sales_pct,third_party_sales_pct,
                             non_loyalty_disc_pct,loyalty_disc_pct,loyalty_sales_pct,
@@ -123,7 +125,7 @@ def parse_sales_detail(pdf_path, week_ending, conn):
                             fytd_txn=derive_txn_pct(fytd_sss,fytd_tkt)
                             bread,_=clean_bread(row[8])
                             fytd_bread,_=clean_bread(row[17]) if len(row)>17 else (None,None)
-                            conn.execute("""INSERT INTO weekly_market_totals (
+                            cur.execute("""INSERT INTO weekly_market_totals (
                                 week_ending,market,store_count,net_sales,sss_pct,
                                 same_store_ticket_pct,same_store_txn_pct,avg_daily_bread,
                                 online_sales_pct,third_party_sales_pct,non_loyalty_disc_pct,
@@ -146,13 +148,14 @@ def parse_sales_detail(pdf_path, week_ending, conn):
 def parse_bread_detail(pdf_path, week_ending, conn):
     rows_loaded = 0
     total_rows = 0
+    cur = conn.cursor()
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             for table in page.extract_tables():
                 for row in table:
                     if is_store_row(row) and len(row) >= 16:
                         store_id = row[2].strip()
-                        conn.execute("""INSERT INTO weekly_bread (
+                        cur.execute("""INSERT INTO weekly_bread (
                             week_ending,store_id,bread_count,avg_daily_bread,avg_sales_per_loaf,
                             wrap_bowl_bread,wrap_bowl_avg_daily,prior_bread_count,prior_avg_daily_bread,
                             prior_avg_sales_per_loaf,prior_wrap_bowl_bread,prior_wrap_bowl_avg_daily,
@@ -172,7 +175,7 @@ def parse_bread_detail(pdf_path, week_ending, conn):
                     else:
                         is_tot, market, store_count = is_total_row(row)
                         if is_tot and market and len(row) >= 16:
-                            conn.execute("""INSERT INTO weekly_bread_totals (
+                            cur.execute("""INSERT INTO weekly_bread_totals (
                                 week_ending,market,store_count,
                                 bread_count,avg_daily_bread,avg_sales_per_loaf,
                                 same_store_bread_pct,fytd_bread_count,fytd_avg_daily_bread,
@@ -191,13 +194,14 @@ def parse_bread_detail(pdf_path, week_ending, conn):
 
 def parse_loyalty_detail(pdf_path, week_ending, conn):
     rows_loaded = 0
+    cur = conn.cursor()
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             for table in page.extract_tables():
                 for row in table:
                     if not is_store_row(row) or len(row) < 13: continue
                     store_id = row[2].strip()
-                    conn.execute("""INSERT INTO weekly_loyalty (
+                    cur.execute("""INSERT INTO weekly_loyalty (
                         week_ending,store_id,member_activations_current,member_activations_alltime,
                         member_transactions_current,member_transactions_alltime,
                         points_earned_current,points_earned_alltime,
