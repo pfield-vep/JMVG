@@ -61,9 +61,9 @@ st.markdown("""
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
 
-    /* Eliminate default top padding */
+    /* Minimal top padding — enough for header to be fully visible */
     [data-testid="stAppViewContainer"] > section > div:first-child {
-        padding-top: 0 !important;
+        padding-top: 48px !important;
     }
     .block-container { padding-top: 0 !important; padding-bottom: 8px !important; }
 
