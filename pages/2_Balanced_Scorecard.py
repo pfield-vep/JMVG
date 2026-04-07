@@ -1,6 +1,6 @@
 """
 pages/2_Balanced_Scorecard.py
-VantEdge Partners — Operational Balanced Scorecard
+JM Valley Group — Operational Balanced Scorecard
 Placeholder data — connect live data source to activate.
 """
 
@@ -9,20 +9,18 @@ import pandas as pd
 from datetime import datetime
 
 st.set_page_config(
-    page_title="Balanced Scorecard | VantEdge",
+    page_title="Balanced Scorecard | JM Valley Group",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] {
-        background: #0b1929;
+        background: #FFFFFF;
     }
-    [data-testid="stSidebar"]       { display: none; }
-    [data-testid="collapsedControl"]{ display: none; }
     footer { visibility: hidden; }
     #MainMenu { visibility: hidden; }
 
@@ -34,67 +32,72 @@ st.markdown("""
         padding: 18px 0 6px 0;
         margin-bottom: 4px;
     }
-    .bsc-logo {
-        background: linear-gradient(135deg,#1a4a8a,#2563b0);
-        color:#fff;
-        font-weight:900;
-        font-size:1.3em;
-        letter-spacing:3px;
-        padding:7px 18px;
-        border-radius:6px;
-    }
     .bsc-title {
-        font-size:1.55em;
-        font-weight:800;
-        color:#FFFFFF;
-        letter-spacing:1px;
+        font-size: 1.55em;
+        font-weight: 800;
+        color: #111111;
+        letter-spacing: 1px;
+        font-family: Arial, sans-serif;
     }
     .bsc-period {
-        font-size:0.85em;
-        color:#4a6fa5;
-        letter-spacing:1px;
+        font-size: 0.85em;
+        color: #888888;
+        letter-spacing: 1px;
+        font-family: Arial, sans-serif;
     }
 
     /* ── Sample data banner ── */
     .sample-banner {
-        background: rgba(245,158,11,0.12);
-        border: 1px solid rgba(245,158,11,0.3);
+        background: rgba(245,158,11,0.10);
+        border: 1px solid rgba(245,158,11,0.35);
         border-radius: 8px;
         padding: 8px 18px;
-        color: #f59e0b;
+        color: #b45309;
         font-size: 0.82em;
         font-weight: 600;
         letter-spacing: 0.5px;
         text-align: center;
         margin-bottom: 18px;
+        font-family: Arial, sans-serif;
     }
 
-    /* ── Overall score ── */
-    .overall-box {
-        background: linear-gradient(135deg,#112240,#1a3355);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 18px 28px;
-        text-align: center;
-        margin-bottom: 24px;
+    /* ── Overall score bubble ── */
+    .overall-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 28px;
+    }
+    .overall-bubble {
+        width: 130px;
+        height: 130px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 30px rgba(0,0,0,0.18);
     }
     .overall-score {
-        font-size: 2.8em;
+        font-size: 2.6em;
         font-weight: 900;
-        color: #27AE60;
+        color: #FFFFFF;
+        line-height: 1;
     }
     .overall-label {
-        font-size: 0.85em;
-        color: #5a80a5;
+        font-size: 0.72em;
+        color: rgba(255,255,255,0.85);
         letter-spacing: 2px;
         text-transform: uppercase;
-        margin-top: 2px;
+        margin-top: 4px;
+        font-family: Arial, sans-serif;
+        font-weight: 600;
     }
 
     /* ── Category column ── */
     .cat-header {
-        border-radius: 10px 10px 0 0;
-        padding: 14px 16px 12px 16px;
+        border-radius: 12px 12px 0 0;
+        padding: 16px 16px 14px 16px;
         text-align: center;
         margin-bottom: 2px;
     }
@@ -106,16 +109,17 @@ st.markdown("""
     .cat-name {
         font-size: 0.95em;
         font-weight: 700;
-        color: rgba(255,255,255,0.85);
+        color: rgba(255,255,255,0.90);
         letter-spacing: 1px;
         text-transform: uppercase;
         margin-top: 2px;
+        font-family: Arial, sans-serif;
     }
 
     /* ── Metric card ── */
     .metric-card {
         background: #112240;
-        border: 1px solid rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
         border-radius: 10px;
         padding: 14px 16px 12px 16px;
         margin-bottom: 10px;
@@ -124,7 +128,7 @@ st.markdown("""
         gap: 14px;
     }
     .metric-card:hover {
-        border-color: rgba(255,255,255,0.15);
+        border-color: rgba(255,255,255,0.20);
         background: #152a4e;
     }
     .status-circle {
@@ -137,6 +141,7 @@ st.markdown("""
         justify-content: center;
         font-size: 1.1em;
         font-weight: 900;
+        color: #FFFFFF;
     }
     .circle-green  { background: #27AE60; box-shadow: 0 0 10px rgba(39,174,96,0.4); }
     .circle-yellow { background: #F39C12; box-shadow: 0 0 10px rgba(243,156,18,0.4); }
@@ -147,10 +152,11 @@ st.markdown("""
     .metric-name {
         font-size: 0.92em;
         font-weight: 700;
-        color: #d0e0f0;
+        color: #FFFFFF;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        font-family: Arial, sans-serif;
     }
     .metric-stats {
         display: flex;
@@ -163,33 +169,63 @@ st.markdown("""
         font-weight: 700;
         color: #FFFFFF;
         line-height: 1;
+        font-family: Arial, sans-serif;
     }
     .stat-lbl {
         font-size: 0.65em;
-        color: #4a6a8a;
+        color: rgba(255,255,255,0.55);
         letter-spacing: 0.5px;
         text-transform: uppercase;
         margin-top: 2px;
+        font-family: Arial, sans-serif;
     }
     .metric-target {
         font-size: 0.72em;
-        color: #3a5a7a;
+        color: rgba(255,255,255,0.45);
         margin-top: 3px;
+        font-family: Arial, sans-serif;
     }
 
-    /* ── Back button ── */
+    /* ── Back / Home button ── */
     div[data-testid="stButton"] > button {
-        background: rgba(37,99,176,0.2) !important;
-        color: #5b9bd5 !important;
-        border: 1px solid rgba(37,99,176,0.3) !important;
+        background: #C41230 !important;
+        color: #FFFFFF !important;
+        border: none !important;
         border-radius: 8px !important;
-        font-size: 0.85em !important;
-        font-weight: 600 !important;
-        padding: 6px 16px !important;
+        font-size: 0.88em !important;
+        font-weight: 700 !important;
+        padding: 6px 18px !important;
     }
     div[data-testid="stButton"] > button:hover {
-        background: rgba(37,99,176,0.35) !important;
+        background: #a00e26 !important;
         color: #ffffff !important;
+    }
+
+    /* ── Legend ── */
+    .legend-bar {
+        display: flex;
+        gap: 28px;
+        justify-content: center;
+        align-items: center;
+        padding: 14px;
+        background: #f5f5f5;
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+        font-family: Arial, sans-serif;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82em;
+        color: #444444;
+        font-weight: 600;
+    }
+    .legend-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        display: inline-block;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -261,7 +297,7 @@ METRICS = {
         "items": [
             {
                 "name":             "Speed (OTD)",
-                "actual":           208,         # seconds
+                "actual":           208,
                 "actual_fmt":       "3:28",
                 "target_fmt":       "≤ 3:30",
                 "green_thresh":     210,
@@ -324,8 +360,8 @@ METRICS = {
         ],
     },
     "Profit": {
-        "color": "#b45309",
-        "bg":    "linear-gradient(135deg,#4a2200,#5a2c00)",
+        "color": "#C41230",
+        "bg":    "linear-gradient(135deg,#8b0000,#C41230)",
         "emoji": "📈",
         "items": [
             {
@@ -374,7 +410,15 @@ for cat_data in METRICS.values():
         all_statuses.append(score_from_status(s))
 
 overall_pct = int(round(sum(all_statuses) / len(all_statuses) * 100)) if all_statuses else 0
-overall_color = "#27AE60" if overall_pct >= 80 else ("#F39C12" if overall_pct >= 60 else "#E74C3C")
+if overall_pct >= 80:
+    overall_color = "#27AE60"
+    overall_shadow = "rgba(39,174,96,0.45)"
+elif overall_pct >= 60:
+    overall_color = "#F39C12"
+    overall_shadow = "rgba(243,156,18,0.45)"
+else:
+    overall_color = "#E74C3C"
+    overall_shadow = "rgba(231,76,60,0.45)"
 
 # ── Top bar ──────────────────────────────────────────────────────────────────
 back_col, title_col, period_col = st.columns([1, 6, 2])
@@ -384,15 +428,20 @@ with back_col:
 with title_col:
     st.markdown(f"""
     <div style="padding-top:8px;">
-        <span class="bsc-logo">LVE</span>
-        <span style="font-size:1.4em;font-weight:800;color:#fff;margin-left:14px;
-                     vertical-align:middle;">Balanced Scorecard</span>
+        <span style="font-size:1.5em;font-weight:800;color:#111111;
+                     font-family:Arial,sans-serif;vertical-align:middle;">
+            🎯 &nbsp;Balanced Scorecard
+        </span>
+        <span style="font-size:0.9em;color:#C41230;font-weight:700;
+                     margin-left:12px;font-family:Arial,sans-serif;">
+            JM Valley Group
+        </span>
     </div>
     """, unsafe_allow_html=True)
 with period_col:
     st.markdown(f"""
-    <div style="text-align:right;padding-top:14px;color:#4a6fa5;font-size:0.85em;
-                letter-spacing:1px;">PERIOD: {PERIOD}</div>
+    <div style="text-align:right;padding-top:14px;color:#888888;font-size:0.85em;
+                letter-spacing:1px;font-family:Arial,sans-serif;">PERIOD: {PERIOD}</div>
     """, unsafe_allow_html=True)
 
 # Sample-data banner
@@ -402,13 +451,17 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Overall score bar ────────────────────────────────────────────────────────
+# ── Overall score bubble ─────────────────────────────────────────────────────
 oc1, oc2, oc3, oc4, oc5 = st.columns([2, 1, 1, 1, 2])
 with oc3:
     st.markdown(f"""
-    <div class="overall-box">
-        <div class="overall-score" style="color:{overall_color};">{overall_pct}%</div>
-        <div class="overall-label">Overall BSC</div>
+    <div class="overall-wrap">
+        <div class="overall-bubble"
+             style="background:{overall_color};
+                    box-shadow:0 6px 30px {overall_shadow};">
+            <div class="overall-score">{overall_pct}%</div>
+            <div class="overall-label">Overall</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -449,13 +502,13 @@ for col, (cat_name, cat_data) in zip(cols, METRICS.items()):
                 item["yellow_thresh"], item["higher"]
             )
             circle = status_circle_html(status)
-            trend_color = "#27AE60" if item["vs_prior"].startswith("+") else (
-                "#E74C3C" if item["vs_prior"].startswith("-") else "#7a99bb"
+            trend_color = "#5ef095" if item["vs_prior"].startswith("+") else (
+                "#ff8080" if item["vs_prior"].startswith("-") else "#cccccc"
             )
             # For metrics where lower is better, reverse trend colors
             if not item["higher"]:
-                trend_color = "#E74C3C" if item["vs_prior"].startswith("+") else (
-                    "#27AE60" if item["vs_prior"].startswith("-") else "#7a99bb"
+                trend_color = "#ff8080" if item["vs_prior"].startswith("+") else (
+                    "#5ef095" if item["vs_prior"].startswith("-") else "#cccccc"
                 )
 
             st.markdown(f"""
@@ -485,20 +538,18 @@ for col, (cat_name, cat_data) in zip(cols, METRICS.items()):
 # ── Legend ───────────────────────────────────────────────────────────────────
 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 st.markdown("""
-<div style="display:flex;gap:28px;justify-content:center;align-items:center;
-            padding:14px;background:rgba(255,255,255,0.03);border-radius:10px;
-            border:1px solid rgba(255,255,255,0.05);">
-    <span style="display:flex;align-items:center;gap:8px;font-size:0.8em;color:#8a9bb0;">
-        <span style="width:14px;height:14px;background:#27AE60;border-radius:50%;display:inline-block;"></span>
+<div class="legend-bar">
+    <div class="legend-item">
+        <span class="legend-dot" style="background:#27AE60;"></span>
         At or above target
-    </span>
-    <span style="display:flex;align-items:center;gap:8px;font-size:0.8em;color:#8a9bb0;">
-        <span style="width:14px;height:14px;background:#F39C12;border-radius:50%;display:inline-block;"></span>
-        Near target (within threshold)
-    </span>
-    <span style="display:flex;align-items:center;gap:8px;font-size:0.8em;color:#8a9bb0;">
-        <span style="width:14px;height:14px;background:#E74C3C;border-radius:50%;display:inline-block;"></span>
+    </div>
+    <div class="legend-item">
+        <span class="legend-dot" style="background:#F39C12;"></span>
+        Near target
+    </div>
+    <div class="legend-item">
+        <span class="legend-dot" style="background:#E74C3C;"></span>
         Below target
-    </span>
+    </div>
 </div>
 """, unsafe_allow_html=True)

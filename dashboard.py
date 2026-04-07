@@ -994,7 +994,8 @@ with tab2:
                  'Avg Daily Bread': '{:.0f}', 'Online %': '{:.1f}%', '3rd Party %': '{:.1f}%',
                  'Loyalty %': '{:.1f}%', 'FYTD Sales': '${:,.0f}',
                  'FYTD AUV': '${:,.0f}', 'FYTD SSS %': '{:+.1f}%'}, na_rep='—')\
-        .map(color_pct, subset=['SSS %', 'Transactions %', 'FYTD SSS %'])
+        .map(
+color_pct, subset=['SSS %', 'Transactions %', 'FYTD SSS %'])
     st.dataframe(styled, use_container_width=True, height=520)
 
     if selected_store:
@@ -1691,4 +1692,25 @@ with tab6:
                 hovertemplate="Week: %{x}<br>SS Sales (4wk): %{y:+.1f}%<extra></extra>"))
             fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['txn_4wk'],
                 name='SS Transactions', line=dict(color=BLUE, width=2.5), mode='lines+markers', marker_size=6,
-                hovertemplate="Week: %{x}<br>SS Transactions (4wk): %{y:+
+                hovertemplate="Week: %{x}<br>SS Transactions (4wk): %{y:+.1f}%<extra></extra>"))
+            fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['ticket_4wk'],
+                name='SS Avg Ticket', line=dict(color='#F5A623', width=2.5), mode='lines+markers', marker_size=6,
+                hovertemplate="Week: %{x}<br>SS Avg Ticket (4wk): %{y:+.1f}%<extra></extra>"))
+            fig_roll.add_hline(y=0, line_color=TEXT, line_width=2.5, line_dash='solid')
+            fig_roll.update_layout(**PLOTLY_THEME, height=440,
+                                   margin=dict(l=20,r=20,t=55,b=60),
+                                   legend=DEFAULT_LEGEND,
+                                   title=dict(text="4-Week Rolling Average — SS Sales, Transactions & Avg Ticket",
+                                              font=dict(size=16, color=TEXT, family='Arial')))
+            fig_roll.update_xaxes(tickangle=-40, tickfont=dict(size=10, family='Arial'))
+            fig_roll.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
+            st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+
+            avg_comp = int(plot_df['comp_stores'].mean())
+            st.markdown(f"""
+                <div style='font-family:Arial,sans-serif;font-size:13px;color:{MUTED};margin-top:8px;padding:8px 0;'>
+                    Comp stores: avg <b>{avg_comp}</b> per week &nbsp;·&nbsp;
+                    420-day eligibility rule &nbsp;·&nbsp;
+                    History: {trend_df['week_ending'].min()} to {trend_df['week_ending'].max()}
+                </div>
+            """, unsafe_allow_html=True)

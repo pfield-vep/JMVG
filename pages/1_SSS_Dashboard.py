@@ -12,7 +12,15 @@ os.chdir(root)
 with open(os.path.join(root, "dashboard.py"), encoding="utf-8") as _f:
     code = _f.read()
 
-# Remove st.set_page_config(...) — app.py already set the page config
+# Remove st.set_page_config(...) — handled below with sidebar shown
 code = re.sub(r'st\.set_page_config\([^)]*\)', '', code, flags=re.DOTALL)
+
+import streamlit as st
+st.set_page_config(
+    page_title="Same Store Sales | JM Valley Group",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 exec(code, {"__name__": "__main__", "__file__": os.path.join(root, "dashboard.py")})
