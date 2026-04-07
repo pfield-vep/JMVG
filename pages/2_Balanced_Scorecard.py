@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Shared constants (mirrors dashboard.py) ──────────────────────────────────
+# ── Shared constants ──────────────────────────────────────────────────────────
 SAN_DIEGO_STORE_IDS = ['20071', '20091', '20171', '20177', '20291', '20292', '20300']
 
 STORE_NAMES = {
@@ -28,6 +28,8 @@ STORE_NAMES = {
     '20071': 'SD4',            '20300': 'SD5',             '20292': 'SD6',
     '20291': 'SD7',            '20013': 'Buellton',
 }
+
+_LOGO = "data:image/avif;base64,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"
 
 def get_db_connection():
     try:
@@ -49,164 +51,62 @@ def load_stores():
         return None
     try:
         df = pd.read_sql("SELECT store_id, city, co_op FROM stores", conn)
-        df['co_op'] = df['co_op'].str.replace('\n', ' ').str.strip()
+        df["co_op"] = df["co_op"].str.replace("\n", " ").str.strip()
         return df
     except Exception:
         return None
 
-# ── CSS ─────────────────────────────────────────────────────────────────────
+# ── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background: #FFFFFF; }
     footer { visibility: hidden; }
     #MainMenu { visibility: hidden; }
 
-    /* ── Filter bar ── */
-    .filter-bar {
-        background: #f0f4f8;
-        border-bottom: 2px solid #d0d8e4;
-        padding: 10px 0 10px 0;
-        margin-bottom: 18px;
-    }
-
-    /* ── Overall score bubble ── */
-    .overall-wrap {
+    /* ── Top header bar ── */
+    .bsc-topbar {
+        background: #dce8f5;
+        border-bottom: 1px solid #b8d0e8;
+        padding: 10px 20px;
         display: flex;
         align-items: center;
-        justify-content: center;
-        gap: 16px;
-        padding: 12px 0 18px 0;
+        gap: 20px;
+        margin: -1rem -1rem 0 -1rem;
     }
-    .overall-bubble {
-        width: 64px;
-        height: 64px;
-        border-radius: 50%;
+    .bsc-brand {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.6em;
-        font-weight: 900;
-        color: #FFFFFF;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
         flex-shrink: 0;
-        box-shadow: 0 4px 18px rgba(0,0,0,0.18);
     }
-    .overall-text {
-        font-size: 2.0em;
-        font-weight: 800;
-        color: #111;
-        font-family: Arial, sans-serif;
-        letter-spacing: 1px;
+    .bsc-brand img {
+        height: 46px;
+        width: auto;
     }
-    .overall-arrow {
-        font-size: 1.5em;
+    .bsc-brand-label {
+        font-size: 0.72em;
+        font-weight: 700;
         color: #1a3a6e;
-    }
-
-    /* ── Category header card ── */
-    .cat-header {
-        background: #0d2042;
-        border-radius: 10px 10px 0 0;
-        padding: 14px 16px 12px 16px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 6px;
-    }
-    .cat-left {
-        display: flex;
-        align-items: baseline;
-        gap: 10px;
-    }
-    .cat-pct {
-        font-size: 1.55em;
-        font-weight: 900;
-        color: #FFFFFF;
-        font-family: Arial, sans-serif;
-    }
-    .cat-name {
-        font-size: 1.05em;
-        font-weight: 700;
-        color: #FFFFFF;
-        font-family: Arial, sans-serif;
-        letter-spacing: 0.5px;
-    }
-    .cat-arrow {
-        color: rgba(255,255,255,0.6);
-        font-size: 1.1em;
-    }
-
-    /* ── Metric card ── */
-    .metric-card {
-        background: #1e3d6e;
-        border-radius: 8px;
-        padding: 10px 12px 10px 12px;
-        margin-bottom: 7px;
-    }
-    .metric-top {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 8px;
-    }
-    .harvey-ball {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.0em;
-        font-weight: 900;
-        color: #FFFFFF;
-    }
-    .hb-green  { background: #27AE60; box-shadow: 0 0 8px rgba(39,174,96,0.5); }
-    .hb-yellow { background: #F39C12; box-shadow: 0 0 8px rgba(243,156,18,0.5); }
-    .hb-red    { background: #E74C3C; box-shadow: 0 0 8px rgba(231,76,60,0.5); }
-    .hb-grey   { background: #4a5568; }
-
-    .metric-name-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-grow: 1;
-    }
-    .metric-name {
-        font-size: 0.88em;
-        font-weight: 700;
-        color: #FFFFFF;
-        font-family: Arial, sans-serif;
-    }
-    .metric-arrow {
-        color: rgba(255,255,255,0.5);
-        font-size: 0.9em;
-    }
-
-    /* ── Stats row ── */
-    .stats-row {
-        display: flex;
-        gap: 6px;
-        border-top: 1px solid rgba(255,255,255,0.12);
-        padding-top: 7px;
-    }
-    .stat-cell {
-        flex: 1;
-        text-align: center;
-    }
-    .stat-val {
-        font-size: 0.92em;
-        font-weight: 700;
-        color: #FFFFFF;
-        font-family: Arial, sans-serif;
-        line-height: 1;
-    }
-    .stat-lbl {
-        font-size: 0.60em;
-        color: rgba(255,255,255,0.50);
+        letter-spacing: 1.5px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-top: 2px;
         font-family: Arial, sans-serif;
+        margin-top: 1px;
+    }
+    .bsc-home-btn {
+        background: #1a3a6e;
+        color: #ffffff;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+        padding: 5px 14px;
+        border-radius: 6px;
+        white-space: nowrap;
+        margin-left: auto;
+    }
+    .bsc-home-btn:hover {
+        background: #C41230;
     }
 
     /* ── Sample data banner ── */
@@ -219,46 +119,185 @@ st.markdown("""
         font-size: 0.80em;
         font-weight: 600;
         text-align: center;
-        margin-bottom: 14px;
+        margin-bottom: 12px;
         font-family: Arial, sans-serif;
     }
 
-    /* ── Home/back button ── */
-    div[data-testid="stButton"] > button {
-        background: #C41230 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 8px !important;
-        font-size: 0.88em !important;
-        font-weight: 700 !important;
-        padding: 6px 18px !important;
+    /* ── Overall score box ── */
+    .overall-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #f0f4f8;
+        border: 1.5px solid #c8d8ea;
+        border-radius: 12px;
+        padding: 12px 28px;
+        margin-bottom: 16px;
     }
-    div[data-testid="stButton"] > button:hover {
-        background: #a00e26 !important;
+    .overall-bubble {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.78em;
+        font-weight: 900;
+        color: #FFFFFF;
+        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-family: Arial, sans-serif;
+    }
+    .overall-pct {
+        font-size: 2.2em;
+        font-weight: 900;
+        color: #111111;
+        font-family: Arial, sans-serif;
+        line-height: 1;
+    }
+    .overall-label {
+        font-size: 1.0em;
+        font-weight: 700;
+        color: #444444;
+        font-family: Arial, sans-serif;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+
+    /* ── Category header card ── */
+    .cat-header {
+        border-radius: 12px;
+        padding: 12px 16px 10px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .cat-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .cat-bubble {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.0em;
+        font-weight: 900;
+        color: #FFFFFF;
+        flex-shrink: 0;
+        box-shadow: 0 0 8px rgba(0,0,0,0.25);
+    }
+    .cat-name {
+        font-size: 1.0em;
+        font-weight: 700;
+        color: #FFFFFF;
+        font-family: Arial, sans-serif;
+        letter-spacing: 0.5px;
+    }
+    .cat-pct {
+        font-size: 1.4em;
+        font-weight: 900;
+        color: #FFFFFF;
+        font-family: Arial, sans-serif;
+    }
+
+    /* ── Metric card ── */
+    .metric-card {
+        background: #1e3d6e;
+        border-radius: 10px;
+        padding: 10px 12px 10px 12px;
+        margin-bottom: 7px;
+    }
+    .metric-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+    .harvey-ball {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95em;
+        font-weight: 900;
+        color: #FFFFFF;
+    }
+    .hb-green  { background: #27AE60; box-shadow: 0 0 7px rgba(39,174,96,0.5); }
+    .hb-yellow { background: #F39C12; box-shadow: 0 0 7px rgba(243,156,18,0.5); }
+    .hb-red    { background: #E74C3C; box-shadow: 0 0 7px rgba(231,76,60,0.5); }
+    .hb-grey   { background: #4a5568; }
+
+    .metric-name-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-grow: 1;
+    }
+    .metric-name {
+        font-size: 0.86em;
+        font-weight: 700;
+        color: #FFFFFF;
+        font-family: Arial, sans-serif;
+    }
+    .metric-arrow { color: rgba(255,255,255,0.45); font-size: 0.9em; }
+
+    /* ── Stats row ── */
+    .stats-row {
+        display: flex;
+        gap: 4px;
+        border-top: 1px solid rgba(255,255,255,0.12);
+        padding-top: 7px;
+    }
+    .stat-cell { flex: 1; text-align: center; }
+    .stat-val {
+        font-size: 0.88em;
+        font-weight: 700;
+        color: #FFFFFF;
+        font-family: Arial, sans-serif;
+        line-height: 1;
+    }
+    .stat-lbl {
+        font-size: 0.58em;
+        color: rgba(255,255,255,0.50);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-top: 2px;
+        font-family: Arial, sans-serif;
     }
 
     /* ── Legend ── */
     .legend-bar {
         display: flex;
-        gap: 28px;
+        gap: 24px;
         justify-content: center;
         align-items: center;
-        padding: 12px;
+        padding: 10px;
         background: #f5f5f5;
-        border-radius: 10px;
+        border-radius: 8px;
         border: 1px solid #e0e0e0;
         font-family: Arial, sans-serif;
+        margin-top: 12px;
     }
     .legend-item {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 0.82em;
-        color: #444444;
+        gap: 7px;
+        font-size: 0.80em;
+        color: #444;
         font-weight: 600;
     }
     .legend-dot {
-        width: 14px; height: 14px;
+        width: 12px; height: 12px;
         border-radius: 50%;
         display: inline-block;
     }
@@ -276,285 +315,217 @@ def get_status(actual, green_thresh, yellow_thresh, higher=True):
 def score_from_status(s):
     return {"green": 1.0, "yellow": 0.5, "red": 0.0, "grey": 0.0}[s]
 
-def harvey_html(status):
+def harvey_html(status, size=30):
     symbol = {"green": "✓", "yellow": "!", "red": "✗", "grey": "–"}[status]
-    return f'<div class="harvey-ball hb-{status}">{symbol}</div>'
+    return f'<div class="harvey-ball hb-{status}" style="width:{size}px;height:{size}px;">{symbol}</div>'
 
 # ── Load store / market data ──────────────────────────────────────────────────
 stores_df = load_stores()
+markets = (["All Markets"] + sorted(stores_df["co_op"].dropna().unique().tolist())
+           if stores_df is not None
+           else ["All Markets", "Los Angeles", "Santa Barbara", "San Diego"])
 
-if stores_df is not None:
-    markets = ["All Markets"] + sorted(stores_df['co_op'].dropna().unique().tolist())
-else:
-    markets = ["All Markets", "Los Angeles", "Santa Barbara", "San Diego"]
-
-# ── Top bar ──────────────────────────────────────────────────────────────────
-_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNjAgMTEwIiB3aWR0aD0iMjYwIiBoZWlnaHQ9IjExMCI+CiAgPCEtLSBXaGl0ZSBiYWNrZ3JvdW5kIC0tPgogIDxyZWN0IHdpZHRoPSIyNjAiIGhlaWdodD0iMTEwIiBmaWxsPSIjRkZGRkZGIiByeD0iNCIvPgoKICA8IS0tIFNJTkNFIDIwMTIgLS0+CiAgPHRleHQKICAgIHg9IjQyIiB5PSIyMiIKICAgIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIgogICAgZm9udC1zaXplPSI5IgogICAgZm9udC13ZWlnaHQ9IjYwMCIKICAgIGZpbGw9IiNDNDEyMzAiCiAgICBsZXR0ZXItc3BhY2luZz0iMi41IgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIKICA+U0lOQ0UgMjAxMjwvdGV4dD4KCiAgPCEtLSBKTSBWYWxsZXkg4oCUIGxhcmdlIHNjcmlwdC1zdHlsZSBib2xkIGl0YWxpYyAtLT4KICA8dGV4dAogICAgeD0iMTI1IiB5PSI3NiIKICAgIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCAnVGltZXMgTmV3IFJvbWFuJywgc2VyaWYiCiAgICBmb250LXNpemU9IjU0IgogICAgZm9udC13ZWlnaHQ9IjcwMCIKICAgIGZvbnQtc3R5bGU9Iml0YWxpYyIKICAgIGZpbGw9IiMxYTJmNWUiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogICAgbGV0dGVyLXNwYWNpbmc9Ii0xIgogID5KTSBWYWxsZXk8L3RleHQ+CgogIDwhLS0gR1JPVVAgLS0+CiAgPHRleHQKICAgIHg9IjIxOCIgeT0iOTYiCiAgICBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIKICAgIGZvbnQtc2l6ZT0iMTMiCiAgICBmb250LXdlaWdodD0iNzAwIgogICAgZmlsbD0iI0M0MTIzMCIKICAgIGxldHRlci1zcGFjaW5nPSIxLjUiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogID5HUk9VUDwvdGV4dD4KPC9zdmc+Cg=="
-
-home_col, logo_col, title_col = st.columns([1, 2, 7])
-with home_col:
-    if st.button("⌂  Home"):
-        st.switch_page("app.py")
-with logo_col:
-    st.markdown(f'''<img src="{_LOGO}" style="height:54px;margin-top:2px;display:block;" alt="JM Valley Group"/>''',
-                unsafe_allow_html=True)
-with title_col:
-    st.markdown("""
-    <div style="padding-top:14px;">
-        <span style="font-size:1.35em;font-weight:800;color:#111111;
-                     font-family:Arial,sans-serif;">Balanced Scorecard</span>
+# ── Consolidated top bar (HTML + Streamlit filters side by side) ─────────────
+st.markdown(f'''
+<div class="bsc-topbar">
+    <div class="bsc-brand">
+        <img src="{_LOGO}" alt="JM Valley Group"/>
+        <div class="bsc-brand-label">Balanced Scorecard</div>
     </div>
-    """, unsafe_allow_html=True)
+</div>
+''', unsafe_allow_html=True)
 
-# ── Filter bar ───────────────────────────────────────────────────────────────
-st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-f1, f2, f3, f4 = st.columns([1.2, 1.5, 2.0, 4])
+# Filter row directly below the bar (tight spacing)
+st.markdown("<div style=\'height:10px\'></div>", unsafe_allow_html=True)
+f1, f2, f3, _ = st.columns([1.2, 1.6, 2.2, 4])
 
 with f1:
-    st.markdown("<div style='font-size:0.72em;font-weight:700;color:#666;text-transform:uppercase;"
-                "letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;'>Period</div>",
+    st.markdown("<div style=\'font-size:0.70em;font-weight:700;color:#555;text-transform:uppercase;"
+                "letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;\'>Period</div>",
                 unsafe_allow_html=True)
-    selected_period = st.selectbox(
-        "Period", ["2026-02", "2026-01", "2025-12", "2025-11"],
-        label_visibility="collapsed"
-    )
+    selected_period = st.selectbox("Period",
+        ["2026-02","2026-01","2025-12","2025-11"], label_visibility="collapsed")
 
 with f2:
-    st.markdown("<div style='font-size:0.72em;font-weight:700;color:#666;text-transform:uppercase;"
-                "letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;'>Market</div>",
+    st.markdown("<div style=\'font-size:0.70em;font-weight:700;color:#555;text-transform:uppercase;"
+                "letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;\'>Market</div>",
                 unsafe_allow_html=True)
-    selected_market = st.selectbox(
-        "Market", markets, label_visibility="collapsed"
-    )
+    selected_market = st.selectbox("Market", markets, label_visibility="collapsed")
 
 with f3:
-    # Build store list filtered by market
     if stores_df is not None:
         filtered = stores_df.copy()
         if selected_market != "All Markets":
-            filtered = filtered[filtered['co_op'] == selected_market]
-        store_options = {"All Stores": None}
-        for _, r in filtered.sort_values('store_id').iterrows():
-            label = f"{r['store_id']} — {STORE_NAMES.get(r['store_id'], r['city'])}"
-            store_options[label] = r['store_id']
+            filtered = filtered[filtered["co_op"] == selected_market]
+        store_opts = {"All Stores": None}
+        for _, r in filtered.sort_values("store_id").iterrows():
+            sid = r["store_id"]
+            label = f"{sid} — {STORE_NAMES.get(sid, r['city'])}"
+            store_opts[label] = sid
     else:
-        store_options = {"All Stores": None}
-
-    st.markdown("<div style='font-size:0.72em;font-weight:700;color:#666;text-transform:uppercase;"
-                "letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;'>Store</div>",
+        store_opts = {"All Stores": None}
+    st.markdown("<div style=\'font-size:0.70em;font-weight:700;color:#555;text-transform:uppercase;"
+                "letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;\'>Store</div>",
                 unsafe_allow_html=True)
-    selected_store_label = st.selectbox(
-        "Store", list(store_options.keys()), label_visibility="collapsed"
-    )
-    selected_store = store_options.get(selected_store_label)
+    selected_store_label = st.selectbox("Store", list(store_opts.keys()), label_visibility="collapsed")
+    selected_store = store_opts.get(selected_store_label)
 
-st.markdown("<div style='height:4px;border-bottom:1px solid #e0e0e0;margin-bottom:14px;'></div>",
+st.markdown("<div style=\'height:6px;border-bottom:1px solid #e0e0e0;margin-bottom:12px;\'></div>",
             unsafe_allow_html=True)
 
-# ── Sample data banner ───────────────────────────────────────────────────────
-st.markdown("""
+# ── Sample data banner ────────────────────────────────────────────────────────
+st.markdown('''
 <div class="sample-banner">
     ⚠️ &nbsp; SAMPLE DATA — Connect a live data source to display real metrics
 </div>
-""", unsafe_allow_html=True)
+''', unsafe_allow_html=True)
 
-# ── Scorecard data ───────────────────────────────────────────────────────────
+# ── Scorecard data ────────────────────────────────────────────────────────────
 METRICS = {
     "People": {
+        "bg": "#1a3a6e",
         "items": [
-            {
-                "name":          "Certified Managers",
-                "actual":        94.2, "green_thresh": 90, "yellow_thresh": 85, "higher": True,
-                "actual_fmt":    "94.2%", "target_fmt": "≥ 90%",
-                "pts_avail": 488, "pts_scored": 464, "average": "94.2%", "inlier_pct": "95%",
-            },
-            {
-                "name":          "Team & Shift Turnover",
-                "actual":        88.0, "green_thresh": 100, "yellow_thresh": 120, "higher": False,
-                "actual_fmt":    "88%", "target_fmt": "≤ 100%",
-                "pts_avail": 488, "pts_scored": 352, "average": "103%", "inlier_pct": "72%",
-            },
-            {
-                "name":          "Staffing vs. Benchmark",
-                "actual":        100.0, "green_thresh": 100, "yellow_thresh": 95, "higher": False,
-                "actual_fmt":    "100%", "target_fmt": "≤ 100%",
-                "pts_avail": 488, "pts_scored": 488, "average": "100%", "inlier_pct": "100%",
-            },
+            {"name":"Certified Managers",    "actual":94.2, "green_thresh":90,  "yellow_thresh":85,  "higher":True,
+              "pts_avail":488,"pts_scored":464,"average":"94.2%","inlier_pct":"95%"},
+            {"name":"Team & Shift Turnover", "actual":88.0, "green_thresh":100, "yellow_thresh":120, "higher":False,
+              "pts_avail":488,"pts_scored":352,"average":"103%","inlier_pct":"72%"},
+            {"name":"Staffing vs. Benchmark","actual":100.0,"green_thresh":100, "yellow_thresh":95,  "higher":False,
+              "pts_avail":488,"pts_scored":488,"average":"100%","inlier_pct":"100%"},
         ],
     },
     "Customer": {
+        "bg": "#0d5c3a",
         "items": [
-            {
-                "name":          "Speed (OTD)",
-                "actual":        208, "green_thresh": 210, "yellow_thresh": 240, "higher": False,
-                "actual_fmt":    "3:28", "target_fmt": "≤ 3:30",
-                "pts_avail": 488, "pts_scored": 352, "average": "3:25", "inlier_pct": "72%",
-            },
-            {
-                "name":          "Supreme Rating",
-                "actual":        4.1, "green_thresh": 4.0, "yellow_thresh": 3.8, "higher": True,
-                "actual_fmt":    "4.1", "target_fmt": "≥ 4.0",
-                "pts_avail": 488, "pts_scored": 440, "average": "4.1", "inlier_pct": "90%",
-            },
-            {
-                "name":          "Complaints",
-                "actual":        7, "green_thresh": 5, "yellow_thresh": 8, "higher": False,
-                "actual_fmt":    "7", "target_fmt": "≤ 5",
-                "pts_avail": 488, "pts_scored": 232, "average": "9.5", "inlier_pct": "48%",
-            },
-            {
-                "name":          "Core OPS, F/S",
-                "actual":        98.0, "green_thresh": 98, "yellow_thresh": 95, "higher": True,
-                "actual_fmt":    "98%", "target_fmt": "≥ 98%",
-                "pts_avail": 488, "pts_scored": 244, "average": "—", "inlier_pct": "98%",
-            },
+            {"name":"Speed (OTD)",     "actual":208, "green_thresh":210,"yellow_thresh":240,"higher":False,
+              "pts_avail":488,"pts_scored":352,"average":"3:25","inlier_pct":"72%"},
+            {"name":"Supreme Rating",  "actual":4.1, "green_thresh":4.0,"yellow_thresh":3.8,"higher":True,
+              "pts_avail":488,"pts_scored":440,"average":"4.1","inlier_pct":"90%"},
+            {"name":"Complaints",      "actual":7,   "green_thresh":5,  "yellow_thresh":8,  "higher":False,
+              "pts_avail":488,"pts_scored":232,"average":"9.5","inlier_pct":"48%"},
+            {"name":"Core OPS, F/S",   "actual":98.0,"green_thresh":98, "yellow_thresh":95, "higher":True,
+              "pts_avail":488,"pts_scored":478,"average":"98%","inlier_pct":"98%"},
         ],
     },
     "Sales": {
+        "bg": "#3b1f7c",
         "items": [
-            {
-                "name":          "Sales vs. Budget",
-                "actual":        102.3, "green_thresh": 100, "yellow_thresh": 97, "higher": True,
-                "actual_fmt":    "+2.3%", "target_fmt": "≥ 100%",
-                "pts_avail": 488, "pts_scored": 376, "average": "2.7%", "inlier_pct": "77%",
-            },
-            {
-                "name":          "Transactions vs. Budget",
-                "actual":        99.1, "green_thresh": 100, "yellow_thresh": 97, "higher": True,
-                "actual_fmt":    "-0.9%", "target_fmt": "≥ 100%",
-                "pts_avail": 488, "pts_scored": 384, "average": "2.8%", "inlier_pct": "79%",
-            },
-            {
-                "name":          "Hours of Operation",
-                "actual":        99.0, "green_thresh": 100, "yellow_thresh": 98, "higher": True,
-                "actual_fmt":    "99%", "target_fmt": "≥ 100%",
-                "pts_avail": 488, "pts_scored": 440, "average": "-0.65…", "inlier_pct": "90%",
-            },
+            {"name":"Sales vs. Budget",       "actual":102.3,"green_thresh":100,"yellow_thresh":97,"higher":True,
+              "pts_avail":488,"pts_scored":376,"average":"2.7%","inlier_pct":"77%"},
+            {"name":"Transactions vs. Budget","actual":99.1, "green_thresh":100,"yellow_thresh":97,"higher":True,
+              "pts_avail":488,"pts_scored":384,"average":"2.8%","inlier_pct":"79%"},
+            {"name":"Hours of Operation",     "actual":99.0, "green_thresh":100,"yellow_thresh":98,"higher":True,
+              "pts_avail":488,"pts_scored":440,"average":"-0.6%","inlier_pct":"90%"},
         ],
     },
     "Profit": {
+        "bg": "#8b0000",
         "items": [
-            {
-                "name":          "iCOS",
-                "actual":        27.8, "green_thresh": 28, "yellow_thresh": 30, "higher": False,
-                "actual_fmt":    "27.8%", "target_fmt": "≤ 28%",
-                "pts_avail": 488, "pts_scored": 408, "average": "2.34%", "inlier_pct": "84%",
-            },
-            {
-                "name":          "Labor Hours",
-                "actual":        -1.8, "green_thresh": 0, "yellow_thresh": 2, "higher": False,
-                "actual_fmt":    "-1.8%", "target_fmt": "≤ 0%",
-                "pts_avail": 488, "pts_scored": 448, "average": "-3.2%", "inlier_pct": "92%",
-            },
-            {
-                "name":          "Mgr Control vs. Budget",
-                "actual":        98.2, "green_thresh": 100, "yellow_thresh": 97, "higher": True,
-                "actual_fmt":    "-1.8%", "target_fmt": "≥ 100%",
-                "pts_avail": 488, "pts_scored": 280, "average": "-1.6%", "inlier_pct": "57%",
-            },
-            {
-                "name":          "R&M vs. Budget",
-                "actual":        80.0, "green_thresh": 100, "yellow_thresh": 110, "higher": False,
-                "actual_fmt":    "-20.0%", "target_fmt": "≤ 100%",
-                "pts_avail": 488, "pts_scored": 376, "average": "-20.0%", "inlier_pct": "77%",
-            },
+            {"name":"iCOS",                  "actual":27.8,"green_thresh":28,  "yellow_thresh":30, "higher":False,
+              "pts_avail":488,"pts_scored":408,"average":"2.34%","inlier_pct":"84%"},
+            {"name":"Labor Hours",           "actual":-1.8,"green_thresh":0,   "yellow_thresh":2,  "higher":False,
+              "pts_avail":488,"pts_scored":448,"average":"-3.2%","inlier_pct":"92%"},
+            {"name":"Mgr Control vs. Budget","actual":98.2,"green_thresh":100, "yellow_thresh":97, "higher":True,
+              "pts_avail":488,"pts_scored":280,"average":"-1.6%","inlier_pct":"57%"},
+            {"name":"R&M vs. Budget",        "actual":80.0,"green_thresh":100, "yellow_thresh":110,"higher":False,
+              "pts_avail":488,"pts_scored":376,"average":"-20.0%","inlier_pct":"77%"},
         ],
     },
 }
 
-# ── Compute scores ────────────────────────────────────────────────────────────
-for cat_name, cat in METRICS.items():
+# ── Compute scores ─────────────────────────────────────────────────────────────
+for cat in METRICS.values():
     for item in cat["items"]:
         item["_status"] = get_status(item["actual"], item["green_thresh"],
                                      item["yellow_thresh"], item["higher"])
 
-all_scores = [score_from_status(item["_status"])
-              for cat in METRICS.values() for item in cat["items"]]
-overall_pct = int(round(sum(all_scores) / len(all_scores) * 100)) if all_scores else 0
+all_scores = [score_from_status(it["_status"])
+              for cat in METRICS.values() for it in cat["items"]]
+overall_pct = int(round(sum(all_scores)/len(all_scores)*100)) if all_scores else 0
 
 if overall_pct >= 80:
-    ov_color = "#27AE60"; ov_shadow = "rgba(39,174,96,0.4)"
+    ov_color = "#27AE60"; ov_shadow = "rgba(39,174,96,0.35)"
 elif overall_pct >= 60:
-    ov_color = "#F39C12"; ov_shadow = "rgba(243,156,18,0.4)"
+    ov_color = "#F39C12"; ov_shadow = "rgba(243,156,18,0.35)"
 else:
-    ov_color = "#E74C3C"; ov_shadow = "rgba(231,76,60,0.4)"
+    ov_color = "#E74C3C"; ov_shadow = "rgba(231,76,60,0.35)"
 
-# ── Overall score row ─────────────────────────────────────────────────────────
-st.markdown(f"""
-<div class="overall-wrap">
-    <div class="overall-bubble" style="background:{ov_color};box-shadow:0 4px 18px {ov_shadow};">
-        BSC
+# ── Overall score box ──────────────────────────────────────────────────────────
+oc1, oc2, oc3, oc4, oc5 = st.columns([2,1,2,1,2])
+with oc3:
+    st.markdown(f'''
+    <div class="overall-box">
+        <div class="overall-bubble"
+             style="background:{ov_color};box-shadow:0 4px 14px {ov_shadow};">
+            BSC
+        </div>
+        <div>
+            <div class="overall-pct">{overall_pct}%</div>
+            <div class="overall-label">Overall Score</div>
+        </div>
     </div>
-    <div class="overall-text">{overall_pct}%</div>
-    <div class="overall-arrow">→</div>
-</div>
-""", unsafe_allow_html=True)
+    ''', unsafe_allow_html=True)
 
-# ── Category columns ──────────────────────────────────────────────────────────
-CATEGORY_COLORS = {
-    "People":   "#2563b0",
-    "Customer": "#059669",
-    "Sales":    "#7c3aed",
-    "Profit":   "#C41230",
-}
-
+# ── Category columns ───────────────────────────────────────────────────────────
 cols = st.columns(4)
 
 for col, (cat_name, cat) in zip(cols, METRICS.items()):
     items = cat["items"]
     cat_scores = [score_from_status(it["_status"]) for it in items]
-    cat_pct = int(round(sum(cat_scores) / len(cat_scores) * 100))
-    cat_color = "#27AE60" if cat_pct >= 80 else ("#F39C12" if cat_pct >= 60 else "#E74C3C")
-    accent = CATEGORY_COLORS[cat_name]
+    cat_pct = int(round(sum(cat_scores)/len(cat_scores)*100))
+    cat_bubble_color = "#27AE60" if cat_pct >= 80 else ("#F39C12" if cat_pct >= 60 else "#E74C3C")
 
     with col:
-        # ── Category header card ──
-        st.markdown(f"""
-        <div class="cat-header" style="border-left: 4px solid {accent};">
+        # Category header — fully rounded, colored bg, bubble + name + pct
+        bubble_sym = "✓" if cat_pct >= 80 else ("!" if cat_pct >= 60 else "✗")
+        cat_bg = cat["bg"]
+        st.markdown(f'''
+        <div class="cat-header" style="background:{cat_bg};border-radius:12px;">
             <div class="cat-left">
-                <span class="cat-pct" style="color:{cat_color};">{cat_pct}%</span>
+                <div class="cat-bubble" style="background:{cat_bubble_color};">
+                    {bubble_sym}
+                </div>
                 <span class="cat-name">{cat_name}</span>
             </div>
-            <span class="cat-arrow">→</span>
+            <span class="cat-pct">{cat_pct}%</span>
         </div>
-        """, unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)
 
-        # ── Metric cards ──
+        # Metric cards
         for item in items:
             hb = harvey_html(item["_status"])
-            st.markdown(f"""
+            iname = item["name"]
+            st.markdown(f'''
             <div class="metric-card">
                 <div class="metric-top">
                     {hb}
                     <div class="metric-name-row">
-                        <span class="metric-name">{item['name']}</span>
+                        <span class="metric-name">{iname}</span>
                         <span class="metric-arrow">→</span>
                     </div>
                 </div>
                 <div class="stats-row">
                     <div class="stat-cell">
-                        <div class="stat-val">{item['pts_avail']}</div>
+                        <div class="stat-val">{item["pts_avail"]}</div>
                         <div class="stat-lbl">Pts Avail</div>
                     </div>
                     <div class="stat-cell">
-                        <div class="stat-val">{item['pts_scored']}</div>
+                        <div class="stat-val">{item["pts_scored"]}</div>
                         <div class="stat-lbl">Pts Scored</div>
                     </div>
                     <div class="stat-cell">
-                        <div class="stat-val">{item['average']}</div>
+                        <div class="stat-val">{item["average"]}</div>
                         <div class="stat-lbl">Average</div>
                     </div>
                     <div class="stat-cell">
-                        <div class="stat-val">{item['inlier_pct']}</div>
+                        <div class="stat-val">{item["inlier_pct"]}</div>
                         <div class="stat-lbl">Inlier %</div>
                     </div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            ''', unsafe_allow_html=True)
 
-# ── Legend ────────────────────────────────────────────────────────────────────
-st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-st.markdown("""
+# ── Legend ─────────────────────────────────────────────────────────────────────
+st.markdown('''
 <div class="legend-bar">
     <div class="legend-item">
         <span class="legend-dot" style="background:#27AE60;"></span> At or above target
@@ -566,4 +537,4 @@ st.markdown("""
         <span class="legend-dot" style="background:#E74C3C;"></span> Below target
     </div>
 </div>
-""", unsafe_allow_html=True)
+''', unsafe_allow_html=True)
