@@ -65,16 +65,16 @@ st.markdown("""
 
     /* ── Header row (first stHorizontalBlock) ── */
     div[data-testid="stHorizontalBlock"]:first-of-type {
-        background: #dce8f5 !important;
+        background: #134A7C !important;
         padding: 8px 20px 8px 20px !important;
         margin: 0 -4rem 0 -4rem !important;
-        border-bottom: 1px solid #b4cfe8 !important;
+        border-bottom: 1px solid #0d3a5e !important;
         align-items: center !important;
         min-height: 70px !important;
     }
     /* Home button in header — red */
     div[data-testid="stHorizontalBlock"]:first-of-type button {
-        background: #C41230 !important;
+        background: #EE3227 !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 7px !important;
@@ -84,13 +84,13 @@ st.markdown("""
         width: 100% !important;
     }
     div[data-testid="stHorizontalBlock"]:first-of-type button:hover {
-        background: #a00e26 !important;
+        background: #c42010 !important;
     }
     /* Shrink selectbox labels in header */
     div[data-testid="stHorizontalBlock"]:first-of-type label {
         font-size: 0.68em !important;
         font-weight: 700 !important;
-        color: #2a4a6e !important;
+        color: rgba(255,255,255,0.85) !important;
         text-transform: uppercase !important;
         letter-spacing: 1px !important;
         margin-bottom: 1px !important;
@@ -124,7 +124,7 @@ st.markdown("""
 
     /* ── Category header card ── */
     .cat-header {
-        background: #1a3a6e !important;
+        background: #134A7C !important;
         border-radius:10px;padding:8px 12px;
         display:flex;align-items:center;justify-content:space-between;
         margin-bottom:5px;
@@ -148,7 +148,7 @@ st.markdown("""
 
     /* ── Metric card ── */
     .metric-card {
-        background:#4a7ec0;border-radius:8px;
+        background:#4a90d9;border-radius:8px;
         padding:6px 10px;margin-bottom:5px;
         min-height:70px;box-sizing:border-box;
     }
@@ -231,7 +231,7 @@ with logo_col:
     st.markdown(f'''
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <img src="{_LOGO}" style="height:40px;width:auto;"/>
-        <div style="font-size:0.68em;font-weight:800;color:#1a3a6e;letter-spacing:2px;
+        <div style="font-size:0.68em;font-weight:800;color:#FFFFFF;letter-spacing:2px;
                     text-transform:uppercase;margin-top:3px;font-family:Arial,sans-serif;">
             Balanced Scorecard
         </div>
@@ -267,7 +267,7 @@ with home_col:
 # ── Scorecard data ────────────────────────────────────────────────────────────
 METRICS = {
     "People":{
-        "bg":"#1a3a6e",
+        "bg":"#134A7C",
         "items":[
             {"name":"Certified Managers",    "actual":94.2,"green_thresh":90, "yellow_thresh":85, "higher":True,
               "pts_avail":488,"pts_scored":464,"average":"94.2%","inlier_pct":"95%"},
@@ -278,7 +278,7 @@ METRICS = {
         ],
     },
     "Customer":{
-        "bg":"#1a3a6e",
+        "bg":"#134A7C",
         "items":[
             {"name":"Speed (OTD)",   "actual":208, "green_thresh":210,"yellow_thresh":240,"higher":False,
               "pts_avail":488,"pts_scored":352,"average":"3:25","inlier_pct":"72%"},
@@ -291,7 +291,7 @@ METRICS = {
         ],
     },
     "Sales":{
-        "bg":"#1a3a6e",
+        "bg":"#134A7C",
         "items":[
             {"name":"Sales vs. Budget",        "actual":102.3,"green_thresh":100,"yellow_thresh":97,"higher":True,
               "pts_avail":488,"pts_scored":376,"average":"2.7%", "inlier_pct":"77%"},
@@ -302,7 +302,7 @@ METRICS = {
         ],
     },
     "Profit":{
-        "bg":"#1a3a6e",
+        "bg":"#134A7C",
         "items":[
             {"name":"iCOS",                   "actual":27.8,"green_thresh":28, "yellow_thresh":30, "higher":False,
               "pts_avail":488,"pts_scored":408,"average":"2.34%","inlier_pct":"84%"},

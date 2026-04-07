@@ -54,7 +54,7 @@ st.markdown(f"""
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
-        background: linear-gradient(135deg, #112240 0%, #1a3355 100%) !important;
+        background: #134A7C !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 18px !important;
         min-height: 180px !important;
@@ -68,7 +68,7 @@ st.markdown(f"""
         box-shadow: 0 12px 40px rgba(0,0,0,0.15),
                     0 0 20px rgba(196,18,48,0.1) !important;
         transform: translateY(-4px) !important;
-        background: linear-gradient(135deg, #152b50 0%, #1e3d66 100%) !important;
+        background: #0d3a5e !important;
     }}
     a[data-testid="stPageLink-NavLink"] p {{
         color: #FFFFFF !important;
