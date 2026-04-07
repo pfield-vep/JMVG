@@ -20,7 +20,7 @@ st.set_page_config(
     page_title="Same Store Sales | JM Valley Group",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # Home navigation is handled by the ⌂ Home link inside the blue filter bar

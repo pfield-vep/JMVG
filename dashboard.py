@@ -206,7 +206,7 @@ st.markdown(f"""
     #MainMenu {{ visibility: hidden; }}
     footer {{ visibility: hidden; }}
     header {{ visibility: hidden; }}
-    [data-testid="collapsedControl"] {{ visibility: visible !important; }}
+    [data-testid="collapsedControl"] {{ display: none !important; }}
 
     /* Hide plotly modebar on mobile — overlaps with title */
     @media (max-width: 768px) {{

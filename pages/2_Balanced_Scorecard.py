@@ -10,7 +10,7 @@ st.set_page_config(
     page_title="Balanced Scorecard | JM Valley Group",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 SAN_DIEGO_STORE_IDS = ['20071','20091','20171','20177','20291','20292','20300']
@@ -60,6 +60,8 @@ st.markdown("""
     [data-testid="stAppViewContainer"] { background:#FFFFFF; }
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
+    header { visibility:hidden; }
+    [data-testid="collapsedControl"] { display: none !important; }
 
     .block-container { padding-bottom: 20px !important; }
 
