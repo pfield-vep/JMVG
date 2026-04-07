@@ -30,9 +30,9 @@ st.markdown("""
         padding: 40px 0 10px 0;
     }
     .hub-logo-img {
-        max-width: 320px;
+        max-width: 300px;
         width: 100%;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
         display: block;
         margin-left: auto;
         margin-right: auto;
@@ -46,10 +46,9 @@ st.markdown("""
         font-family: Arial, sans-serif;
     }
     .hub-subtitle {
-        font-size: 1.15em;
+        font-size: 1.1em;
         color: #666666;
         margin-top: 8px;
-        letter-spacing: 0.5px;
         font-family: Arial, sans-serif;
     }
     .hub-divider {
@@ -57,83 +56,52 @@ st.markdown("""
         border-top: 2px solid #C41230;
         margin: 28px auto;
         width: 60%;
-        opacity: 0.25;
+        opacity: 0.2;
     }
     .section-label {
         text-align: center;
-        font-size: 0.9em;
+        font-size: 0.88em;
         font-weight: 600;
         letter-spacing: 3px;
-        color: #888888;
+        color: #999999;
         text-transform: uppercase;
         margin-bottom: 32px;
         font-family: Arial, sans-serif;
     }
 
-    /* ── Dashboard Cards ── */
-    a.dash-card-link {
-        text-decoration: none;
-        display: block;
+    /* ── Page-link cards ── */
+    /* Target the anchor inside st.page_link */
+    a[data-testid="stPageLink-NavLink"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: linear-gradient(135deg, #112240 0%, #1a3355 100%) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 20px !important;
+        min-height: 260px !important;
+        padding: 48px 36px !important;
+        text-decoration: none !important;
+        transition: all 0.3s ease !important;
+        cursor: pointer !important;
+        gap: 20px !important;
     }
-    .dash-card {
-        background: linear-gradient(135deg, #112240 0%, #1a3355 100%);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 20px;
-        padding: 44px 36px 40px 36px;
-        height: 360px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        transition: all 0.3s ease;
-        margin: 0 12px;
-        cursor: pointer;
+    a[data-testid="stPageLink-NavLink"]:hover {
+        border-color: rgba(196,18,48,0.5) !important;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.18),
+                    0 0 30px rgba(196,18,48,0.12) !important;
+        transform: translateY(-6px) !important;
+        background: linear-gradient(135deg, #152b50 0%, #1e3d66 100%) !important;
     }
-    .dash-card:hover {
-        border-color: rgba(196,18,48,0.5);
-        box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 0 30px rgba(196,18,48,0.12);
-        transform: translateY(-6px);
-    }
-    .card-emoji {
-        font-size: 3.5em;
-        margin-bottom: 18px;
-        line-height: 1;
-    }
-    .card-title {
-        font-size: 2.0em;
-        font-weight: 700;
-        color: #FFFFFF;
-        margin-bottom: 16px;
-        line-height: 1.2;
-        font-family: Arial, sans-serif;
-    }
-    .card-desc {
-        font-size: 1.35em;
-        color: #a8c4dd;
-        line-height: 1.7;
-        flex-grow: 1;
-        font-family: Arial, sans-serif;
-    }
-    .card-tag {
-        display: inline-block;
-        background: rgba(196,18,48,0.2);
-        color: #e88090;
-        font-size: 0.85em;
-        font-weight: 600;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        padding: 5px 14px;
-        border-radius: 20px;
-        margin-bottom: 12px;
-        border: 1px solid rgba(196,18,48,0.35);
-        font-family: Arial, sans-serif;
-    }
-    .card-arrow {
-        margin-top: 18px;
-        font-size: 1.4em;
-        color: #C41230;
-        font-weight: 700;
-        letter-spacing: 2px;
+    /* The label text inside the link */
+    a[data-testid="stPageLink-NavLink"] p {
+        color: #FFFFFF !important;
+        font-size: 2.0em !important;
+        font-weight: 700 !important;
+        text-align: center !important;
+        font-family: Arial, sans-serif !important;
+        margin: 0 !important;
+        line-height: 1.3 !important;
     }
 
     /* ── Footer ── */
@@ -142,7 +110,6 @@ st.markdown("""
         color: #aaaaaa;
         font-size: 0.78em;
         padding: 40px 0 20px 0;
-        letter-spacing: 0.5px;
         font-family: Arial, sans-serif;
     }
 </style>
@@ -154,13 +121,9 @@ st.markdown("""
     <img
         src="https://upload.wikimedia.org/wikipedia/en/thumb/3/39/Jersey_Mike%27s_Subs.svg/1200px-Jersey_Mike%27s_Subs.svg.png"
         class="hub-logo-img"
-        onerror="this.style.display='none';document.getElementById('jm-text-logo').style.display='block';"
+        onerror="this.style.display='none'"
         alt="Jersey Mike's Subs"
     />
-    <div id="jm-text-logo" style="display:none;font-size:2.8em;font-weight:900;color:#C41230;
-         letter-spacing:2px;font-family:Arial,sans-serif;margin-bottom:12px;">
-        Jersey Mike's
-    </div>
     <div class="hub-title">JM Valley Group</div>
     <div class="hub-subtitle">Franchise Performance Dashboards</div>
 </div>
@@ -172,38 +135,18 @@ st.markdown("""
 _, col1, spacer, col2, _ = st.columns([1, 4, 0.5, 4, 1])
 
 with col1:
-    st.markdown("""
-    <a class="dash-card-link" href="/1_SSS_Dashboard">
-    <div class="dash-card">
-        <div class="card-tag">Weekly · Jersey Mike's</div>
-        <div class="card-emoji">📊</div>
-        <div class="card-title">Same Store Sales</div>
-        <div class="card-desc">
-            Weekly sales performance, SSS trends, bread &amp; ops metrics,
-            loyalty data, and store-level deep dives across your
-            JM Valley Group portfolio.
-        </div>
-        <div class="card-arrow">Open →</div>
-    </div>
-    </a>
-    """, unsafe_allow_html=True)
+    st.page_link(
+        "pages/1_SSS_Dashboard.py",
+        label="📊  Same Store Sales",
+        use_container_width=True,
+    )
 
 with col2:
-    st.markdown("""
-    <a class="dash-card-link" href="/2_Balanced_Scorecard">
-    <div class="dash-card">
-        <div class="card-tag">Operational · KPIs</div>
-        <div class="card-emoji">🎯</div>
-        <div class="card-title">Balanced Scorecard</div>
-        <div class="card-desc">
-            At-a-glance operational performance across People, Customer,
-            Sales, and Profit pillars — with color-coded status indicators
-            vs. targets.
-        </div>
-        <div class="card-arrow">Open →</div>
-    </div>
-    </a>
-    """, unsafe_allow_html=True)
+    st.page_link(
+        "pages/2_Balanced_Scorecard.py",
+        label="🎯  Balanced Scorecard",
+        use_container_width=True,
+    )
 
 # ── Footer ───────────────────────────────────────────────
 st.markdown("""
