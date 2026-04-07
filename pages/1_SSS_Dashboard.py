@@ -23,4 +23,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Home button in top-left
+home_col, _ = st.columns([1, 11])
+with home_col:
+    if st.button("⌂  Home", key="home_btn"):
+        st.switch_page("app.py")
+
 exec(code, {"__name__": "__main__", "__file__": os.path.join(root, "dashboard.py")})
