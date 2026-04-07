@@ -61,11 +61,7 @@ st.markdown("""
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
 
-    /* Top padding clears Streamlit toolbar */
-    [data-testid="stAppViewContainer"] > section > div:first-child {
-        padding-top: 80px !important;
-    }
-    .block-container { padding-top: 0 !important; padding-bottom: 60px !important; }
+    .block-container { padding-bottom: 20px !important; }
 
     /* ── Header row (first stHorizontalBlock) ── */
     div[data-testid="stHorizontalBlock"]:first-of-type {
