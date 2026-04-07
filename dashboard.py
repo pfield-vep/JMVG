@@ -41,7 +41,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-RED     = "#EE3327"
+RED     = "#EE3227"
 BLUE    = "#134A7C"
 WHITE   = "#FFFFFF"
 LIGHT   = "#F5F6F8"
@@ -339,7 +339,7 @@ STORE_COORDS = {
 REGION_COLORS = {
     'Los Angeles':                    RED,       # Jersey Mike's red
     'Santa Barbara':                  BLUE,      # Jersey Mike's blue
-    'Santa Barbara / San Luis Ob':    '#F5A623', # Orange — clearly distinct
+    'Santa Barbara / San Luis Ob':    '#D4AF37', # Gold — JM Accent Gold
     'San Diego':                      '#6B21A8', # Purple
 }
 DEFAULT_REGION_COLOR = '#AAAAAA'
@@ -646,6 +646,28 @@ with tab1:
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
+        st.markdown(kpi("Same Store Sales",
+                        fmt_sss(avg_sss), week_suffix="%",
+                        ytd_val=fytd_sss, ytd_suffix="%",
+                        blue=True, sss_color=True),
+                    unsafe_allow_html=True)
+        st.markdown(kpi("Same Store Transactions",
+                        fmt_sss(avg_tkt), week_suffix="%",
+                        ytd_val=fytd_tkt, ytd_suffix="%",
+                        blue=True, sss_color=True),
+                    unsafe_allow_html=True)
+    with col2:
+        st.markdown(kpi("Same Store Avg Ticket",
+                        fmt_sss(avg_txn), week_suffix="%",
+                        ytd_val=fytd_txn, ytd_suffix="%",
+                        blue=True, sss_color=True),
+                    unsafe_allow_html=True)
+        st.markdown(kpi("Loyalty Sales %",
+                        f"{avg_loyalty:.1f}" if avg_loyalty is not None else "—", week_suffix="%" if avg_loyalty is not None else "",
+                        ytd_val=f"{fytd_loyalty:.1f}" if fytd_loyalty is not None else "—", ytd_suffix="%" if fytd_loyalty is not None else "",
+                        orange=True),
+                    unsafe_allow_html=True)
+    with col3:
         st.markdown(kpi("Net Sales",
                         f"{total_sales:,.0f}", week_prefix="$",
                         ytd_val=f"{fytd_sales:,.0f}", ytd_prefix="$"),
@@ -653,28 +675,6 @@ with tab1:
         st.markdown(kpi("Bread",
                         f"{total_bread:,}",
                         ytd_val=f"{int(fytd_bread):,}" if fytd_bread else "—"),
-                    unsafe_allow_html=True)
-    with col2:
-        st.markdown(kpi("Same Store Sales",
-                        fmt_sss(avg_sss), week_suffix="%",
-                        ytd_val=fytd_sss, ytd_suffix="%",
-                        blue=True, sss_color=True),
-                    unsafe_allow_html=True)
-        st.markdown(kpi("Same Store Avg Ticket",
-                        fmt_sss(avg_txn), week_suffix="%",
-                        ytd_val=fytd_txn, ytd_suffix="%",
-                        blue=True, sss_color=True),
-                    unsafe_allow_html=True)
-    with col3:
-        st.markdown(kpi("Same Store Transactions",
-                        fmt_sss(avg_tkt), week_suffix="%",
-                        ytd_val=fytd_tkt, ytd_suffix="%",
-                        blue=True, sss_color=True),
-                    unsafe_allow_html=True)
-        st.markdown(kpi("Loyalty Sales %",
-                        f"{avg_loyalty:.1f}" if avg_loyalty is not None else "—", week_suffix="%" if avg_loyalty is not None else "",
-                        ytd_val=f"{fytd_loyalty:.1f}" if fytd_loyalty is not None else "—", ytd_suffix="%" if fytd_loyalty is not None else "",
-                        orange=True),
                     unsafe_allow_html=True)
     with col4:
         st.markdown(kpi("Online Sales %",
@@ -1349,8 +1349,8 @@ with tab5:
 
     if not is_dollar:
         buckets = [
-            ("🔴  Below -2%",  map_data[map_data[col_name].notna() & (map_data[col_name] < -2)],   "#EE3327"),
-            ("🟡  -2% to 0%",  map_data[map_data[col_name].notna() & (map_data[col_name] >= -2) & (map_data[col_name] < 0)], "#F5A623"),
+            ("🔴  Below -2%",  map_data[map_data[col_name].notna() & (map_data[col_name] < -2)],   "#EE3227"),
+            ("🟡  -2% to 0%",  map_data[map_data[col_name].notna() & (map_data[col_name] >= -2) & (map_data[col_name] < 0)], "#D4AF37"),
             ("🟢  Above 0%",   map_data[map_data[col_name].notna() & (map_data[col_name] >= 0)],   "#22c55e"),
             ("⚪  No Data",    map_data[map_data[col_name].isna()],                                  "#AAAAAA"),
         ]
@@ -1370,8 +1370,8 @@ with tab5:
             ))
         st.markdown(f"""
             <div style='margin-bottom:8px; font-family:Arial,sans-serif; font-size:16px; color:{MUTED};'>
-                <span style='background:#EE3327;color:white;padding:6px 16px;border-radius:12px;margin-right:10px;font-weight:700;font-size:16px;'>▼ Below -2%</span>
-                <span style='background:#F5A623;color:white;padding:6px 16px;border-radius:12px;margin-right:10px;font-weight:700;font-size:16px;'>-2% to 0%</span>
+                <span style='background:#EE3227;color:white;padding:6px 16px;border-radius:12px;margin-right:10px;font-weight:700;font-size:16px;'>▼ Below -2%</span>
+                <span style='background:#D4AF37;color:white;padding:6px 16px;border-radius:12px;margin-right:10px;font-weight:700;font-size:16px;'>-2% to 0%</span>
                 <span style='background:#22c55e;color:white;padding:6px 16px;border-radius:12px;font-weight:700;font-size:16px;'>▲ Above 0%</span>
             </div>
         """, unsafe_allow_html=True)
@@ -1384,7 +1384,7 @@ with tab5:
             marker=dict(
                 size=20,
                 color=valid[col_name].astype(float),
-                colorscale=[[0, RED], [0.5, '#F5A623'], [1, '#22c55e']],
+                colorscale=[[0, RED], [0.5, '#D4AF37'], [1, '#22c55e']],
                 showscale=True,
                 colorbar=dict(
                     title=dict(text=col_label, font=dict(size=18, color=TEXT)),
@@ -1703,7 +1703,7 @@ with tab6:
                 name='SS Transactions', line=dict(color=BLUE, width=2.5), mode='lines+markers', marker_size=6,
                 hovertemplate="Week: %{x}<br>SS Transactions (4wk): %{y:+.1f}%<extra></extra>"))
             fig_roll.add_trace(go.Scatter(x=roll['week_ending'], y=roll['ticket_4wk'],
-                name='SS Avg Ticket', line=dict(color='#F5A623', width=2.5), mode='lines+markers', marker_size=6,
+                name='SS Avg Ticket', line=dict(color='#D4AF37', width=2.5), mode='lines+markers', marker_size=6,
                 hovertemplate="Week: %{x}<br>SS Avg Ticket (4wk): %{y:+.1f}%<extra></extra>"))
             fig_roll.add_hline(y=0, line_color=TEXT, line_width=2.5, line_dash='solid')
             fig_roll.update_layout(**PLOTLY_THEME, height=440,
