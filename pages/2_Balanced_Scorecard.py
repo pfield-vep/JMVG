@@ -128,9 +128,11 @@ st.markdown("""
 
     /* ── Category header card ── */
     .cat-header {
+        background: #1a3a6e !important;
         border-radius:10px;padding:8px 12px;
         display:flex;align-items:center;justify-content:space-between;
         margin-bottom:5px;
+        min-height:46px;box-sizing:border-box;
     }
     .cat-left {display:flex;align-items:center;gap:8px;}
     .cat-bubble {
@@ -150,8 +152,9 @@ st.markdown("""
 
     /* ── Metric card ── */
     .metric-card {
-        background:#1e3d6e;border-radius:8px;
+        background:#4a7ec0;border-radius:8px;
         padding:6px 10px;margin-bottom:5px;
+        min-height:70px;box-sizing:border-box;
     }
     .metric-top {
         display:flex;align-items:center;gap:8px;margin-bottom:5px;
@@ -183,6 +186,12 @@ st.markdown("""
     .stat-lbl {
         font-size:0.55em;color:rgba(255,255,255,0.50);text-transform:uppercase;
         letter-spacing:0.3px;margin-top:1px;font-family:Arial,sans-serif;
+    }
+
+    /* ── Top-align all columns so rows line up visually ── */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        vertical-align: top !important;
+        align-self: flex-start !important;
     }
 
     /* ── Legend ── */
@@ -273,7 +282,7 @@ METRICS = {
         ],
     },
     "Customer":{
-        "bg":"#0d5c3a",
+        "bg":"#1a3a6e",
         "items":[
             {"name":"Speed (OTD)",   "actual":208, "green_thresh":210,"yellow_thresh":240,"higher":False,
               "pts_avail":488,"pts_scored":352,"average":"3:25","inlier_pct":"72%"},
@@ -286,7 +295,7 @@ METRICS = {
         ],
     },
     "Sales":{
-        "bg":"#3b1f7c",
+        "bg":"#1a3a6e",
         "items":[
             {"name":"Sales vs. Budget",        "actual":102.3,"green_thresh":100,"yellow_thresh":97,"higher":True,
               "pts_avail":488,"pts_scored":376,"average":"2.7%", "inlier_pct":"77%"},
@@ -297,7 +306,7 @@ METRICS = {
         ],
     },
     "Profit":{
-        "bg":"#8b0000",
+        "bg":"#1a3a6e",
         "items":[
             {"name":"iCOS",                   "actual":27.8,"green_thresh":28, "yellow_thresh":30, "higher":False,
               "pts_avail":488,"pts_scored":408,"average":"2.34%","inlier_pct":"84%"},
