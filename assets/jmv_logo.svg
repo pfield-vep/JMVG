@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 110" width="260" height="110">
+  <!-- White background -->
+  <rect width="260" height="110" fill="#FFFFFF" rx="4"/>
+
+  <!-- SINCE 2012 -->
+  <text
+    x="42" y="22"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="9"
+    font-weight="600"
+    fill="#C41230"
+    letter-spacing="2.5"
+    text-anchor="middle"
+  >SINCE 2012</text>
+
+  <!-- JM Valley — large script-style bold italic -->
+  <text
+    x="125" y="76"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="54"
+    font-weight="700"
+    font-style="italic"
+    fill="#1a2f5e"
+    text-anchor="middle"
+    letter-spacing="-1"
+  >JM Valley</text>
+
+  <!-- GROUP -->
+  <text
+    x="218" y="96"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="13"
+    font-weight="700"
+    fill="#C41230"
+    letter-spacing="1.5"
+    text-anchor="middle"
+  >GROUP</text>
+</svg>

@@ -30,9 +30,9 @@ st.markdown("""
         padding: 40px 0 10px 0;
     }
     .hub-logo-img {
-        max-width: 300px;
+        max-width: 340px;
         width: 100%;
-        margin-bottom: 16px;
+        margin-bottom: 8px;
         display: block;
         margin-left: auto;
         margin-right: auto;
@@ -116,15 +116,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Header ──────────────────────────────────────────────
-st.markdown("""
+_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNjAgMTEwIiB3aWR0aD0iMjYwIiBoZWlnaHQ9IjExMCI+CiAgPCEtLSBXaGl0ZSBiYWNrZ3JvdW5kIC0tPgogIDxyZWN0IHdpZHRoPSIyNjAiIGhlaWdodD0iMTEwIiBmaWxsPSIjRkZGRkZGIiByeD0iNCIvPgoKICA8IS0tIFNJTkNFIDIwMTIgLS0+CiAgPHRleHQKICAgIHg9IjQyIiB5PSIyMiIKICAgIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIgogICAgZm9udC1zaXplPSI5IgogICAgZm9udC13ZWlnaHQ9IjYwMCIKICAgIGZpbGw9IiNDNDEyMzAiCiAgICBsZXR0ZXItc3BhY2luZz0iMi41IgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIKICA+U0lOQ0UgMjAxMjwvdGV4dD4KCiAgPCEtLSBKTSBWYWxsZXkg4oCUIGxhcmdlIHNjcmlwdC1zdHlsZSBib2xkIGl0YWxpYyAtLT4KICA8dGV4dAogICAgeD0iMTI1IiB5PSI3NiIKICAgIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCAnVGltZXMgTmV3IFJvbWFuJywgc2VyaWYiCiAgICBmb250LXNpemU9IjU0IgogICAgZm9udC13ZWlnaHQ9IjcwMCIKICAgIGZvbnQtc3R5bGU9Iml0YWxpYyIKICAgIGZpbGw9IiMxYTJmNWUiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogICAgbGV0dGVyLXNwYWNpbmc9Ii0xIgogID5KTSBWYWxsZXk8L3RleHQ+CgogIDwhLS0gR1JPVVAgLS0+CiAgPHRleHQKICAgIHg9IjIxOCIgeT0iOTYiCiAgICBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIKICAgIGZvbnQtc2l6ZT0iMTMiCiAgICBmb250LXdlaWdodD0iNzAwIgogICAgZmlsbD0iI0M0MTIzMCIKICAgIGxldHRlci1zcGFjaW5nPSIxLjUiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogID5HUk9VUDwvdGV4dD4KPC9zdmc+Cg=="
+st.markdown(f"""
 <div class="hub-header">
-    <img
-        src="https://upload.wikimedia.org/wikipedia/en/thumb/3/39/Jersey_Mike%27s_Subs.svg/1200px-Jersey_Mike%27s_Subs.svg.png"
-        class="hub-logo-img"
-        onerror="this.style.display='none'"
-        alt="Jersey Mike's Subs"
-    />
-    <div class="hub-title">JM Valley Group</div>
+    <img src="{_LOGO}" class="hub-logo-img" alt="JM Valley Group" />
     <div class="hub-subtitle">Franchise Performance Dashboards</div>
 </div>
 <hr class="hub-divider">
