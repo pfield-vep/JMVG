@@ -404,12 +404,12 @@ stores_df, sales_df, bread_df, loyalty_df, mkt_df, bread_totals_df = load_data()
 
 # ── Top filter bar ───────────────────────────────────────────────────────────
 st.markdown(f"""
-    <div style='background:{BLUE}; padding:14px 24px 10px 24px;
+    <div style='background:{BLUE}; padding:10px 24px 10px 24px;
                 margin:-1rem -1rem 1.5rem -1rem; display:flex;
                 align-items:center; gap:12px;'>
         <div style='font-family:Arial,sans-serif; font-size:20px;
                     font-weight:800; color:white; margin-right:16px;
-                    white-space:nowrap;'>
+                    white-space:nowrap; flex:1;'>
             🥖 JERSEY MIKE'S
             <span style='font-size:12px; font-weight:400;
                          color:rgba(255,255,255,0.6); margin-left:8px;
@@ -417,6 +417,14 @@ st.markdown(f"""
                 Valley Group
             </span>
         </div>
+        <a href='/' style='background:rgba(255,255,255,0.15); color:#ffffff;
+                           font-family:Arial,sans-serif; font-size:13px;
+                           font-weight:700; text-decoration:none;
+                           padding:6px 16px; border-radius:6px;
+                           border:1px solid rgba(255,255,255,0.3);
+                           white-space:nowrap; letter-spacing:0.3px;'>
+            ⌂ Home
+        </a>
     </div>
 """, unsafe_allow_html=True)
 
