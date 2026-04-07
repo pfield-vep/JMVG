@@ -87,7 +87,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Cards ────────────────────────────────────────────────
-_, col1, spacer, col2, _ = st.columns([1, 4, 0.5, 4, 1])
+_, col1, spacer, col2, spacer2, col3, _ = st.columns([0.5, 3, 0.4, 3, 0.4, 3, 0.5])
 
 with col1:
     st.page_link(
@@ -100,5 +100,12 @@ with col2:
     st.page_link(
         "pages/2_Balanced_Scorecard.py",
         label="🎯  Balanced Scorecard",
+        use_container_width=True,
+    )
+
+with col3:
+    st.page_link(
+        "pages/3_Data_Export.py",
+        label="📥  Data Export",
         use_container_width=True,
     )
