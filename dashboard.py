@@ -1807,37 +1807,40 @@ with tab_wx:
     if mkt_df.empty:
         st.info(f"No weather+SSS data available for {wx_mkt}.")
     else:
-        from plotly.subplots import make_subplots as _msp
-        fig_wx1 = _msp(specs=[[{"secondary_y": True}]])
-
-        # Precipitation as shaded bars (right axis)
         precip_vals = mkt_df['total_precip_in'].fillna(0)
+        bar_clrs    = [GREEN if v >= 0 else DANGER for v in mkt_df[sss_col]]
+
+        fig_wx1 = go.Figure()
+
+        # Precipitation bars — right axis (kept very compressed so temp line is legible)
         fig_wx1.add_trace(go.Bar(
             x=mkt_df['week_ending'], y=precip_vals,
             name="Precipitation (in)",
             marker_color="rgba(100,194,255,0.30)", marker_line_width=0,
+            yaxis="y2",
             hovertemplate="<b>%{x}</b><br>Rain: %{y:.2f} in<extra></extra>",
-        ), secondary_y=True)
+        ))
 
-        # SSS bars
-        bar_clrs = [GREEN if v >= 0 else DANGER for v in mkt_df[sss_col]]
+        # SSS bars — left axis
         fig_wx1.add_trace(go.Bar(
             x=mkt_df['week_ending'], y=mkt_df[sss_col],
             name=wx_metric,
             marker_color=bar_clrs,
+            yaxis="y",
             hovertemplate="<b>%{x}</b><br>" + wx_metric + ": %{y:+.1f}%<extra></extra>",
-        ), secondary_y=False)
+        ))
 
-        # Temperature line
+        # Temperature line — right axis (shares y2 scale; precip range set wide so temp reads naturally)
         fig_wx1.add_trace(go.Scatter(
             x=mkt_df['week_ending'], y=mkt_df['avg_temp_f'],
             name="Avg Temp (°F)",
-            line=dict(color=GOLD, width=2, dash="dot"),
+            line=dict(color=GOLD, width=2.5, dash="dot"),
             mode="lines+markers", marker_size=4,
+            yaxis="y2",
             hovertemplate="<b>%{x}</b><br>Temp: %{y:.0f}°F<extra></extra>",
-            yaxis="y3",
-        ), secondary_y=False)
+        ))
 
+        _p_max = float(precip_vals.max()) if precip_vals.max() > 0 else 1.0
         fig_wx1.update_layout(
             **PLOTLY_THEME,
             height=400, barmode="overlay",
@@ -1845,11 +1848,16 @@ with tab_wx:
                        font=dict(size=15, color=TEXT, family='Arial')),
             yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
                        zerolinecolor=MUTED, gridcolor=GRID_COLOR),
-            yaxis2=dict(title="Precipitation (in)", overlaying="y", side="right",
-                        showgrid=False, range=[0, max(precip_vals.max() * 6, 2)],
-                        tickfont=dict(color="rgba(100,194,255,0.8)")),
+            yaxis2=dict(
+                title="Temp (°F) / Precip (in)",
+                overlaying="y", side="right", showgrid=False,
+                # Set range so temp (55–90°F) floats in the upper portion
+                # and precip (0–~1 in) stays as a tiny visual bar at bottom
+                range=[0, 120],
+                tickfont=dict(color=GOLD, size=10),
+            ),
             legend=DEFAULT_LEGEND,
-            margin=dict(l=50, r=60, t=55, b=70),
+            margin=dict(l=50, r=70, t=55, b=70),
             xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
         )
         st.plotly_chart(fig_wx1, use_container_width=True,
