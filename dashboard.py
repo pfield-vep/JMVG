@@ -1846,18 +1846,18 @@ with tab_wx:
             height=400, barmode="overlay",
             title=dict(text=f"{wx_mkt} — Weekly {wx_metric} vs. Temperature & Precipitation",
                        font=dict(size=15, color=TEXT, family='Arial')),
-            yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
-                       zerolinecolor=MUTED, gridcolor=GRID_COLOR),
             yaxis2=dict(
                 title="Temp (°F) / Precip (in)",
                 overlaying="y", side="right", showgrid=False,
-                # Set range so temp (55–90°F) floats in the upper portion
-                # and precip (0–~1 in) stays as a tiny visual bar at bottom
                 range=[0, 120],
                 tickfont=dict(color=GOLD, size=10),
             ),
             legend=DEFAULT_LEGEND,
             margin=dict(l=50, r=70, t=55, b=70),
+        )
+        fig_wx1.update_layout(
+            yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
+                       zerolinecolor=MUTED, gridcolor=GRID_COLOR),
             xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
         )
         st.plotly_chart(fig_wx1, use_container_width=True,
@@ -1899,10 +1899,12 @@ with tab_wx:
             **PLOTLY_THEME, height=360,
             title=dict(text=f"{wx_metric} vs. Temperature",
                        font=dict(size=14, color=TEXT, family='Arial')),
-            xaxis=dict(title="Weekly Avg Temp (°F)", ticksuffix="°F", gridcolor=GRID_COLOR),
-            yaxis=dict(title=wx_metric, ticksuffix="%", gridcolor=GRID_COLOR),
             legend=DEFAULT_LEGEND,
             margin=dict(l=50, r=20, t=55, b=50),
+        )
+        fig_sc1.update_layout(
+            xaxis=dict(title="Weekly Avg Temp (°F)", ticksuffix="°F", gridcolor=GRID_COLOR),
+            yaxis=dict(title=wx_metric, ticksuffix="%", gridcolor=GRID_COLOR),
         )
         st.plotly_chart(fig_sc1, use_container_width=True,
                         config={"responsive": True, "displayModeBar": False})
@@ -1933,10 +1935,12 @@ with tab_wx:
             **PLOTLY_THEME, height=360,
             title=dict(text=f"{wx_metric} vs. Precipitation",
                        font=dict(size=14, color=TEXT, family='Arial')),
-            xaxis=dict(title="Total Weekly Precipitation (in)", gridcolor=GRID_COLOR),
-            yaxis=dict(title=wx_metric, ticksuffix="%", gridcolor=GRID_COLOR),
             legend=DEFAULT_LEGEND,
             margin=dict(l=50, r=20, t=55, b=50),
+        )
+        fig_sc2.update_layout(
+            xaxis=dict(title="Total Weekly Precipitation (in)", gridcolor=GRID_COLOR),
+            yaxis=dict(title=wx_metric, ticksuffix="%", gridcolor=GRID_COLOR),
         )
         st.plotly_chart(fig_sc2, use_container_width=True,
                         config={"responsive": True, "displayModeBar": False})
@@ -2001,9 +2005,11 @@ with tab_wx:
         title=dict(text=f"Avg {wx_metric} by Temp × Rain Bucket — All Markets",
                    font=dict(size=15, color=TEXT, family='Arial')),
         annotations=annots,
+        margin=dict(l=140, r=100, t=55, b=50),
+    )
+    fig_hm.update_layout(
         xaxis=dict(title="Temperature Range", side="bottom"),
         yaxis=dict(title="Precipitation"),
-        margin=dict(l=140, r=100, t=55, b=50),
     )
     st.plotly_chart(fig_hm, use_container_width=True,
                     config={"responsive": True, "displayModeBar": False})
