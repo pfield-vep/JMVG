@@ -88,7 +88,13 @@ CREATE TABLE IF NOT EXISTS weekly_weather (
 
 def create_table(conn, dialect):
     cur = conn.cursor()
-    cur.execute(CREATE_SQL_PG if dialect == "postgres" else CREATE_SQL_SQLITE)
+    if dialect == "postgres":
+        # Drop and recreate so SERIAL is applied correctly even if table
+        # was previously created without an auto-increment sequence.
+        cur.execute("DROP TABLE IF EXISTS weekly_weather")
+        cur.execute(CREATE_SQL_PG)
+    else:
+        cur.execute(CREATE_SQL_SQLITE)
     conn.commit()
     print("weekly_weather table ready")
 
