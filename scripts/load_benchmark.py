@@ -1,17 +1,18 @@
 """
 scripts/load_benchmark.py
 =========================
-Parses BlakeWard "Sales Dashboard Summary (Weekly)" PDFs and upserts the
-Grand Total row into the weekly_benchmark table in Supabase / SQLite.
+Parses BlakeWard "Sales Dashboard Summary (Weekly)" PDFs and upserts every
+region Total row + the Grand Total into the weekly_benchmark table.
 
-Usage — process a single file:
-    py scripts/load_benchmark.py "benchmark_pdfs/2026-04-06 BlakeWard Sales Dashboard Summary (Weekly).pdf"
+Regions stored: FL, KC, KS, MO, NC, NY, SC  +  TOTAL (Grand Total)
 
-Usage — process all PDFs in the benchmark_pdfs/ folder:
+Usage — process all PDFs in benchmark_pdfs/ folder (most common):
     py scripts/load_benchmark.py
 
-Only the "Sales Dashboard Summary" PDF is needed (the one with the Grand Total row).
-The other PDFs (Detail, SSS Detail, Bread, Loyalty) are not required for this script.
+Usage — process a specific file:
+    py scripts/load_benchmark.py "path/to/file.pdf"
+
+Only the "Sales Dashboard Summary" PDF is needed per week.
 """
 
 import os, sys, re
@@ -23,7 +24,7 @@ os.chdir(ROOT)
 
 BENCHMARK_DIR = os.path.join(ROOT, "benchmark_pdfs")
 
-# ── DB connection (same pattern as dashboard) ────────────────────────────────
+# ── DB connection ─────────────────────────────────────────────────────────────
 def get_conn():
     secrets_path = os.path.join(ROOT, ".streamlit", "secrets.toml")
     if os.path.exists(secrets_path):
@@ -49,17 +50,18 @@ def get_conn():
     return sqlite3.connect(db), "sqlite"
 
 
-# ── Create table ─────────────────────────────────────────────────────────────
+# ── Create / migrate table ────────────────────────────────────────────────────
 CREATE_SQLITE = """
 CREATE TABLE IF NOT EXISTS weekly_benchmark (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_ending     TEXT    NOT NULL UNIQUE,
-    operator        TEXT    NOT NULL DEFAULT 'BlakeWard',
+    week_ending     TEXT    NOT NULL,
+    region          TEXT    NOT NULL DEFAULT 'TOTAL',
+    region_name     TEXT,
     store_count     INTEGER,
-    net_sales       REAL,
-    sss_pct         REAL,
-    ss_ticket_pct   REAL,
-    avg_daily_bread REAL,
+    net_sales              REAL,
+    sss_pct                REAL,
+    ss_ticket_pct          REAL,
+    avg_daily_bread        REAL,
     online_sales_pct       REAL,
     third_party_sales_pct  REAL,
     non_loyalty_disc_pct   REAL,
@@ -70,20 +72,22 @@ CREATE TABLE IF NOT EXISTS weekly_benchmark (
     avg_ticket_size        REAL,
     fytd_avg_daily_bread   REAL,
     fytd_sss_pct           REAL,
-    fytd_ss_ticket_pct     REAL
+    fytd_ss_ticket_pct     REAL,
+    UNIQUE (week_ending, region)
 )
 """
 
 CREATE_PG = """
 CREATE TABLE IF NOT EXISTS weekly_benchmark (
     id              SERIAL  PRIMARY KEY,
-    week_ending     TEXT    NOT NULL UNIQUE,
-    operator        TEXT    NOT NULL DEFAULT 'BlakeWard',
+    week_ending     TEXT    NOT NULL,
+    region          TEXT    NOT NULL DEFAULT 'TOTAL',
+    region_name     TEXT,
     store_count     INTEGER,
-    net_sales       REAL,
-    sss_pct         REAL,
-    ss_ticket_pct   REAL,
-    avg_daily_bread REAL,
+    net_sales              REAL,
+    sss_pct                REAL,
+    ss_ticket_pct          REAL,
+    avg_daily_bread        REAL,
     online_sales_pct       REAL,
     third_party_sales_pct  REAL,
     non_loyalty_disc_pct   REAL,
@@ -94,20 +98,25 @@ CREATE TABLE IF NOT EXISTS weekly_benchmark (
     avg_ticket_size        REAL,
     fytd_avg_daily_bread   REAL,
     fytd_sss_pct           REAL,
-    fytd_ss_ticket_pct     REAL
+    fytd_ss_ticket_pct     REAL,
+    UNIQUE (week_ending, region)
 )
 """
 
 def create_table(conn, dialect):
     cur = conn.cursor()
-    cur.execute(CREATE_PG if dialect == "postgres" else CREATE_SQLITE)
+    if dialect == "postgres":
+        # Drop and recreate so schema is always current
+        cur.execute("DROP TABLE IF EXISTS weekly_benchmark")
+        cur.execute(CREATE_PG)
+    else:
+        cur.execute(CREATE_SQLITE)
     conn.commit()
     print("weekly_benchmark table ready")
 
 
 # ── Parsing helpers ───────────────────────────────────────────────────────────
 def parse_pct(s):
-    """'4.42%' → 4.42,  '-1.86%' → -1.86,  None/'' → None"""
     if not s:
         return None
     s = str(s).strip().replace('%', '').replace(',', '')
@@ -117,7 +126,6 @@ def parse_pct(s):
         return None
 
 def parse_dollar(s):
-    """'$3,393,630.12' → 3393630.12"""
     if not s:
         return None
     s = str(s).strip().replace('$', '').replace(',', '')
@@ -127,39 +135,59 @@ def parse_dollar(s):
         return None
 
 def parse_bread(s):
-    """'176.06 (+8.65)' → 176.06"""
     if not s:
         return None
     m = re.match(r'^([\d.]+)', str(s).strip())
     return float(m.group(1)) if m else None
 
+def parse_store_count(label):
+    m = re.search(r'\((\d+)\s+Stores?\)', str(label), re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
 def parse_week_ending(text):
-    """
-    Finds 'X/X/XX to X/X/XX' in the header and returns the end date as YYYY-MM-DD.
-    e.g. '4/6/26 to 4/12/26' → '2026-04-12'
-    """
-    m = re.search(r'(\d{1,2}/\d{1,2}/\d{2,4})\s+to\s+(\d{1,2}/\d{1,2}/\d{2,4})', text)
+    """'4/6/26 to 4/12/26' → '2026-04-12'"""
+    m = re.search(r'\d{1,2}/\d{1,2}/\d{2,4}\s+to\s+(\d{1,2}/\d{1,2}/\d{2,4})', text)
     if not m:
-        raise ValueError(f"Cannot find date range in PDF header. Text snippet:\n{text[:300]}")
-    end_str = m.group(2)   # e.g. '4/12/26'
+        raise ValueError(f"Cannot find date range in PDF. Text:\n{text[:300]}")
+    end_str = m.group(1)
     for fmt in ('%m/%d/%y', '%m/%d/%Y'):
         try:
-            d = datetime.strptime(end_str, fmt)
-            return d.strftime('%Y-%m-%d')
+            return datetime.strptime(end_str, fmt).strftime('%Y-%m-%d')
         except ValueError:
             continue
     raise ValueError(f"Cannot parse end date: {end_str}")
 
-def parse_store_count(label):
-    """'GRAND TOTAL (119 Stores)' → 119"""
-    m = re.search(r'\((\d+)\s+Stores?\)', str(label), re.IGNORECASE)
-    return int(m.group(1)) if m else None
+def row_to_record(row, region, region_name, week_ending):
+    """Convert a table row (columns 2–16) to a dict."""
+    return {
+        "week_ending":           week_ending,
+        "region":                region,
+        "region_name":           region_name,
+        "store_count":           parse_store_count(region_name),
+        "net_sales":             parse_dollar(row[2]),
+        "sss_pct":               parse_pct(row[3]),
+        "ss_ticket_pct":         parse_pct(row[4]),
+        "avg_daily_bread":       parse_bread(row[5]),
+        "online_sales_pct":      parse_pct(row[6]),
+        "third_party_sales_pct": parse_pct(row[7]),
+        "non_loyalty_disc_pct":  parse_pct(row[8]),
+        "loyalty_disc_pct":      parse_pct(row[9]),
+        "loyalty_sales_pct":     parse_pct(row[10]),
+        "fytd_net_sales":        parse_dollar(row[11]),
+        "weekly_auv":            parse_dollar(row[12]),
+        "avg_ticket_size":       parse_dollar(row[13]),
+        "fytd_avg_daily_bread":  parse_bread(row[14]),
+        "fytd_sss_pct":          parse_pct(row[15]),
+        "fytd_ss_ticket_pct":    parse_pct(row[16]) if len(row) > 16 else None,
+    }
 
 
-# ── Main PDF parser ───────────────────────────────────────────────────────────
+# ── PDF parser ────────────────────────────────────────────────────────────────
 def parse_summary_pdf(pdf_path):
     """
-    Returns a dict with week_ending + all Grand Total metrics, ready to insert.
+    Returns a list of dicts — one per region (FL, KC, KS, MO, NC, NY, SC) +
+    one for TOTAL (Grand Total).  Only Total/Grand-Total rows are captured;
+    sub-region detail rows are skipped.
     """
     try:
         import pdfplumber
@@ -169,9 +197,8 @@ def parse_summary_pdf(pdf_path):
         import pdfplumber
 
     with pdfplumber.open(pdf_path) as pdf:
-        if len(pdf.pages) == 0:
+        if not pdf.pages:
             raise ValueError("PDF has no pages")
-
         page = pdf.pages[0]
         full_text = page.extract_text() or ""
         week_ending = parse_week_ending(full_text)
@@ -179,108 +206,73 @@ def parse_summary_pdf(pdf_path):
         tables = page.extract_tables()
         if not tables:
             raise ValueError("No tables found in PDF")
+        table = max(tables, key=len)   # main data table
 
-        # The main table is the largest one
-        table = max(tables, key=len)
+    records = []
+    for row in table:
+        if not row or not any(row):
+            continue
 
-        # Find the Grand Total row
-        grand_row = None
-        for row in table:
-            if row and row[0] and 'GRAND TOTAL' in str(row[0]).upper():
-                grand_row = row
-                break
+        col0 = str(row[0] or "").strip()
+        col1 = str(row[1] or "").strip()
 
-        if grand_row is None:
-            raise ValueError("GRAND TOTAL row not found in table")
+        # Grand Total row: col0 = "GRAND TOTAL (119 Stores)"
+        if "GRAND TOTAL" in col0.upper():
+            rec = row_to_record(row, "TOTAL", col0, week_ending)
+            records.append(rec)
 
-    # Column layout (0-indexed) based on observed PDF structure:
-    # 0=Co-Op State, 1=Co-Op Name (Grand Total label), 2=Net Sales,
-    # 3=SSS%, 4=SS Ticket%, 5=Avg Bread, 6=Online%, 7=3rd Party%,
-    # 8=Non-Loyalty Disc%, 9=Loyalty Disc%, 10=Loyalty Sales%,
-    # 11=FYTD Net Sales, 12=Weekly AUV, 13=Avg Ticket Size,
-    # 14=FYTD Avg Bread, 15=FYTD SSS%, 16=FYTD SS Ticket%
+        # State Total rows: col1 = "FL Total (11 Stores)", etc.
+        elif re.match(r'^[A-Z]{2,}\s+Total', col1):
+            m = re.match(r'^([A-Z]{2,})', col1)
+            region = m.group(1) if m else col1[:5]
+            rec = row_to_record(row, region, col1, week_ending)
+            records.append(rec)
+        # else: sub-region detail row — skip
 
-    store_count = parse_store_count(grand_row[0])
+    if not records:
+        raise ValueError("No Total or Grand Total rows found in table")
 
-    result = {
-        "week_ending":            week_ending,
-        "store_count":            store_count,
-        "net_sales":              parse_dollar(grand_row[2]),
-        "sss_pct":                parse_pct(grand_row[3]),
-        "ss_ticket_pct":          parse_pct(grand_row[4]),
-        "avg_daily_bread":        parse_bread(grand_row[5]),
-        "online_sales_pct":       parse_pct(grand_row[6]),
-        "third_party_sales_pct":  parse_pct(grand_row[7]),
-        "non_loyalty_disc_pct":   parse_pct(grand_row[8]),
-        "loyalty_disc_pct":       parse_pct(grand_row[9]),
-        "loyalty_sales_pct":      parse_pct(grand_row[10]),
-        "fytd_net_sales":         parse_dollar(grand_row[11]),
-        "weekly_auv":             parse_dollar(grand_row[12]),
-        "avg_ticket_size":        parse_dollar(grand_row[13]),
-        "fytd_avg_daily_bread":   parse_bread(grand_row[14]),
-        "fytd_sss_pct":           parse_pct(grand_row[15]),
-        "fytd_ss_ticket_pct":     parse_pct(grand_row[16]),
-    }
-
-    print(f"  Parsed: week_ending={week_ending}, stores={store_count}, "
-          f"SSS={result['sss_pct']:+.2f}%, Ticket={result['ss_ticket_pct']:+.2f}%")
-    return result
+    print(f"  Week ending {week_ending}: {len(records)} rows parsed")
+    for r in records:
+        print(f"    {r['region']:6s}  {r['region_name'][:35]:35s}  "
+              f"SSS={r['sss_pct']:+.2f}%  Ticket={r['ss_ticket_pct']:+.2f}%")
+    return records
 
 
-# ── Upsert to DB ──────────────────────────────────────────────────────────────
-def upsert(conn, dialect, row):
+# ── Upsert ────────────────────────────────────────────────────────────────────
+COLS = [
+    "week_ending","region","region_name","store_count","net_sales",
+    "sss_pct","ss_ticket_pct","avg_daily_bread","online_sales_pct",
+    "third_party_sales_pct","non_loyalty_disc_pct","loyalty_disc_pct",
+    "loyalty_sales_pct","fytd_net_sales","weekly_auv","avg_ticket_size",
+    "fytd_avg_daily_bread","fytd_sss_pct","fytd_ss_ticket_pct",
+]
+
+def upsert_records(conn, dialect, records):
     p = "%s" if dialect == "postgres" else "?"
+    placeholders = ",".join([p] * len(COLS))
+    col_list = ",".join(COLS)
 
     if dialect == "postgres":
+        update_set = ",\n".join(
+            f"    {c} = EXCLUDED.{c}"
+            for c in COLS if c not in ("week_ending", "region")
+        )
         sql = f"""
-            INSERT INTO weekly_benchmark
-                (week_ending, store_count, net_sales, sss_pct, ss_ticket_pct,
-                 avg_daily_bread, online_sales_pct, third_party_sales_pct,
-                 non_loyalty_disc_pct, loyalty_disc_pct, loyalty_sales_pct,
-                 fytd_net_sales, weekly_auv, avg_ticket_size, fytd_avg_daily_bread,
-                 fytd_sss_pct, fytd_ss_ticket_pct)
-            VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})
-            ON CONFLICT (week_ending) DO UPDATE SET
-                store_count           = EXCLUDED.store_count,
-                net_sales             = EXCLUDED.net_sales,
-                sss_pct               = EXCLUDED.sss_pct,
-                ss_ticket_pct         = EXCLUDED.ss_ticket_pct,
-                avg_daily_bread       = EXCLUDED.avg_daily_bread,
-                online_sales_pct      = EXCLUDED.online_sales_pct,
-                third_party_sales_pct = EXCLUDED.third_party_sales_pct,
-                non_loyalty_disc_pct  = EXCLUDED.non_loyalty_disc_pct,
-                loyalty_disc_pct      = EXCLUDED.loyalty_disc_pct,
-                loyalty_sales_pct     = EXCLUDED.loyalty_sales_pct,
-                fytd_net_sales        = EXCLUDED.fytd_net_sales,
-                weekly_auv            = EXCLUDED.weekly_auv,
-                avg_ticket_size       = EXCLUDED.avg_ticket_size,
-                fytd_avg_daily_bread  = EXCLUDED.fytd_avg_daily_bread,
-                fytd_sss_pct          = EXCLUDED.fytd_sss_pct,
-                fytd_ss_ticket_pct    = EXCLUDED.fytd_ss_ticket_pct
+            INSERT INTO weekly_benchmark ({col_list})
+            VALUES ({placeholders})
+            ON CONFLICT (week_ending, region) DO UPDATE SET
+            {update_set}
         """
     else:
-        sql = f"""
-            INSERT OR REPLACE INTO weekly_benchmark
-                (week_ending, store_count, net_sales, sss_pct, ss_ticket_pct,
-                 avg_daily_bread, online_sales_pct, third_party_sales_pct,
-                 non_loyalty_disc_pct, loyalty_disc_pct, loyalty_sales_pct,
-                 fytd_net_sales, weekly_auv, avg_ticket_size, fytd_avg_daily_bread,
-                 fytd_sss_pct, fytd_ss_ticket_pct)
-            VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})
-        """
+        sql = f"INSERT OR REPLACE INTO weekly_benchmark ({col_list}) VALUES ({placeholders})"
 
-    vals = (
-        row["week_ending"], row["store_count"], row["net_sales"],
-        row["sss_pct"], row["ss_ticket_pct"], row["avg_daily_bread"],
-        row["online_sales_pct"], row["third_party_sales_pct"],
-        row["non_loyalty_disc_pct"], row["loyalty_disc_pct"], row["loyalty_sales_pct"],
-        row["fytd_net_sales"], row["weekly_auv"], row["avg_ticket_size"],
-        row["fytd_avg_daily_bread"], row["fytd_sss_pct"], row["fytd_ss_ticket_pct"],
-    )
-
-    conn.cursor().execute(sql, vals)
+    cur = conn.cursor()
+    for rec in records:
+        vals = tuple(rec[c] for c in COLS)
+        cur.execute(sql, vals)
     conn.commit()
-    print(f"  ✓ Upserted week_ending={row['week_ending']} into weekly_benchmark")
+    print(f"  ✓ {len(records)} rows upserted into weekly_benchmark")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -288,34 +280,29 @@ def main():
     conn, dialect = get_conn()
     create_table(conn, dialect)
 
-    # Collect PDFs to process
     if len(sys.argv) > 1:
-        # Explicit file(s) passed on command line
         pdf_files = sys.argv[1:]
     else:
-        # Scan benchmark_pdfs/ for Summary PDFs
         if not os.path.isdir(BENCHMARK_DIR):
             print(f"No benchmark_pdfs/ folder found at {BENCHMARK_DIR}")
             print("Create it and drop the BlakeWard Summary PDFs inside, then re-run.")
             return
-
         pdf_files = [
             os.path.join(BENCHMARK_DIR, f)
             for f in sorted(os.listdir(BENCHMARK_DIR))
             if f.lower().endswith(".pdf") and "summary" in f.lower()
         ]
-
         if not pdf_files:
             print("No Summary PDFs found in benchmark_pdfs/. "
-                  "Drop the 'Sales Dashboard Summary (Weekly).pdf' files there and re-run.")
+                  "Drop 'Sales Dashboard Summary (Weekly).pdf' files there and re-run.")
             return
 
     processed = 0
     for pdf_path in pdf_files:
         print(f"\nProcessing: {os.path.basename(pdf_path)}")
         try:
-            row = parse_summary_pdf(pdf_path)
-            upsert(conn, dialect, row)
+            records = parse_summary_pdf(pdf_path)
+            upsert_records(conn, dialect, records)
             processed += 1
         except Exception as e:
             print(f"  ⚠️  Error: {e}")
