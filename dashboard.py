@@ -43,6 +43,7 @@ st.set_page_config(
 
 RED     = "#EE3227"
 BLUE    = "#134A7C"
+GOLD    = "#D4AF37"
 WHITE   = "#FFFFFF"
 LIGHT   = "#F5F6F8"
 BORDER  = "#E0E3E8"
