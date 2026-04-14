@@ -2121,15 +2121,38 @@ with tab_bm:
         )
     else:
         # ── Separate Grand Total from regional rows ───────────────────────────
-        _bm_total = _bm_df[_bm_df["region"] == "TOTAL"].copy()
+        _bm_total = _bm_df[_bm_df["region"] == "TOTAL"].copy().sort_values("week_ending")
         _bm_reg   = _bm_df[_bm_df["region"] != "TOTAL"].copy()
 
-        # Latest week Grand Total row
-        _latest_total = _bm_total.sort_values("week_ending").iloc[-1]
-        _bm_week_str  = _latest_total["week_ending"].strftime("%-m/%-d/%y")
-        _store_cnt    = int(_latest_total["store_count"]) if _latest_total["store_count"] else "?"
+        # ── Resolve which BlakeWard week to show ─────────────────────────────
+        # Use the globally selected_week; fall back to nearest available BW week
+        _sel_ts   = pd.to_datetime(selected_week)
+        _bm_weeks = _bm_total["week_ending"].sort_values()
 
-        # ── Load JM Valley aggregate for comparison ───────────────────────────
+        _exact = _bm_total[_bm_total["week_ending"] == _sel_ts]
+        if not _exact.empty:
+            _bm_snap_row  = _exact.iloc[0]
+            _bm_week_note = ""
+        else:
+            # Find closest week in the benchmark data
+            _closest_ts  = _bm_weeks.iloc[(_bm_weeks - _sel_ts).abs().argsort().iloc[0]]
+            _bm_snap_row = _bm_total[_bm_total["week_ending"] == _closest_ts].iloc[0]
+            _bm_week_note = (f"  ·  No BlakeWard data for {selected_week}; "
+                             f"showing closest available: "
+                             f"{_closest_ts.strftime('%-m/%-d/%y')}")
+
+        _bm_week_str = _bm_snap_row["week_ending"].strftime("%-m/%-d/%y")
+        _store_cnt   = int(_bm_snap_row["store_count"]) if _bm_snap_row["store_count"] else "?"
+        _bm_snap_week = _bm_snap_row["week_ending"]
+
+        # ── JM Valley metrics — use already-filtered week_sales ───────────────
+        # week_sales is already scoped to selected_week & selected_market
+        _jm_sss = float(week_sales["sss_pct"].mean())           if not week_sales.empty else None
+        _jm_tkt = float(week_sales["same_store_txn_pct"].mean()) if not week_sales.empty else None
+        _jm_brd = float(week_sales["avg_daily_bread"].mean())    if not week_sales.empty else None
+        _jm_loy = float(week_sales["loyalty_sales_pct"].mean())  if not week_sales.empty else None
+
+        # ── JM Valley weekly trend (for trend charts) ─────────────────────────
         _jm_weekly = None
         try:
             _jm_conn2, _ = get_db_connection()
@@ -2138,8 +2161,7 @@ with tab_bm:
                        AVG(sss_pct)            AS sss_pct,
                        AVG(same_store_txn_pct) AS ss_ticket_pct,
                        AVG(avg_daily_bread)    AS avg_daily_bread,
-                       AVG(loyalty_sales_pct)  AS loyalty_sales_pct,
-                       SUM(net_sales)          AS net_sales
+                       AVG(loyalty_sales_pct)  AS loyalty_sales_pct
                 FROM weekly_sales
                 GROUP BY week_ending
                 ORDER BY week_ending
@@ -2149,12 +2171,6 @@ with tab_bm:
         except Exception:
             _jm_weekly = None
 
-        # Match or fall back to latest JM week
-        _jm_snap = None
-        if _jm_weekly is not None and not _jm_weekly.empty:
-            _match = _jm_weekly[_jm_weekly["week_ending"] == _latest_total["week_ending"]]
-            _jm_snap = _match.iloc[0] if not _match.empty else _jm_weekly.iloc[-1]
-
         # ── Header ────────────────────────────────────────────────────────────
         st.markdown(f"""
         <div style='background:{BLUE};padding:14px 20px;border-radius:8px;margin-bottom:18px;'>
@@ -2163,7 +2179,7 @@ with tab_bm:
             PEER BENCHMARK — JM VALLEY GROUP  vs.  BLAKEWARD ({_store_cnt} STORES)
           </span>
           <span style='color:rgba(255,255,255,0.65);font-size:12px;margin-left:16px;'>
-            BlakeWard latest data: week ending {_bm_week_str}
+            Week ending {_bm_week_str}{_bm_week_note}
           </span>
         </div>
         """, unsafe_allow_html=True)
@@ -2207,32 +2223,26 @@ with tab_bm:
         st.markdown('<div class="section-header">CURRENT WEEK — JM VALLEY vs. BLAKEWARD TOTAL</div>',
                     unsafe_allow_html=True)
 
-        _jm_sss = float(_jm_snap["sss_pct"])           if _jm_snap is not None else None
-        _jm_tkt = float(_jm_snap["ss_ticket_pct"])     if _jm_snap is not None else None
-        _jm_brd = float(_jm_snap["avg_daily_bread"])   if _jm_snap is not None else None
-        _jm_loy = float(_jm_snap["loyalty_sales_pct"]) if _jm_snap is not None else None
-
         _bc1, _bc2, _bc3, _bc4 = st.columns(4)
         with _bc1:
             st.markdown(_bm_card("SAME STORE SALES %", _jm_sss,
-                                 float(_latest_total["sss_pct"])), unsafe_allow_html=True)
+                                 float(_bm_snap_row["sss_pct"])), unsafe_allow_html=True)
         with _bc2:
             st.markdown(_bm_card("SS TICKET %", _jm_tkt,
-                                 float(_latest_total["ss_ticket_pct"])), unsafe_allow_html=True)
+                                 float(_bm_snap_row["ss_ticket_pct"])), unsafe_allow_html=True)
         with _bc3:
             st.markdown(_bm_card("AVG DAILY BREAD", _jm_brd,
-                                 float(_latest_total["avg_daily_bread"]),
+                                 float(_bm_snap_row["avg_daily_bread"]),
                                  fmt="{:.0f}"), unsafe_allow_html=True)
         with _bc4:
             st.markdown(_bm_card("LOYALTY SALES %", _jm_loy,
-                                 float(_latest_total["loyalty_sales_pct"])), unsafe_allow_html=True)
+                                 float(_bm_snap_row["loyalty_sales_pct"])), unsafe_allow_html=True)
 
         # ── Section 2: BlakeWard Regional Breakdown (latest week) ────────────
         st.markdown('<div class="section-header">BLAKEWARD REGIONAL BREAKDOWN — LATEST WEEK</div>',
                     unsafe_allow_html=True)
 
-        _latest_week = _latest_total["week_ending"]
-        _reg_latest  = _bm_reg[_bm_reg["week_ending"] == _latest_week].sort_values("sss_pct", ascending=False)
+        _reg_latest  = _bm_reg[_bm_reg["week_ending"] == _bm_snap_week].sort_values("sss_pct", ascending=False)
 
         _REGION_COLORS = {
             "FL": "#134A7C", "KC": "#EE3227", "KS": "#D4AF37",
@@ -2260,9 +2270,9 @@ with tab_bm:
                         annotation_position="top right",
                         annotation_font=dict(color=BLUE, size=11),
                     )
-                _fig_rb1.add_hline(y=float(_latest_total["sss_pct"]), line_color=MUTED,
+                _fig_rb1.add_hline(y=float(_bm_snap_row["sss_pct"]), line_color=MUTED,
                                    line_width=1.5, line_dash="dash",
-                                   annotation_text=f"BW Avg {float(_latest_total['sss_pct']):+.1f}%",
+                                   annotation_text=f"BW Avg {float(_bm_snap_row['sss_pct']):+.1f}%",
                                    annotation_position="bottom right",
                                    annotation_font=dict(color=MUTED, size=10))
                 _fig_rb1.update_layout(**PLOTLY_THEME, height=340,
@@ -2296,9 +2306,9 @@ with tab_bm:
                         annotation_position="top right",
                         annotation_font=dict(color=BLUE, size=11),
                     )
-                _fig_rb2.add_hline(y=float(_latest_total["ss_ticket_pct"]), line_color=MUTED,
+                _fig_rb2.add_hline(y=float(_bm_snap_row["ss_ticket_pct"]), line_color=MUTED,
                                    line_width=1.5, line_dash="dash",
-                                   annotation_text=f"BW Avg {float(_latest_total['ss_ticket_pct']):+.1f}%",
+                                   annotation_text=f"BW Avg {float(_bm_snap_row['ss_ticket_pct']):+.1f}%",
                                    annotation_position="bottom right",
                                    annotation_font=dict(color=MUTED, size=10))
                 _fig_rb2.update_layout(**PLOTLY_THEME, height=340,
