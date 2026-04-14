@@ -56,11 +56,26 @@ def get_conn():
 
 
 # ── Create weekly_weather table if absent ────────────────────────────────────
-CREATE_SQL = """
+CREATE_SQL_SQLITE = """
 CREATE TABLE IF NOT EXISTS weekly_weather (
-    id              INTEGER PRIMARY KEY {autoincrement},
-    week_ending     TEXT        NOT NULL,
-    market          TEXT        NOT NULL,
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_ending     TEXT    NOT NULL,
+    market          TEXT    NOT NULL,
+    avg_temp_f      REAL,
+    max_temp_f      REAL,
+    min_temp_f      REAL,
+    total_precip_in REAL,
+    rainy_days      INTEGER,
+    cold_days       INTEGER,
+    UNIQUE (week_ending, market)
+)
+"""
+
+CREATE_SQL_PG = """
+CREATE TABLE IF NOT EXISTS weekly_weather (
+    id              SERIAL  PRIMARY KEY,
+    week_ending     TEXT    NOT NULL,
+    market          TEXT    NOT NULL,
     avg_temp_f      REAL,
     max_temp_f      REAL,
     min_temp_f      REAL,
@@ -73,8 +88,7 @@ CREATE TABLE IF NOT EXISTS weekly_weather (
 
 def create_table(conn, dialect):
     cur = conn.cursor()
-    ai = "AUTOINCREMENT" if dialect == "sqlite" else ""
-    cur.execute(CREATE_SQL.format(autoincrement=ai))
+    cur.execute(CREATE_SQL_PG if dialect == "postgres" else CREATE_SQL_SQLITE)
     conn.commit()
     print("weekly_weather table ready")
 
