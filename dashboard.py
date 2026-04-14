@@ -1835,7 +1835,7 @@ with tab_wx:
             x=mkt_df['week_ending'], y=mkt_df['avg_temp_f'],
             name="Avg Temp (°F)",
             line=dict(color=GOLD, width=2.5, dash="dot"),
-            mode="lines+markers", marker_size=4,
+            mode="lines+markers", marker=dict(size=4, color=GOLD),
             yaxis="y2",
             hovertemplate="<b>%{x}</b><br>Temp: %{y:.0f}°F<extra></extra>",
         ))
