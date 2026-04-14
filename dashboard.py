@@ -578,8 +578,8 @@ def color_pct(val):
         return f'color: {GREEN}' if val > 0 else f'color: {DANGER}'
     return ''
 
-tab1, tab6, tab5, tab3, tab4, tab2 = st.tabs([
-    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL"
+tab1, tab6, tab5, tab3, tab4, tab2, tab_wx = st.tabs([
+    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL", "🌤️ WEATHER"
 ])
 
 # ── TAB 1: OVERVIEW ───────────────────────────────────────────────────────────
@@ -1723,3 +1723,319 @@ with tab6:
                     History: {trend_df['week_ending'].min()} to {trend_df['week_ending'].max()}
                 </div>
             """, unsafe_allow_html=True)
+
+# ── TAB 7: WEATHER IMPACT ─────────────────────────────────────────────────────
+with tab_wx:
+    # ── Load weather data (graceful fallback if table doesn't exist yet) ───
+    @st.cache_data(ttl=3600)
+    def load_weather_data():
+        try:
+            _conn, _dialect = get_db_connection()
+            wx = pd.read_sql("""
+                SELECT w.week_ending, w.market,
+                       w.avg_temp_f, w.max_temp_f, w.min_temp_f,
+                       w.total_precip_in, w.rainy_days, w.cold_days,
+                       m.sss_pct, m.same_store_ticket_pct, m.same_store_txn_pct,
+                       m.net_sales, m.store_count
+                FROM weekly_weather w
+                LEFT JOIN weekly_market_totals m
+                       ON w.week_ending = m.week_ending
+                      AND w.market = m.market
+                ORDER BY w.week_ending, w.market
+            """, _conn)
+            return wx if len(wx) > 0 else None
+        except Exception:
+            return None
+
+    wx_df = load_weather_data()
+
+    # ── No data yet — show setup instructions ──────────────────────────────
+    if wx_df is None or wx_df.empty:
+        st.markdown(f"""
+        <div style='background:#EFF4FA;border:1px solid #C5D8EE;border-radius:10px;
+                    padding:28px 32px;max-width:640px;margin:32px auto;font-family:Arial,sans-serif;'>
+            <div style='font-size:36px;margin-bottom:12px;'>🌤️</div>
+            <div style='font-size:18px;font-weight:700;color:{BLUE};margin-bottom:10px;'>
+                Weather data not yet loaded
+            </div>
+            <div style='font-size:14px;color:#444;line-height:1.7;margin-bottom:20px;'>
+                Run the one-time backfill script to pull historical weather (free, no API key needed).
+                This populates all {len([r for r in []])} weeks of history automatically.
+            </div>
+            <div style='background:#1e293b;color:#e2e8f0;border-radius:6px;
+                        padding:12px 16px;font-family:monospace;font-size:13px;'>
+                python scripts/fetch_weather.py
+            </div>
+            <div style='font-size:12px;color:#666;margin-top:14px;'>
+                After running, refresh the dashboard. Weather data updates automatically each week
+                alongside your normal report uploads.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
+
+    # ── Filters ─────────────────────────────────────────────────────────────
+    wx_markets = sorted(wx_df['market'].dropna().unique().tolist())
+    REGION_COLORS_WX = {
+        'Los Angeles':                 RED,
+        'Santa Barbara':               BLUE,
+        'Santa Barbara / San Luis Ob': GOLD,
+        'San Diego':                   '#6B21A8',
+    }
+
+    wf1, wf2, wf3 = st.columns([2, 2, 6])
+    with wf1:
+        wx_mkt = st.selectbox("Market (time series)", wx_markets, key="wx_mkt")
+    with wf2:
+        wx_metric = st.selectbox("SSS metric", ["SSS %", "SS Transactions %", "SS Avg Ticket %"],
+                                 key="wx_metric")
+    metric_col_map = {
+        "SSS %":               "sss_pct",
+        "SS Transactions %":   "same_store_txn_pct",
+        "SS Avg Ticket %":     "same_store_ticket_pct",
+    }
+    sss_col = metric_col_map[wx_metric]
+
+    st.markdown('<div class="section-header">WEEKLY TRENDS — SSS % vs. TEMPERATURE & RAIN</div>',
+                unsafe_allow_html=True)
+
+    # ── Chart 1: Dual-axis time series ────────────────────────────────────
+    mkt_df = wx_df[wx_df['market'] == wx_mkt].dropna(subset=[sss_col, 'avg_temp_f']).copy()
+    mkt_df = mkt_df.sort_values('week_ending')
+
+    if mkt_df.empty:
+        st.info(f"No weather+SSS data available for {wx_mkt}.")
+    else:
+        from plotly.subplots import make_subplots as _msp
+        fig_wx1 = _msp(specs=[[{"secondary_y": True}]])
+
+        # Precipitation as shaded bars (right axis)
+        precip_vals = mkt_df['total_precip_in'].fillna(0)
+        fig_wx1.add_trace(go.Bar(
+            x=mkt_df['week_ending'], y=precip_vals,
+            name="Precipitation (in)",
+            marker_color="rgba(100,194,255,0.30)", marker_line_width=0,
+            hovertemplate="<b>%{x}</b><br>Rain: %{y:.2f} in<extra></extra>",
+        ), secondary_y=True)
+
+        # SSS bars
+        bar_clrs = [GREEN if v >= 0 else DANGER for v in mkt_df[sss_col]]
+        fig_wx1.add_trace(go.Bar(
+            x=mkt_df['week_ending'], y=mkt_df[sss_col],
+            name=wx_metric,
+            marker_color=bar_clrs,
+            hovertemplate="<b>%{x}</b><br>" + wx_metric + ": %{y:+.1f}%<extra></extra>",
+        ), secondary_y=False)
+
+        # Temperature line
+        fig_wx1.add_trace(go.Scatter(
+            x=mkt_df['week_ending'], y=mkt_df['avg_temp_f'],
+            name="Avg Temp (°F)",
+            line=dict(color=GOLD, width=2, dash="dot"),
+            mode="lines+markers", marker_size=4,
+            hovertemplate="<b>%{x}</b><br>Temp: %{y:.0f}°F<extra></extra>",
+            yaxis="y3",
+        ), secondary_y=False)
+
+        fig_wx1.update_layout(
+            **PLOTLY_THEME,
+            height=400, barmode="overlay",
+            title=dict(text=f"{wx_mkt} — Weekly {wx_metric} vs. Temperature & Precipitation",
+                       font=dict(size=15, color=TEXT, family='Arial')),
+            yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
+                       zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+            yaxis2=dict(title="Precipitation (in)", overlaying="y", side="right",
+                        showgrid=False, range=[0, max(precip_vals.max() * 6, 2)],
+                        tickfont=dict(color="rgba(100,194,255,0.8)")),
+            legend=DEFAULT_LEGEND,
+            margin=dict(l=50, r=60, t=55, b=70),
+            xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
+        )
+        st.plotly_chart(fig_wx1, use_container_width=True,
+                        config={"scrollZoom": True, "responsive": True,
+                                "displayModeBar": False})
+
+    # ── Charts 2 & 3: Scatterplots ────────────────────────────────────────
+    st.markdown('<div class="section-header">CORRELATION — SSS % VS. WEATHER CONDITIONS</div>',
+                unsafe_allow_html=True)
+
+    scatter_df = wx_df.dropna(subset=[sss_col, 'avg_temp_f', 'total_precip_in']).copy()
+
+    sc1, sc2 = st.columns(2)
+
+    with sc1:
+        fig_sc1 = go.Figure()
+        for mkt in wx_markets:
+            sub = scatter_df[scatter_df['market'] == mkt]
+            if len(sub) < 3:
+                continue
+            clr = REGION_COLORS_WX.get(mkt, GRAY)
+            fig_sc1.add_trace(go.Scatter(
+                x=sub['avg_temp_f'], y=sub[sss_col], mode='markers',
+                name=mkt,
+                marker=dict(color=clr, size=7, opacity=0.7,
+                            line=dict(width=1, color='white')),
+                hovertemplate=f"<b>{mkt}</b><br>Temp: %{{x:.0f}}°F<br>{wx_metric}: %{{y:+.1f}}%<extra></extra>",
+            ))
+            import numpy as _np
+            m, b = _np.polyfit(sub['avg_temp_f'], sub[sss_col], 1)
+            xs = _np.linspace(sub['avg_temp_f'].min(), sub['avg_temp_f'].max(), 40)
+            fig_sc1.add_trace(go.Scatter(
+                x=xs, y=m * xs + b, mode='lines',
+                line=dict(color=clr, width=1.5, dash='dash'),
+                showlegend=False, hoverinfo='skip',
+            ))
+        fig_sc1.add_hline(y=0, line_color=MUTED, line_width=1, line_dash='dot')
+        fig_sc1.update_layout(
+            **PLOTLY_THEME, height=360,
+            title=dict(text=f"{wx_metric} vs. Temperature",
+                       font=dict(size=14, color=TEXT, family='Arial')),
+            xaxis=dict(title="Weekly Avg Temp (°F)", ticksuffix="°F", gridcolor=GRID_COLOR),
+            yaxis=dict(title=wx_metric, ticksuffix="%", gridcolor=GRID_COLOR),
+            legend=DEFAULT_LEGEND,
+            margin=dict(l=50, r=20, t=55, b=50),
+        )
+        st.plotly_chart(fig_sc1, use_container_width=True,
+                        config={"responsive": True, "displayModeBar": False})
+
+    with sc2:
+        fig_sc2 = go.Figure()
+        for mkt in wx_markets:
+            sub = scatter_df[scatter_df['market'] == mkt]
+            if len(sub) < 3:
+                continue
+            clr = REGION_COLORS_WX.get(mkt, GRAY)
+            fig_sc2.add_trace(go.Scatter(
+                x=sub['total_precip_in'], y=sub[sss_col], mode='markers',
+                name=mkt,
+                marker=dict(color=clr, size=7, opacity=0.7,
+                            line=dict(width=1, color='white')),
+                hovertemplate=f"<b>{mkt}</b><br>Rain: %{{x:.2f}} in<br>{wx_metric}: %{{y:+.1f}}%<extra></extra>",
+            ))
+            m, b = _np.polyfit(sub['total_precip_in'], sub[sss_col], 1)
+            xs = _np.linspace(0, sub['total_precip_in'].max() * 1.1, 40)
+            fig_sc2.add_trace(go.Scatter(
+                x=xs, y=m * xs + b, mode='lines',
+                line=dict(color=clr, width=1.5, dash='dash'),
+                showlegend=False, hoverinfo='skip',
+            ))
+        fig_sc2.add_hline(y=0, line_color=MUTED, line_width=1, line_dash='dot')
+        fig_sc2.update_layout(
+            **PLOTLY_THEME, height=360,
+            title=dict(text=f"{wx_metric} vs. Precipitation",
+                       font=dict(size=14, color=TEXT, family='Arial')),
+            xaxis=dict(title="Total Weekly Precipitation (in)", gridcolor=GRID_COLOR),
+            yaxis=dict(title=wx_metric, ticksuffix="%", gridcolor=GRID_COLOR),
+            legend=DEFAULT_LEGEND,
+            margin=dict(l=50, r=20, t=55, b=50),
+        )
+        st.plotly_chart(fig_sc2, use_container_width=True,
+                        config={"responsive": True, "displayModeBar": False})
+
+    # ── Chart 4: Heatmap ─────────────────────────────────────────────────
+    st.markdown('<div class="section-header">AVERAGE SSS % BY WEATHER BUCKET (ALL MARKETS)</div>',
+                unsafe_allow_html=True)
+
+    import numpy as _np2
+
+    hm_df = scatter_df.dropna(subset=[sss_col]).copy()
+
+    temp_bins   = [0,   58,   65,   72,   200]
+    temp_labels = ["Cold\n(<58°F)", "Cool\n(58–65°F)", "Warm\n(65–72°F)", "Hot\n(>72°F)"]
+    rain_bins   = [-0.01, 0.0,  0.25,  999]
+    rain_labels = ["Dry\n(0 in)", "Light Rain\n(0–0.25 in)", "Heavy Rain\n(>0.25 in)"]
+
+    grid   = _np2.full((len(rain_labels), len(temp_labels)), _np2.nan)
+    counts = _np2.zeros((len(rain_labels), len(temp_labels)), dtype=int)
+
+    for _, row in hm_df.iterrows():
+        ti = min(_np2.digitize(row['avg_temp_f'],      temp_bins) - 1, len(temp_labels) - 1)
+        ri = min(_np2.digitize(row['total_precip_in'], rain_bins) - 1, len(rain_labels) - 1)
+        v  = row[sss_col]
+        if _np2.isnan(grid[ri, ti]):
+            grid[ri, ti] = v
+        else:
+            grid[ri, ti] = (grid[ri, ti] * counts[ri, ti] + v) / (counts[ri, ti] + 1)
+        counts[ri, ti] += 1
+
+    grid = _np2.round(grid, 1)
+
+    annots = []
+    for ri in range(len(rain_labels)):
+        for ti in range(len(temp_labels)):
+            val = grid[ri, ti]
+            cnt = counts[ri, ti]
+            if _np2.isnan(val):
+                txt = "—"
+                fc  = "#888"
+            else:
+                sign = "+" if val >= 0 else ""
+                txt  = f"<b>{sign}{val:.1f}%</b><br><span style='font-size:10px'>n={cnt}</span>"
+                fc   = "white" if abs(val) > 1.5 else "#333"
+            annots.append(dict(x=ti, y=ri, text=txt, showarrow=False,
+                               font=dict(color=fc, size=13, family='Arial')))
+
+    fig_hm = go.Figure(go.Heatmap(
+        z=grid, x=temp_labels, y=rain_labels,
+        colorscale=[
+            [0.0, RED], [0.35, "#f97316"], [0.5, "#fef9c3"],
+            [0.65, "#86efac"], [1.0, GREEN],
+        ],
+        zmid=0, zmin=-4, zmax=4,
+        showscale=True,
+        colorbar=dict(title=dict(text=wx_metric, side="right"),
+                      ticksuffix="%", thickness=14, len=0.8),
+        hovertemplate="<b>%{y} / %{x}</b><br>Avg " + wx_metric + ": %{z:+.1f}%<extra></extra>",
+    ))
+    fig_hm.update_layout(
+        **PLOTLY_THEME, height=320,
+        title=dict(text=f"Avg {wx_metric} by Temp × Rain Bucket — All Markets",
+                   font=dict(size=15, color=TEXT, family='Arial')),
+        annotations=annots,
+        xaxis=dict(title="Temperature Range", side="bottom"),
+        yaxis=dict(title="Precipitation"),
+        margin=dict(l=140, r=100, t=55, b=50),
+    )
+    st.plotly_chart(fig_hm, use_container_width=True,
+                    config={"responsive": True, "displayModeBar": False})
+
+    # ── Correlation summary ───────────────────────────────────────────────
+    st.markdown('<div class="section-header">CORRELATION SUMMARY</div>', unsafe_allow_html=True)
+    corr_rows = []
+    for mkt in wx_markets:
+        sub = scatter_df[scatter_df['market'] == mkt].dropna(subset=[sss_col])
+        if len(sub) < 5:
+            continue
+        r_temp  = round(float(sub[sss_col].corr(sub['avg_temp_f'])), 2)
+        r_rain  = round(float(sub[sss_col].corr(sub['total_precip_in'])), 2)
+        n       = len(sub)
+        corr_rows.append({"Market": mkt, "Weeks": n,
+                           "Temp Correlation (r)": r_temp,
+                           "Rain Correlation (r)": r_rain})
+
+    if corr_rows:
+        import pandas as _pd2
+        corr_tbl = _pd2.DataFrame(corr_rows)
+
+        def _color_corr(val):
+            if not isinstance(val, float):
+                return ""
+            alpha = min(abs(val), 1.0)
+            if val > 0.1:
+                return f"background-color: rgba(22,163,74,{alpha * 0.4})"
+            elif val < -0.1:
+                return f"background-color: rgba(238,50,39,{alpha * 0.4})"
+            return ""
+
+        styled_corr = (
+            corr_tbl.style
+            .applymap(_color_corr, subset=["Temp Correlation (r)", "Rain Correlation (r)"])
+            .format({"Temp Correlation (r)": "{:+.2f}", "Rain Correlation (r)": "{:+.2f}"})
+        )
+        st.dataframe(styled_corr, use_container_width=True, hide_index=True)
+        st.markdown(f"""
+        <div style='font-family:Arial,sans-serif;font-size:12px;color:{MUTED};margin-top:6px;'>
+            <b>r</b> ranges from −1 to +1. Positive temp correlation = warmer weeks → higher SSS.
+            Negative rain correlation = more rain → lower SSS. Values near 0 = weak relationship.
+        </div>
+        """, unsafe_allow_html=True)
