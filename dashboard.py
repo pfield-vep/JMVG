@@ -1726,30 +1726,30 @@ with tab6:
 
 # ── TAB 7: WEATHER IMPACT ─────────────────────────────────────────────────────
 with tab_wx:
-    # ── Load weather data (graceful fallback if table doesn't exist yet) ───
-    @st.cache_data(ttl=3600)
-    def load_weather_data():
-        try:
-            _conn, _dialect = get_db_connection()
-            wx = pd.read_sql("""
-                SELECT w.week_ending, w.market,
-                       w.avg_temp_f, w.max_temp_f, w.min_temp_f,
-                       w.total_precip_in, w.rainy_days, w.cold_days,
-                       m.sss_pct, m.same_store_ticket_pct, m.same_store_txn_pct,
-                       m.net_sales, m.store_count
-                FROM weekly_weather w
-                LEFT JOIN weekly_market_totals m
-                       ON w.week_ending = m.week_ending
-                      AND w.market = m.market
-                ORDER BY w.week_ending, w.market
-            """, _conn)
-            return wx if len(wx) > 0 else None
-        except Exception:
-            return None
-
-    wx_df = load_weather_data()
+    # ── Load weather data ─────────────────────────────────────────────────
+    _wx_err = None
+    try:
+        _wx_conn, _wx_dialect = get_db_connection()
+        wx_df = pd.read_sql("""
+            SELECT w.week_ending, w.market,
+                   w.avg_temp_f, w.max_temp_f, w.min_temp_f,
+                   w.total_precip_in, w.rainy_days, w.cold_days,
+                   m.sss_pct, m.same_store_ticket_pct, m.same_store_txn_pct,
+                   m.net_sales, m.store_count
+            FROM weekly_weather w
+            LEFT JOIN weekly_market_totals m
+                   ON w.week_ending = m.week_ending
+                  AND w.market = m.market
+            ORDER BY w.week_ending, w.market
+        """, _wx_conn)
+    except Exception as _e:
+        wx_df = pd.DataFrame()
+        _wx_err = str(_e)
 
     # ── No data yet — show setup instructions ──────────────────────────────
+    if _wx_err:
+        st.error(f"Weather query error: {_wx_err}")
+        st.stop()
     if wx_df is None or wx_df.empty:
         st.markdown(f"""
         <div style='background:#EFF4FA;border:1px solid #C5D8EE;border-radius:10px;
