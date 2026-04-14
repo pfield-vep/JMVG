@@ -49,6 +49,7 @@ LIGHT   = "#F5F6F8"
 BORDER  = "#E0E3E8"
 TEXT    = "#1a1a2e"
 MUTED   = "#6B7280"
+GRAY    = "#9CA3AF"
 GREEN   = "#16a34a"
 DANGER  = "#dc2626"
 CHART_BG   = "#FFFFFF"
@@ -1800,7 +1801,7 @@ with tab_wx:
     st.markdown('<div class="section-header">WEEKLY TRENDS — SSS % vs. TEMPERATURE & RAIN</div>',
                 unsafe_allow_html=True)
 
-    # ── Chart 1: Dual-axis time series ────────────────────────────────────
+    # ── Charts 1a & 1b: Split time series (SSS vs Temp | SSS vs Rain) ────
     mkt_df = wx_df[wx_df['market'] == wx_mkt].dropna(subset=[sss_col, 'avg_temp_f']).copy()
     mkt_df = mkt_df.sort_values('week_ending')
 
@@ -1810,65 +1811,97 @@ with tab_wx:
         precip_vals = mkt_df['total_precip_in'].fillna(0)
         bar_clrs    = [GREEN if v >= 0 else DANGER for v in mkt_df[sss_col]]
 
-        fig_wx1 = go.Figure()
+        ts_col1, ts_col2 = st.columns(2)
 
-        # Precipitation bars — right axis (kept very compressed so temp line is legible)
-        fig_wx1.add_trace(go.Bar(
-            x=mkt_df['week_ending'], y=precip_vals,
-            name="Precipitation (in)",
-            marker_color="rgba(100,194,255,0.30)", marker_line_width=0,
-            yaxis="y2",
-            hovertemplate="<b>%{x}</b><br>Rain: %{y:.2f} in<extra></extra>",
-        ))
+        # ── Left: SSS % vs. Temperature ──────────────────────────────────
+        with ts_col1:
+            fig_temp = go.Figure()
+            fig_temp.add_trace(go.Bar(
+                x=mkt_df['week_ending'], y=mkt_df[sss_col],
+                name=wx_metric,
+                marker_color=bar_clrs,
+                yaxis="y",
+                hovertemplate="<b>%{x}</b><br>" + wx_metric + ": %{y:+.1f}%<extra></extra>",
+            ))
+            fig_temp.add_trace(go.Scatter(
+                x=mkt_df['week_ending'], y=mkt_df['avg_temp_f'],
+                name="Avg Temp (°F)",
+                line=dict(color=GOLD, width=2.5, dash="dot"),
+                mode="lines+markers", marker=dict(size=4, color=GOLD),
+                yaxis="y2",
+                hovertemplate="<b>%{x}</b><br>Temp: %{y:.0f}°F<extra></extra>",
+            ))
+            fig_temp.update_layout(
+                **PLOTLY_THEME,
+                height=380,
+                title=dict(text=f"{wx_mkt} — {wx_metric} vs. Temperature",
+                           font=dict(size=14, color=TEXT, family='Arial')),
+                yaxis2=dict(
+                    title="Avg Temp (°F)",
+                    overlaying="y", side="right", showgrid=False,
+                    range=[30, 110],
+                    tickfont=dict(color=GOLD, size=10),
+                ),
+                legend=DEFAULT_LEGEND,
+                margin=dict(l=50, r=70, t=55, b=70),
+            )
+            fig_temp.update_layout(
+                yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
+                           zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
+            )
+            st.plotly_chart(fig_temp, use_container_width=True,
+                            config={"scrollZoom": True, "responsive": True,
+                                    "displayModeBar": False})
 
-        # SSS bars — left axis
-        fig_wx1.add_trace(go.Bar(
-            x=mkt_df['week_ending'], y=mkt_df[sss_col],
-            name=wx_metric,
-            marker_color=bar_clrs,
-            yaxis="y",
-            hovertemplate="<b>%{x}</b><br>" + wx_metric + ": %{y:+.1f}%<extra></extra>",
-        ))
-
-        # Temperature line — right axis (shares y2 scale; precip range set wide so temp reads naturally)
-        fig_wx1.add_trace(go.Scatter(
-            x=mkt_df['week_ending'], y=mkt_df['avg_temp_f'],
-            name="Avg Temp (°F)",
-            line=dict(color=GOLD, width=2.5, dash="dot"),
-            mode="lines+markers", marker=dict(size=4, color=GOLD),
-            yaxis="y2",
-            hovertemplate="<b>%{x}</b><br>Temp: %{y:.0f}°F<extra></extra>",
-        ))
-
-        _p_max = float(precip_vals.max()) if precip_vals.max() > 0 else 1.0
-        fig_wx1.update_layout(
-            **PLOTLY_THEME,
-            height=400, barmode="overlay",
-            title=dict(text=f"{wx_mkt} — Weekly {wx_metric} vs. Temperature & Precipitation",
-                       font=dict(size=15, color=TEXT, family='Arial')),
-            yaxis2=dict(
-                title="Temp (°F) / Precip (in)",
-                overlaying="y", side="right", showgrid=False,
-                range=[0, 120],
-                tickfont=dict(color=GOLD, size=10),
-            ),
-            legend=DEFAULT_LEGEND,
-            margin=dict(l=50, r=70, t=55, b=70),
-        )
-        fig_wx1.update_layout(
-            yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
-                       zerolinecolor=MUTED, gridcolor=GRID_COLOR),
-            xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
-        )
-        st.plotly_chart(fig_wx1, use_container_width=True,
-                        config={"scrollZoom": True, "responsive": True,
-                                "displayModeBar": False})
+        # ── Right: SSS % vs. Precipitation ───────────────────────────────
+        with ts_col2:
+            fig_rain = go.Figure()
+            fig_rain.add_trace(go.Bar(
+                x=mkt_df['week_ending'], y=mkt_df[sss_col],
+                name=wx_metric,
+                marker_color=bar_clrs,
+                yaxis="y",
+                hovertemplate="<b>%{x}</b><br>" + wx_metric + ": %{y:+.1f}%<extra></extra>",
+            ))
+            fig_rain.add_trace(go.Bar(
+                x=mkt_df['week_ending'], y=precip_vals,
+                name="Precipitation (in)",
+                marker_color="rgba(100,194,255,0.45)", marker_line_width=0,
+                yaxis="y2",
+                hovertemplate="<b>%{x}</b><br>Rain: %{y:.2f} in<extra></extra>",
+            ))
+            _p_max = float(precip_vals.max()) if float(precip_vals.max()) > 0 else 1.0
+            fig_rain.update_layout(
+                **PLOTLY_THEME,
+                height=380, barmode="overlay",
+                title=dict(text=f"{wx_mkt} — {wx_metric} vs. Precipitation",
+                           font=dict(size=14, color=TEXT, family='Arial')),
+                yaxis2=dict(
+                    title="Precipitation (in)",
+                    overlaying="y", side="right", showgrid=False,
+                    range=[0, _p_max * 4],
+                    tickfont=dict(color="#66C2FF", size=10),
+                ),
+                legend=DEFAULT_LEGEND,
+                margin=dict(l=50, r=70, t=55, b=70),
+            )
+            fig_rain.update_layout(
+                yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
+                           zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
+            )
+            st.plotly_chart(fig_rain, use_container_width=True,
+                            config={"scrollZoom": True, "responsive": True,
+                                    "displayModeBar": False})
 
     # ── Charts 2 & 3: Scatterplots ────────────────────────────────────────
     st.markdown('<div class="section-header">CORRELATION — SSS % VS. WEATHER CONDITIONS</div>',
                 unsafe_allow_html=True)
 
     scatter_df = wx_df.dropna(subset=[sss_col, 'avg_temp_f', 'total_precip_in']).copy()
+
+    import numpy as _np
 
     sc1, sc2 = st.columns(2)
 
@@ -1886,7 +1919,6 @@ with tab_wx:
                             line=dict(width=1, color='white')),
                 hovertemplate=f"<b>{mkt}</b><br>Temp: %{{x:.0f}}°F<br>{wx_metric}: %{{y:+.1f}}%<extra></extra>",
             ))
-            import numpy as _np
             m, b = _np.polyfit(sub['avg_temp_f'], sub[sss_col], 1)
             xs = _np.linspace(sub['avg_temp_f'].min(), sub['avg_temp_f'].max(), 40)
             fig_sc1.add_trace(go.Scatter(
