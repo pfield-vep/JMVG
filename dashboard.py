@@ -580,8 +580,8 @@ def color_pct(val):
         return f'color: {GREEN}' if val > 0 else f'color: {DANGER}'
     return ''
 
-tab1, tab6, tab5, tab3, tab4, tab2, tab_wx = st.tabs([
-    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL", "🌤️ WEATHER"
+tab1, tab6, tab5, tab3, tab4, tab2, tab_wx, tab_bm = st.tabs([
+    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL", "🌤️ WEATHER", "📊 BENCHMARK"
 ])
 
 # ── TAB 1: OVERVIEW ───────────────────────────────────────────────────────────
@@ -2084,5 +2084,293 @@ with tab_wx:
         <div style='font-family:Arial,sans-serif;font-size:12px;color:{MUTED};margin-top:6px;'>
             <b>r</b> ranges from −1 to +1. Positive temp correlation = warmer weeks → higher SSS.
             Negative rain correlation = more rain → lower SSS. Values near 0 = weak relationship.
+        </div>
+        """, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB: BENCHMARK  —  JM Valley vs. BlakeWard peer operator
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_bm:
+
+    # ── Load benchmark data ───────────────────────────────────────────────────
+    _bm_err = None
+    _bm_df  = None
+    try:
+        import pandas as _bmpd
+        _bm_conn = get_db_connection()
+        _bm_raw  = _bm_conn.execute(
+            "SELECT * FROM weekly_benchmark ORDER BY week_ending"
+        ).fetchall()
+        _bm_cols = [
+            "id","week_ending","operator","store_count","net_sales",
+            "sss_pct","ss_ticket_pct","avg_daily_bread",
+            "online_sales_pct","third_party_sales_pct",
+            "non_loyalty_disc_pct","loyalty_disc_pct","loyalty_sales_pct",
+            "fytd_net_sales","weekly_auv","avg_ticket_size",
+            "fytd_avg_daily_bread","fytd_sss_pct","fytd_ss_ticket_pct",
+        ]
+        if _bm_raw:
+            _bm_df = _bmpd.DataFrame(_bm_raw, columns=_bm_cols)
+            _bm_df["week_ending"] = _bmpd.to_datetime(_bm_df["week_ending"])
+        _bm_conn.close()
+    except Exception as _bm_e:
+        _bm_err = str(_bm_e)
+
+    if _bm_err:
+        st.error(f"Benchmark data error: {_bm_err}")
+    elif _bm_df is None or _bm_df.empty:
+        st.info(
+            "**No benchmark data loaded yet.**\n\n"
+            "Drop the weekly *BlakeWard Sales Dashboard Summary* PDF into "
+            "the `benchmark_pdfs/` folder and run:\n\n"
+            "```\npy scripts/load_benchmark.py\n```"
+        )
+    else:
+        # ── Build JM Valley aggregate from weekly_sales ───────────────────────
+        # Use the same filtered dataset already in memory (jm_sales / display_df)
+        import pandas as _jmpd
+
+        _jm_agg_err = None
+        _jm_weekly  = None
+        try:
+            _jm_conn2 = get_db_connection()
+            _jm_raw2  = _jm_conn2.execute("""
+                SELECT week_ending,
+                       AVG(sss_pct)               AS sss_pct,
+                       AVG(same_store_txn_pct)     AS ss_ticket_pct,
+                       AVG(avg_daily_bread)        AS avg_daily_bread,
+                       AVG(online_pct)             AS online_sales_pct,
+                       AVG(third_party_pct)        AS third_party_sales_pct,
+                       AVG(loyalty_sales_pct)      AS loyalty_sales_pct,
+                       SUM(net_sales)              AS net_sales
+                FROM weekly_sales
+                GROUP BY week_ending
+                ORDER BY week_ending
+            """).fetchall()
+            _jm_conn2.close()
+            if _jm_raw2:
+                _jm_weekly = _jmpd.DataFrame(_jm_raw2, columns=[
+                    "week_ending","sss_pct","ss_ticket_pct","avg_daily_bread",
+                    "online_sales_pct","third_party_sales_pct","loyalty_sales_pct","net_sales"
+                ])
+                _jm_weekly["week_ending"] = _jmpd.to_datetime(_jm_weekly["week_ending"])
+        except Exception as _je:
+            _jm_agg_err = str(_je)
+
+        # ── Header ────────────────────────────────────────────────────────────
+        latest_bm = _bm_df.iloc[-1]
+        bm_week   = latest_bm["week_ending"].strftime("%-m/%-d/%y")
+        store_cnt = int(latest_bm["store_count"]) if latest_bm["store_count"] else "?"
+
+        st.markdown(f"""
+        <div style='background:{BLUE};padding:14px 20px;border-radius:8px;margin-bottom:18px;'>
+          <span style='color:white;font-family:Arial,sans-serif;font-size:15px;font-weight:700;
+                       letter-spacing:1px;'>
+            PEER BENCHMARK — JM VALLEY GROUP  vs.  BLAKEWARD ({store_cnt} STORES)
+          </span>
+          <span style='color:rgba(255,255,255,0.65);font-size:12px;margin-left:16px;'>
+            BlakeWard latest data: week ending {bm_week}
+          </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Section 1: Current-week snapshot cards ────────────────────────────
+        st.markdown('<div class="section-header">CURRENT WEEK SNAPSHOT</div>',
+                    unsafe_allow_html=True)
+
+        # Try to find matching JM week; fall back to latest JM week
+        _jm_snap = None
+        if _jm_weekly is not None and not _jm_weekly.empty:
+            _match = _jm_weekly[_jm_weekly["week_ending"] == latest_bm["week_ending"]]
+            _jm_snap = _match.iloc[0] if not _match.empty else _jm_weekly.iloc[-1]
+
+        def _bm_card(label, jm_val, bm_val, fmt="{:+.1f}%", neutral=False):
+            """Render a two-column comparison card."""
+            if jm_val is not None and bm_val is not None:
+                delta    = jm_val - bm_val
+                d_str    = f"{delta:+.1f}pp"
+                d_color  = GREEN if delta >= 0 else DANGER
+                d_arrow  = "▲" if delta >= 0 else "▼"
+            else:
+                d_str, d_color, d_arrow = "—", MUTED, ""
+
+            jm_str = fmt.format(jm_val)  if jm_val  is not None else "—"
+            bm_str = fmt.format(bm_val)  if bm_val  is not None else "—"
+
+            return f"""
+            <div style='background:#F8F9FB;border:1px solid {BORDER};border-radius:8px;
+                        padding:14px 16px;text-align:center;'>
+              <div style='font-size:11px;color:{MUTED};font-family:Arial;
+                          letter-spacing:.5px;margin-bottom:8px;'>{label}</div>
+              <div style='display:flex;justify-content:space-around;align-items:flex-end;'>
+                <div>
+                  <div style='font-size:10px;color:{BLUE};font-weight:700;
+                               font-family:Arial;margin-bottom:3px;'>JM VALLEY</div>
+                  <div style='font-size:22px;font-weight:700;color:{TEXT};
+                               font-family:Arial;'>{jm_str}</div>
+                </div>
+                <div style='font-size:20px;color:{MUTED};padding-bottom:4px;'>vs</div>
+                <div>
+                  <div style='font-size:10px;color:{MUTED};font-weight:700;
+                               font-family:Arial;margin-bottom:3px;'>BLAKEWARD</div>
+                  <div style='font-size:22px;font-weight:700;color:{MUTED};
+                               font-family:Arial;'>{bm_str}</div>
+                </div>
+              </div>
+              <div style='margin-top:8px;font-size:13px;font-weight:700;
+                           color:{d_color};font-family:Arial;'>
+                {d_arrow} {d_str} vs peer
+              </div>
+            </div>"""
+
+        _jm_sss    = float(_jm_snap["sss_pct"])          if _jm_snap is not None else None
+        _jm_tkt    = float(_jm_snap["ss_ticket_pct"])    if _jm_snap is not None else None
+        _jm_brd    = float(_jm_snap["avg_daily_bread"])  if _jm_snap is not None else None
+        _jm_loy    = float(_jm_snap["loyalty_sales_pct"])if _jm_snap is not None else None
+
+        _bc1, _bc2, _bc3, _bc4 = st.columns(4)
+        with _bc1:
+            st.markdown(_bm_card("SAME STORE SALES %",
+                                 _jm_sss, float(latest_bm["sss_pct"])), unsafe_allow_html=True)
+        with _bc2:
+            st.markdown(_bm_card("SS TICKET %",
+                                 _jm_tkt, float(latest_bm["ss_ticket_pct"])), unsafe_allow_html=True)
+        with _bc3:
+            st.markdown(_bm_card("AVG DAILY BREAD",
+                                 _jm_brd, float(latest_bm["avg_daily_bread"]),
+                                 fmt="{:.0f}"), unsafe_allow_html=True)
+        with _bc4:
+            st.markdown(_bm_card("LOYALTY SALES %",
+                                 _jm_loy, float(latest_bm["loyalty_sales_pct"])), unsafe_allow_html=True)
+
+        # ── Section 2: Trend charts (shown when ≥2 benchmark weeks available) ─
+        if len(_bm_df) >= 2 and _jm_weekly is not None and not _jm_weekly.empty:
+            st.markdown('<div class="section-header">TREND — SSS % OVER TIME</div>',
+                        unsafe_allow_html=True)
+
+            _tr1, _tr2 = st.columns(2)
+
+            # Merge on common weeks for a clean comparison
+            _merged = _bmpd.merge(
+                _jm_weekly[["week_ending","sss_pct","ss_ticket_pct","avg_daily_bread","loyalty_sales_pct"]],
+                _bm_df[["week_ending","sss_pct","ss_ticket_pct","avg_daily_bread","loyalty_sales_pct"]],
+                on="week_ending", suffixes=("_jm","_bm"), how="outer"
+            ).sort_values("week_ending")
+            _merged["week_str"] = _merged["week_ending"].dt.strftime("%-m/%-d")
+
+            with _tr1:
+                _fig_t1 = go.Figure()
+                _fig_t1.add_trace(go.Scatter(
+                    x=_merged["week_str"], y=_merged["sss_pct_jm"],
+                    name="JM Valley", mode="lines+markers",
+                    line=dict(color=BLUE, width=2.5),
+                    marker=dict(size=6, color=BLUE),
+                    hovertemplate="<b>JM Valley</b><br>Week: %{x}<br>SSS: %{y:+.1f}%<extra></extra>",
+                ))
+                _fig_t1.add_trace(go.Scatter(
+                    x=_merged["week_str"], y=_merged["sss_pct_bm"],
+                    name="BlakeWard", mode="lines+markers",
+                    line=dict(color=MUTED, width=2, dash="dash"),
+                    marker=dict(size=6, color=MUTED),
+                    hovertemplate="<b>BlakeWard</b><br>Week: %{x}<br>SSS: %{y:+.1f}%<extra></extra>",
+                ))
+                _fig_t1.add_hline(y=0, line_color=BORDER, line_width=1)
+                _fig_t1.update_layout(
+                    **PLOTLY_THEME, height=340,
+                    title=dict(text="Same Store Sales % — JM Valley vs. BlakeWard",
+                               font=dict(size=14, color=TEXT, family='Arial')),
+                    legend=DEFAULT_LEGEND,
+                    margin=dict(l=50, r=20, t=55, b=50),
+                )
+                _fig_t1.update_layout(
+                    yaxis=dict(ticksuffix="%", zeroline=True,
+                               zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                    xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
+                )
+                st.plotly_chart(_fig_t1, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
+            with _tr2:
+                _fig_t2 = go.Figure()
+                _fig_t2.add_trace(go.Scatter(
+                    x=_merged["week_str"], y=_merged["ss_ticket_pct_jm"],
+                    name="JM Valley", mode="lines+markers",
+                    line=dict(color=RED, width=2.5),
+                    marker=dict(size=6, color=RED),
+                    hovertemplate="<b>JM Valley</b><br>Week: %{x}<br>Ticket: %{y:+.1f}%<extra></extra>",
+                ))
+                _fig_t2.add_trace(go.Scatter(
+                    x=_merged["week_str"], y=_merged["ss_ticket_pct_bm"],
+                    name="BlakeWard", mode="lines+markers",
+                    line=dict(color=MUTED, width=2, dash="dash"),
+                    marker=dict(size=6, color=MUTED),
+                    hovertemplate="<b>BlakeWard</b><br>Week: %{x}<br>Ticket: %{y:+.1f}%<extra></extra>",
+                ))
+                _fig_t2.add_hline(y=0, line_color=BORDER, line_width=1)
+                _fig_t2.update_layout(
+                    **PLOTLY_THEME, height=340,
+                    title=dict(text="SS Ticket % — JM Valley vs. BlakeWard",
+                               font=dict(size=14, color=TEXT, family='Arial')),
+                    legend=DEFAULT_LEGEND,
+                    margin=dict(l=50, r=20, t=55, b=50),
+                )
+                _fig_t2.update_layout(
+                    yaxis=dict(ticksuffix="%", zeroline=True,
+                               zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                    xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
+                )
+                st.plotly_chart(_fig_t2, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
+        # ── Section 3: Full BlakeWard history table ───────────────────────────
+        st.markdown('<div class="section-header">BLAKEWARD WEEKLY HISTORY</div>',
+                    unsafe_allow_html=True)
+
+        _disp_bm = _bm_df[[
+            "week_ending","store_count","net_sales","sss_pct","ss_ticket_pct",
+            "avg_daily_bread","online_sales_pct","third_party_sales_pct",
+            "loyalty_sales_pct","weekly_auv","avg_ticket_size",
+        ]].copy()
+        _disp_bm = _disp_bm.sort_values("week_ending", ascending=False)
+        _disp_bm["week_ending"]  = _disp_bm["week_ending"].dt.strftime("%-m/%-d/%y")
+        _disp_bm["store_count"]  = _disp_bm["store_count"].astype("Int64")
+
+        _disp_bm.columns = [
+            "Week Ending","Stores","Net Sales","SSS %","Ticket %",
+            "Avg Bread","Online %","3rd Party %","Loyalty Sales %","Weekly AUV","Avg Ticket",
+        ]
+
+        def _fmt_bm(val):
+            if isinstance(val, float):
+                return ""
+            return ""
+
+        _styled_bm = (
+            _disp_bm.style
+            .format({
+                "Net Sales":       "${:,.0f}",
+                "SSS %":           "{:+.2f}%",
+                "Ticket %":        "{:+.2f}%",
+                "Avg Bread":       "{:.0f}",
+                "Online %":        "{:.1f}%",
+                "3rd Party %":     "{:.1f}%",
+                "Loyalty Sales %": "{:.1f}%",
+                "Weekly AUV":      "${:,.0f}",
+                "Avg Ticket":      "${:.2f}",
+            })
+            .map(lambda v: f"color:{GREEN};font-weight:700"
+                           if isinstance(v, float) and "%" in str(v) and v > 0
+                           else (f"color:{DANGER};font-weight:700"
+                                 if isinstance(v, float) and "%" in str(v) and v < 0
+                                 else ""),
+                 subset=["SSS %","Ticket %"])
+        )
+        st.dataframe(_styled_bm, use_container_width=True, hide_index=True)
+
+        st.markdown(f"""
+        <div style='font-family:Arial,sans-serif;font-size:11px;color:{MUTED};margin-top:8px;'>
+            Source: BlakeWard Sales Dashboard Summary (Weekly) — Grand Total ({store_cnt} stores across FL, KC, KS, MO, NC, NY, SC).
+            Add new weeks by dropping the Summary PDF into <code>benchmark_pdfs/</code> and running
+            <code>py scripts/load_benchmark.py</code>.
         </div>
         """, unsafe_allow_html=True)
