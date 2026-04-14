@@ -2076,7 +2076,7 @@ with tab_wx:
 
         styled_corr = (
             corr_tbl.style
-            .applymap(_color_corr, subset=["Temp Correlation (r)", "Rain Correlation (r)"])
+            .map(_color_corr, subset=["Temp Correlation (r)", "Rain Correlation (r)"])
             .format({"Temp Correlation (r)": "{:+.2f}", "Rain Correlation (r)": "{:+.2f}"})
         )
         st.dataframe(styled_corr, use_container_width=True, hide_index=True)
