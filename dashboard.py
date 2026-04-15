@@ -2878,7 +2878,7 @@ with tab_can:
 
     # ── Page header ────────────────────────────────────────────────────────────
     st.markdown(
-        f"<h3 style='font-family:Arial,sans-serif;color:{NAVY};margin-bottom:2px;'>"
+        f"<h3 style='font-family:Arial,sans-serif;color:{BLUE};margin-bottom:2px;'>"
         "🔬 Cannibalization Analysis</h3>",
         unsafe_allow_html=True,
     )
@@ -3077,7 +3077,7 @@ with tab_can:
                 _interpretation = "test stores outperformed control (no cannibalization)"
 
             st.markdown(
-                f"<div style='background:{NAVY};border-radius:10px;"
+                f"<div style='background:{BLUE};border-radius:10px;"
                 f"padding:20px 24px;text-align:center;margin-bottom:16px;'>"
                 f"<div style='font-family:Arial,sans-serif;font-size:12px;"
                 f"font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase;"
@@ -3133,7 +3133,7 @@ with tab_can:
                     name=f"{_cohort} {_period}",
                     x=[f"{_cohort}<br><b>{_period}</b>"],
                     y=[_v],
-                    marker_color=_bar_colors.get((_cohort, _period), NAVY),
+                    marker_color=_bar_colors.get((_cohort, _period), BLUE),
                     text=[f"{_v:+.1f}%"],
                     textposition="outside",
                     textfont=dict(size=12, family="Arial"),
@@ -3143,7 +3143,7 @@ with tab_can:
             _fig_bar.update_layout(
                 title=dict(
                     text=f"Before vs. After SSS%  ({_window_wks}-week window)",
-                    font=dict(family="Arial", size=13, color=NAVY),
+                    font=dict(family="Arial", size=13, color=BLUE),
                 ),
                 showlegend=False,
                 height=300,
@@ -3214,7 +3214,7 @@ with tab_can:
             _fig_trend.update_layout(
                 title=dict(
                     text="Week-by-Week SSS% Trend",
-                    font=dict(family="Arial", size=13, color=NAVY),
+                    font=dict(family="Arial", size=13, color=BLUE),
                 ),
                 height=300,
                 margin=dict(l=10, r=10, t=45, b=10),
@@ -3234,7 +3234,7 @@ with tab_can:
 
         # ── Store-level detail table ───────────────────────────────────────────
         st.markdown(
-            f"<h4 style='font-family:Arial,sans-serif;color:{NAVY};"
+            f"<h4 style='font-family:Arial,sans-serif;color:{BLUE};"
             f"margin:4px 0 8px;'>Store-Level Detail</h4>",
             unsafe_allow_html=True,
         )
