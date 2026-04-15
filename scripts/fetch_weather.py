@@ -45,15 +45,19 @@ def get_conn():
         with open(secrets_path, "rb") as f:
             cfg = tomllib.load(f)
         if "supabase" in cfg:
-            import psycopg2
-            s = cfg["supabase"]
-            conn = psycopg2.connect(
-                host=s["host"], port=int(s["port"]),
-                dbname=s["dbname"], user=s["user"],
-                password=s["password"], sslmode="require"
-            )
-            print("Connected to Supabase / Postgres")
-            return conn, "postgres"
+            try:
+                import psycopg2
+                s = cfg["supabase"]
+                conn = psycopg2.connect(
+                    host=s["host"], port=int(s["port"]),
+                    dbname=s["dbname"], user=s["user"],
+                    password=s["password"], sslmode="require"
+                )
+                print("Connected to Supabase / Postgres")
+                return conn, "postgres"
+            except Exception as e:
+                print(f"⚠️  Supabase connection failed ({e})")
+                print("   Falling back to local SQLite database…")
     import sqlite3
     db = os.path.join(ROOT, "jerseymikes.db")
     print(f"Connected to SQLite: {db}")
