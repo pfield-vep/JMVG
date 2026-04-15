@@ -1350,31 +1350,79 @@ with tab5:
     fig_map = go.Figure()
 
     if not is_dollar:
-        buckets = [
-            ("🔴  Below -2%",  map_data[map_data[col_name].notna() & (map_data[col_name] < -2)],   "#EE3227"),
-            ("🟡  -2% to 0%",  map_data[map_data[col_name].notna() & (map_data[col_name] >= -2) & (map_data[col_name] < 0)], "#D4AF37"),
-            ("🟢  Above 0%",   map_data[map_data[col_name].notna() & (map_data[col_name] >= 0)],   "#22c55e"),
-            ("⚪  No Data",    map_data[map_data[col_name].isna()],                                  "#AAAAAA"),
-        ]
-        for legend_label, subset, color in buckets:
-            if len(subset) == 0:
-                continue
+        # ── Per-store SSS gradient coloring ──────────────────────────────────
+        def _lerp_hex(c1, c2, t):
+            """Linear interpolate between two RGB tuples, return hex string."""
+            t = max(0.0, min(1.0, t))
+            return "#{:02x}{:02x}{:02x}".format(
+                int(c1[0] + (c2[0] - c1[0]) * t),
+                int(c1[1] + (c2[1] - c1[1]) * t),
+                int(c1[2] + (c2[2] - c1[2]) * t),
+            )
+
+        _POS_LIGHT = (134, 239, 172)   # light green  — SSS near 0
+        _POS_DARK  = ( 20,  83,  45)   # dark green   — highest positive SSS
+        _NEG_LIGHT = (252, 165, 165)   # light red/pink — SSS near 0
+        _NEG_DARK  = (127,  29,  29)   # dark red       — most negative SSS
+
+        _valid_vals = map_data[col_name].dropna()
+        _max_pos = _valid_vals[_valid_vals >= 0].max() if (_valid_vals >= 0).any() else 1.0
+        _min_neg = _valid_vals[_valid_vals <  0].min() if (_valid_vals <  0).any() else -1.0
+
+        def _sss_color(v):
+            if pd.isna(v):
+                return "#AAAAAA"
+            if v >= 0:
+                t = v / _max_pos if _max_pos > 0 else 0
+                return _lerp_hex(_POS_LIGHT, _POS_DARK, t)
+            else:
+                t = abs(v) / abs(_min_neg) if _min_neg < 0 else 0
+                return _lerp_hex(_NEG_LIGHT, _NEG_DARK, t)
+
+        map_data['_mkr_color'] = map_data[col_name].apply(_sss_color)
+
+        # No-data stores as separate trace so they don't interfere with colors
+        _nd = map_data[map_data[col_name].isna()]
+        _hd = map_data[map_data[col_name].notna()]
+
+        if len(_nd) > 0:
             fig_map.add_trace(go.Scattermapbox(
-                lat=subset['lat'], lon=subset['lon'],
+                lat=_nd['lat'], lon=_nd['lon'],
                 mode='markers+text',
-                name=legend_label,
-                marker=dict(size=20, color=color, opacity=0.92),
-                text=subset['store_name'],
+                name='⚪ No Data',
+                marker=dict(size=20, color='#AAAAAA', opacity=0.65),
+                text=_nd['store_name'],
                 textfont=dict(size=9, color="#1a1a2e"),
                 textposition="top center",
-                hovertext=subset['hover'],
+                hovertext=_nd['hover'],
                 hoverinfo='text',
             ))
+        if len(_hd) > 0:
+            fig_map.add_trace(go.Scattermapbox(
+                lat=_hd['lat'], lon=_hd['lon'],
+                mode='markers+text',
+                name='SSS %',
+                marker=dict(size=20, color=_hd['_mkr_color'].tolist(), opacity=0.92),
+                text=_hd['store_name'],
+                textfont=dict(size=9, color="#1a1a2e"),
+                textposition="top center",
+                hovertext=_hd['hover'],
+                hoverinfo='text',
+            ))
+
+        # Gradient legend bar
         st.markdown(f"""
-            <div style='margin-bottom:8px; font-family:Arial,sans-serif; font-size:16px; color:{MUTED};'>
-                <span style='background:#EE3227;color:white;padding:6px 16px;border-radius:12px;margin-right:10px;font-weight:700;font-size:16px;'>▼ Below -2%</span>
-                <span style='background:#D4AF37;color:white;padding:6px 16px;border-radius:12px;margin-right:10px;font-weight:700;font-size:16px;'>-2% to 0%</span>
-                <span style='background:#22c55e;color:white;padding:6px 16px;border-radius:12px;font-weight:700;font-size:16px;'>▲ Above 0%</span>
+            <div style='margin-bottom:8px; font-family:Arial,sans-serif; font-size:13px; color:{MUTED}; display:flex; align-items:center; gap:12px;'>
+                <span style='font-weight:700; color:{TEXT};'>SSS %</span>
+                <span style='color:{MUTED}; font-size:12px;'>Most negative</span>
+                <div style='width:180px; height:16px; border-radius:8px;
+                    background: linear-gradient(to right, #7f1d1d, #fca5a5);
+                    border:1px solid #e5e7eb;'></div>
+                <span style='color:{MUTED}; font-size:12px;'>0%</span>
+                <div style='width:180px; height:16px; border-radius:8px;
+                    background: linear-gradient(to right, #86efac, #14532d);
+                    border:1px solid #e5e7eb;'></div>
+                <span style='color:{MUTED}; font-size:12px;'>Highest positive</span>
             </div>
         """, unsafe_allow_html=True)
     else:
