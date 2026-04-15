@@ -43,7 +43,8 @@ def get_conn():
                 conn = psycopg2.connect(
                     host=s["host"], port=int(s["port"]),
                     dbname=s["dbname"], user=s["user"],
-                    password=s["password"], sslmode="require"
+                    password=s["password"], sslmode="require",
+                    options="-c statement_timeout=0"
                 )
                 print("Connected to Supabase / Postgres")
                 return conn, "postgres"
