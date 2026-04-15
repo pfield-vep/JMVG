@@ -678,112 +678,165 @@ with tab1:
         try: return f"{float(v):+.1f}"
         except: return "—"
 
-    # ── Derived metrics for new tile groups ──────────────────────────────────
+    # ── Derived metrics ───────────────────────────────────────────────────────
     _active_stores = week_sales['store_id'].nunique() if 'store_id' in week_sales.columns else len(week_sales)
     if _active_stores == 0: _active_stores = 1
-    _weekly_per_store = total_sales / _active_stores          # avg weekly net sales per store
-    _auv_ann          = _weekly_per_store * 52                # annualised AUV (×52 weeks)
-    _auv_m            = _auv_ann / 1_000_000                  # → $M
-    _ytd_per_store_m  = (fytd_sales / _active_stores) / 1_000_000  # YTD per store in $M
-    _net_m            = total_sales / 1_000_000
-    _fytd_m           = fytd_sales  / 1_000_000
+
+    # Weekly AUV — avg weekly sales per store, annualised ×52
+    _weekly_per_store = total_sales / _active_stores
+    _auv_m = (_weekly_per_store * 52) / 1_000_000
+
+    # YTD AUV — avg weekly YTD sales per store, annualised ×52
+    # Derive YTD week count from fiscal year start (JM FY: last Sunday on/before Sep 29)
+    _sw_dt   = pd.to_datetime(selected_week)
+    _fy_yr   = _sw_dt.year if _sw_dt.month >= 10 else _sw_dt.year - 1
+    _sep29   = pd.Timestamp(f'{_fy_yr}-09-29')
+    _fy_start = _sep29 - pd.Timedelta(days=(_sep29.dayofweek + 1) % 7)
+    _ytd_weeks = max(1, round((_sw_dt - _fy_start).days / 7))
+    _ytd_weekly_per_store = fytd_sales / _active_stores / _ytd_weeks
+    _ytd_auv_m = (_ytd_weekly_per_store * 52) / 1_000_000
+
+    _net_m  = total_sales / 1_000_000
+    _fytd_m = fytd_sales  / 1_000_000
     _avg_instore  = (100.0 - (avg_online or 0.0) - (avg_3p or 0.0)) if (avg_online is not None or avg_3p is not None) else None
     _fytd_instore = (100.0 - (fytd_online or 0.0) - (fytd_3p or 0.0)) if (fytd_online is not None or fytd_3p is not None) else None
 
-    # ── CSS: grouped KPI boxes ────────────────────────────────────────────────
-    st.markdown(f"""
-        <style>
-        .kpi-groups {{
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            margin-bottom: 20px;
-        }}
-        .kpi-group {{
-            border: 1.5px solid {BORDER};
-            border-radius: 10px;
-            padding: 10px 14px 14px;
-            background: #f9fafb;
-        }}
-        .kpi-group-title {{
-            font-family: Arial, sans-serif;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 1.8px;
-            text-transform: uppercase;
-            color: {BLUE};
-            margin-bottom: 10px;
-        }}
-        .kpi-group-tiles {{
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-        }}
-        .kpi-group-tiles .kpi-card {{
-            margin-bottom: 0;
-        }}
-        @media (max-width: 768px) {{
-            .kpi-group-tiles {{
-                grid-template-columns: repeat(2, 1fr);
-                gap: 8px;
-            }}
-        }}
-        </style>
-    """, unsafe_allow_html=True)
+    # ── Compact tile helper ───────────────────────────────────────────────────
+    def _tile(label, val, ytd="", clr=None):
+        vc = f'style="color:{clr}"' if clr else ''
+        return (
+            f'<div class="kg-tile">'
+            f'<div class="kg-lbl">{label}</div>'
+            f'<div class="kg-val" {vc}>{val}</div>'
+            f'<div class="kg-ytd">{ytd}</div>'
+            f'</div>'
+        )
 
-    _comp_tiles = (
-        kpi("Same Store Sales",    fmt_sss(avg_sss), week_suffix="%", ytd_val=fytd_sss, ytd_suffix="%", blue=True, sss_color=True) +
-        kpi("SS Transactions",     fmt_sss(avg_tkt), week_suffix="%", ytd_val=fytd_tkt, ytd_suffix="%", blue=True, sss_color=True) +
-        kpi("SS Avg Ticket",       fmt_sss(avg_txn), week_suffix="%", ytd_val=fytd_txn, ytd_suffix="%", blue=True, sss_color=True)
+    def _sss_clr(v_str):
+        try:
+            v = float(str(v_str).replace('%','').replace('+','').replace(',','').strip())
+            return GREEN if v >= 0 else DANGER
+        except:
+            return None
+
+    # ── CSS: three horizontal group boxes ─────────────────────────────────────
+    st.markdown(f"""<style>
+    .kpi-groups {{
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+    }}
+    .kpi-group {{
+        border: 1.5px solid {BLUE};
+        border-radius: 8px;
+        overflow: hidden;
+    }}
+    .kg-header {{
+        background: {BLUE};
+        color: #fff;
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        padding: 8px 10px;
+        text-align: center;
+    }}
+    .kg-tiles {{
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        background: {WHITE};
+        padding: 10px 6px 10px;
+    }}
+    .kg-tile {{
+        padding: 4px 10px;
+        display: flex;
+        flex-direction: column;
+    }}
+    .kg-tile + .kg-tile {{
+        border-left: 1px solid {BORDER};
+    }}
+    .kg-lbl {{
+        font-family: Arial, sans-serif;
+        font-size: 9px;
+        letter-spacing: 1.1px;
+        text-transform: uppercase;
+        color: {MUTED};
+        font-weight: 700;
+        border-bottom: 1.5px solid {BORDER};
+        padding-bottom: 4px;
+        margin-bottom: 5px;
+        white-space: nowrap;
+    }}
+    .kg-val {{
+        font-family: Arial, sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.1;
+        color: {TEXT};
+    }}
+    .kg-ytd {{
+        font-family: Arial, sans-serif;
+        font-size: 10px;
+        color: {MUTED};
+        margin-top: 3px;
+        min-height: 13px;
+    }}
+    @media (max-width: 768px) {{
+        .kpi-groups {{ grid-template-columns: 1fr; }}
+        .kg-val {{ font-size: 20px; }}
+    }}
+    </style>""", unsafe_allow_html=True)
+
+    # ── Build tile values ─────────────────────────────────────────────────────
+    def _f(v, ytd):
+        """Format a float SSS/ticket value: returns (week_str, ytd_str)."""
+        wstr = (f"{v:+.1f}%") if v is not None else "—"
+        ystr = (f"YTD {ytd:+.1f}%") if ytd is not None else ""
+        return wstr, ystr
+
+    _sss_v, _sss_y = _f(avg_sss, fytd_sss)
+    _sst_v, _sst_y = _f(avg_tkt, fytd_tkt)
+    _chk_v, _chk_y = _f(avg_txn, fytd_txn)
+
+    _comp_html = (
+        _tile("SSS",   _sss_v, _sss_y, _sss_clr(_sss_v)) +
+        _tile("SST",   _sst_v, _sst_y, _sss_clr(_sst_v)) +
+        _tile("Check", _chk_v, _chk_y, _sss_clr(_chk_v))
     )
-    _sales_tiles = (
-        kpi("Weekly AUV",
-            f"${_auv_m:.2f}M",
-            ytd_val=f"${_ytd_per_store_m:.2f}M") +
-        kpi("Loyalty Sales %",
-            f"{avg_loyalty:.1f}" if avg_loyalty is not None else "—",
-            week_suffix="%" if avg_loyalty is not None else "",
-            ytd_val=f"{fytd_loyalty:.1f}" if fytd_loyalty is not None else "—",
-            ytd_suffix="%" if fytd_loyalty is not None else "",
-            orange=True) +
-        kpi("Net Sales",
-            f"${_net_m:.2f}M",
-            ytd_val=f"${_fytd_m:.2f}M")
+    _sales_html = (
+        _tile("AUV",       f"${_auv_m:.2f}M",  f"YTD ${_ytd_auv_m:.2f}M") +
+        _tile("Net Sales", f"${_net_m:.2f}M",   f"YTD ${_fytd_m:.2f}M") +
+        _tile("Loyalty %",
+              f"{avg_loyalty:.1f}%" if avg_loyalty is not None else "—",
+              f"YTD {fytd_loyalty:.1f}%" if fytd_loyalty is not None else "")
     )
-    _mix_tiles = (
-        kpi("3rd Party",
-            f"{avg_3p:.1f}" if avg_3p is not None else "—",
-            week_suffix="%" if avg_3p is not None else "",
-            ytd_val=f"{fytd_3p:.1f}" if fytd_3p is not None else "—",
-            ytd_suffix="%" if fytd_3p is not None else "",
-            orange=True) +
-        kpi("Online",
-            f"{avg_online:.1f}" if avg_online is not None else "—",
-            week_suffix="%" if avg_online is not None else "",
-            ytd_val=f"{fytd_online:.1f}" if fytd_online is not None else "—",
-            ytd_suffix="%" if fytd_online is not None else "",
-            orange=True) +
-        kpi("In-Store",
-            f"{_avg_instore:.1f}" if _avg_instore is not None else "—",
-            week_suffix="%" if _avg_instore is not None else "",
-            ytd_val=f"{_fytd_instore:.1f}" if _fytd_instore is not None else "—",
-            ytd_suffix="%" if _fytd_instore is not None else "",
-            orange=True)
+    _mix_html = (
+        _tile("In-Store",
+              f"{_avg_instore:.1f}%"  if _avg_instore  is not None else "—",
+              f"YTD {_fytd_instore:.1f}%" if _fytd_instore is not None else "") +
+        _tile("Online",
+              f"{avg_online:.1f}%" if avg_online is not None else "—",
+              f"YTD {fytd_online:.1f}%" if fytd_online is not None else "") +
+        _tile("3PD",
+              f"{avg_3p:.1f}%" if avg_3p is not None else "—",
+              f"YTD {fytd_3p:.1f}%" if fytd_3p is not None else "")
     )
 
     st.markdown(f"""
         <div class="kpi-groups">
             <div class="kpi-group">
-                <div class="kpi-group-title">Comp Metrics</div>
-                <div class="kpi-group-tiles">{_comp_tiles}</div>
+                <div class="kg-header">Comp Sales</div>
+                <div class="kg-tiles">{_comp_html}</div>
             </div>
             <div class="kpi-group">
-                <div class="kpi-group-title">Sales</div>
-                <div class="kpi-group-tiles">{_sales_tiles}</div>
+                <div class="kg-header">Sales</div>
+                <div class="kg-tiles">{_sales_html}</div>
             </div>
             <div class="kpi-group">
-                <div class="kpi-group-title">Sales Mix</div>
-                <div class="kpi-group-tiles">{_mix_tiles}</div>
+                <div class="kg-header">Sales Mix</div>
+                <div class="kg-tiles">{_mix_html}</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
