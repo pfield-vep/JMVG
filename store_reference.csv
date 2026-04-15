@@ -25,4 +25,6 @@ store_id,store_name,market,street_address,lat,lon,open_date,acquisition_date
 20091,SD3,San Diego,"32068 Temecula Parkway, Temecula CA 92592",33.4785,-117.0827,,2/28/26
 20171,SD2,San Diego,"26475 Ynez Road, Temecula CA 92591",33.5174,-117.1543,,2/28/26
 20177,SD1,San Diego,"29910 Murrieta Hot Springs Rd, Murrieta CA 92563",33.5636,-117.149,,2/28/26
-20291,SD7,San Diego,"
+20291,SD7,San Diego,"30680 Rancho California Rd, Temecula CA 92591",33.5363,-117.1308,,2/28/2026
+20292,SD6,San Diego,"1664 Main Street, Ramona CA 92065",33.0422,-116.8734,,2/28/2026
+20300,SD5,San Diego,"1497 East Valley Pkwy, Escondido CA 92027",33.1285,-117.0456,,2/28/2026
