@@ -81,12 +81,29 @@ def main():
 
     # ── Add columns if missing ─────────────────────────────────────────────────
     if dialect == 'postgres':
-        # Use IF NOT EXISTS (Postgres 9.6+) — safe to run repeatedly, no timeout risk
-        for col, typ in [('open_date','TEXT'), ('acquisition_date','TEXT'),
-                         ('lat','REAL'), ('lon','REAL')]:
-            cur.execute(f"ALTER TABLE stores ADD COLUMN IF NOT EXISTS {col} {typ}")
+        # Supabase pooler blocks DDL (ALTER TABLE always times out).
+        # Check if columns exist by attempting a lightweight SELECT.
+        # If they're missing, print the SQL to run in the Supabase SQL editor and exit.
+        try:
+            cur.execute("SELECT open_date, acquisition_date, lat, lon FROM stores LIMIT 1")
+            cur.fetchall()
             conn.commit()
-            print(f"  Ensured column: {col}")
+            print("  Columns confirmed present — proceeding with UPDATE…")
+        except Exception:
+            conn.rollback()
+            print()
+            print("=" * 60)
+            print("ACTION REQUIRED — columns missing from Supabase stores table.")
+            print("Paste this SQL into the Supabase SQL Editor and click Run,")
+            print("then re-run this script:")
+            print()
+            print("  ALTER TABLE stores ADD COLUMN IF NOT EXISTS open_date TEXT;")
+            print("  ALTER TABLE stores ADD COLUMN IF NOT EXISTS acquisition_date TEXT;")
+            print("  ALTER TABLE stores ADD COLUMN IF NOT EXISTS lat REAL;")
+            print("  ALTER TABLE stores ADD COLUMN IF NOT EXISTS lon REAL;")
+            print("=" * 60)
+            conn.close()
+            return
     else:
         existing = [r[1] for r in cur.execute("PRAGMA table_info(stores)").fetchall()]
         for col, typ in [('open_date','TEXT'), ('acquisition_date','TEXT'),
