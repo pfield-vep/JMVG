@@ -682,19 +682,15 @@ with tab1:
     _active_stores = week_sales['store_id'].nunique() if 'store_id' in week_sales.columns else len(week_sales)
     if _active_stores == 0: _active_stores = 1
 
-    # Weekly AUV — avg weekly sales per store, annualised ×52
+    # Weekly AUV — current week avg per store × 52
     _weekly_per_store = total_sales / _active_stores
     _auv_m = (_weekly_per_store * 52) / 1_000_000
 
-    # YTD AUV — avg weekly YTD sales per store, annualised ×52
-    # Derive YTD week count from fiscal year start (JM FY: last Sunday on/before Sep 29)
-    _sw_dt   = pd.to_datetime(selected_week)
-    _fy_yr   = _sw_dt.year if _sw_dt.month >= 10 else _sw_dt.year - 1
-    _sep29   = pd.Timestamp(f'{_fy_yr}-09-29')
-    _fy_start = _sep29 - pd.Timedelta(days=(_sep29.dayofweek + 1) % 7)
-    _ytd_weeks = max(1, round((_sw_dt - _fy_start).days / 7))
-    _ytd_weekly_per_store = fytd_sales / _active_stores / _ytd_weeks
-    _ytd_auv_m = (_ytd_weekly_per_store * 52) / 1_000_000
+    # YTD AUV — use fytd_weekly_auv stored directly in the DB (from PDF parser).
+    # That column = FYTD net sales ÷ store-weeks (handles partial periods correctly),
+    # so annualising it with ×52 gives the right number (e.g. $31,131.92 × 52 = $1.62M).
+    _fytd_weekly_auv = mkt_val('fytd_weekly_auv')
+    _ytd_auv_m = (_fytd_weekly_auv * 52) / 1_000_000 if _fytd_weekly_auv is not None else None
 
     _net_m  = total_sales / 1_000_000
     _fytd_m = fytd_sales  / 1_000_000
@@ -806,7 +802,7 @@ with tab1:
         _tile("Check", _chk_v, _chk_y, _sss_clr(_chk_v))
     )
     _sales_html = (
-        _tile("AUV",       f"${_auv_m:.2f}M",  f"YTD ${_ytd_auv_m:.2f}M") +
+        _tile("AUV",       f"${_auv_m:.2f}M",  f"YTD ${_ytd_auv_m:.2f}M" if _ytd_auv_m is not None else "") +
         _tile("Net Sales", f"${_net_m:.2f}M",   f"YTD ${_fytd_m:.2f}M") +
         _tile("Loyalty %",
               f"{avg_loyalty:.1f}%" if avg_loyalty is not None else "—",
