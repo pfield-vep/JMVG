@@ -678,67 +678,115 @@ with tab1:
         try: return f"{float(v):+.1f}"
         except: return "—"
 
-    # Wrap all 8 KPI tiles in a CSS grid — desktop: 4 col, mobile: 2 col
+    # ── Derived metrics for new tile groups ──────────────────────────────────
+    _active_stores = week_sales['store_id'].nunique() if 'store_id' in week_sales.columns else len(week_sales)
+    if _active_stores == 0: _active_stores = 1
+    _weekly_per_store = total_sales / _active_stores          # avg weekly net sales per store
+    _auv_ann          = _weekly_per_store * 52                # annualised AUV (×52 weeks)
+    _auv_m            = _auv_ann / 1_000_000                  # → $M
+    _ytd_per_store_m  = (fytd_sales / _active_stores) / 1_000_000  # YTD per store in $M
+    _net_m            = total_sales / 1_000_000
+    _fytd_m           = fytd_sales  / 1_000_000
+    _avg_instore  = (100.0 - (avg_online or 0.0) - (avg_3p or 0.0)) if (avg_online is not None or avg_3p is not None) else None
+    _fytd_instore = (100.0 - (fytd_online or 0.0) - (fytd_3p or 0.0)) if (fytd_online is not None or fytd_3p is not None) else None
+
+    # ── CSS: grouped KPI boxes ────────────────────────────────────────────────
     st.markdown(f"""
         <style>
-        .kpi-grid {{
+        .kpi-groups {{
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 20px;
+        }}
+        .kpi-group {{
+            border: 1.5px solid {BORDER};
+            border-radius: 10px;
+            padding: 10px 14px 14px;
+            background: #f9fafb;
+        }}
+        .kpi-group-title {{
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            color: {BLUE};
+            margin-bottom: 10px;
+        }}
+        .kpi-group-tiles {{
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 12px;
-            margin-bottom: 16px;
+        }}
+        .kpi-group-tiles .kpi-card {{
+            margin-bottom: 0;
         }}
         @media (max-width: 768px) {{
-            .kpi-grid {{
-                grid-template-columns: repeat(2, 1fr) !important;
+            .kpi-group-tiles {{
+                grid-template-columns: repeat(2, 1fr);
                 gap: 8px;
             }}
         }}
         </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown(kpi("Same Store Sales",
-                        fmt_sss(avg_sss), week_suffix="%",
-                        ytd_val=fytd_sss, ytd_suffix="%",
-                        blue=True, sss_color=True),
-                    unsafe_allow_html=True)
-        st.markdown(kpi("Same Store Transactions",
-                        fmt_sss(avg_tkt), week_suffix="%",
-                        ytd_val=fytd_tkt, ytd_suffix="%",
-                        blue=True, sss_color=True),
-                    unsafe_allow_html=True)
-    with col2:
-        st.markdown(kpi("Same Store Avg Ticket",
-                        fmt_sss(avg_txn), week_suffix="%",
-                        ytd_val=fytd_txn, ytd_suffix="%",
-                        blue=True, sss_color=True),
-                    unsafe_allow_html=True)
-        st.markdown(kpi("Loyalty Sales %",
-                        f"{avg_loyalty:.1f}" if avg_loyalty is not None else "—", week_suffix="%" if avg_loyalty is not None else "",
-                        ytd_val=f"{fytd_loyalty:.1f}" if fytd_loyalty is not None else "—", ytd_suffix="%" if fytd_loyalty is not None else "",
-                        orange=True),
-                    unsafe_allow_html=True)
-    with col3:
-        st.markdown(kpi("Net Sales",
-                        f"{total_sales:,.0f}", week_prefix="$",
-                        ytd_val=f"{fytd_sales:,.0f}", ytd_prefix="$"),
-                    unsafe_allow_html=True)
-        st.markdown(kpi("Bread",
-                        f"{total_bread:,}",
-                        ytd_val=f"{int(fytd_bread):,}" if fytd_bread else "—"),
-                    unsafe_allow_html=True)
-    with col4:
-        st.markdown(kpi("Online Sales %",
-                        f"{avg_online:.1f}" if avg_online is not None else "—", week_suffix="%" if avg_online is not None else "",
-                        ytd_val=f"{fytd_online:.1f}" if fytd_online is not None else "—", ytd_suffix="%" if fytd_online is not None else "",
-                        orange=True),
-                    unsafe_allow_html=True)
-        st.markdown(kpi("3rd Party Sales %",
-                        f"{avg_3p:.1f}" if avg_3p is not None else "—", week_suffix="%" if avg_3p is not None else "",
-                        ytd_val=f"{fytd_3p:.1f}" if fytd_3p is not None else "—", ytd_suffix="%" if fytd_3p is not None else "",
-                        orange=True),
-                    unsafe_allow_html=True)
+    _comp_tiles = (
+        kpi("Same Store Sales",    fmt_sss(avg_sss), week_suffix="%", ytd_val=fytd_sss, ytd_suffix="%", blue=True, sss_color=True) +
+        kpi("SS Transactions",     fmt_sss(avg_tkt), week_suffix="%", ytd_val=fytd_tkt, ytd_suffix="%", blue=True, sss_color=True) +
+        kpi("SS Avg Ticket",       fmt_sss(avg_txn), week_suffix="%", ytd_val=fytd_txn, ytd_suffix="%", blue=True, sss_color=True)
+    )
+    _sales_tiles = (
+        kpi("Weekly AUV",
+            f"${_auv_m:.2f}M",
+            ytd_val=f"${_ytd_per_store_m:.2f}M") +
+        kpi("Loyalty Sales %",
+            f"{avg_loyalty:.1f}" if avg_loyalty is not None else "—",
+            week_suffix="%" if avg_loyalty is not None else "",
+            ytd_val=f"{fytd_loyalty:.1f}" if fytd_loyalty is not None else "—",
+            ytd_suffix="%" if fytd_loyalty is not None else "",
+            orange=True) +
+        kpi("Net Sales",
+            f"${_net_m:.2f}M",
+            ytd_val=f"${_fytd_m:.2f}M")
+    )
+    _mix_tiles = (
+        kpi("3rd Party",
+            f"{avg_3p:.1f}" if avg_3p is not None else "—",
+            week_suffix="%" if avg_3p is not None else "",
+            ytd_val=f"{fytd_3p:.1f}" if fytd_3p is not None else "—",
+            ytd_suffix="%" if fytd_3p is not None else "",
+            orange=True) +
+        kpi("Online",
+            f"{avg_online:.1f}" if avg_online is not None else "—",
+            week_suffix="%" if avg_online is not None else "",
+            ytd_val=f"{fytd_online:.1f}" if fytd_online is not None else "—",
+            ytd_suffix="%" if fytd_online is not None else "",
+            orange=True) +
+        kpi("In-Store",
+            f"{_avg_instore:.1f}" if _avg_instore is not None else "—",
+            week_suffix="%" if _avg_instore is not None else "",
+            ytd_val=f"{_fytd_instore:.1f}" if _fytd_instore is not None else "—",
+            ytd_suffix="%" if _fytd_instore is not None else "",
+            orange=True)
+    )
+
+    st.markdown(f"""
+        <div class="kpi-groups">
+            <div class="kpi-group">
+                <div class="kpi-group-title">Comp Metrics</div>
+                <div class="kpi-group-tiles">{_comp_tiles}</div>
+            </div>
+            <div class="kpi-group">
+                <div class="kpi-group-title">Sales</div>
+                <div class="kpi-group-tiles">{_sales_tiles}</div>
+            </div>
+            <div class="kpi-group">
+                <div class="kpi-group-title">Sales Mix</div>
+                <div class="kpi-group-tiles">{_mix_tiles}</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     # ── REGIONAL DATA PREP ────────────────────────────────────────────────────
     reg_raw = week_mkt[~week_mkt['market'].str.upper().str.match(r'^CA$|^CA\s|GRAND', na=False)].copy()
