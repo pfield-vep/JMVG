@@ -368,6 +368,48 @@ STORE_NAMES = {
     '20013': 'Buellton',
 }
 
+# Store open dates and acquisition dates (from store_reference.csv)
+# open_date   = date Pete's store first opened to the public
+# acquisition_date = date Pete acquired an already-operating store
+# effective_date (computed below) = whichever date is relevant for DiD analysis
+from datetime import date as _date
+STORE_DATES = {
+    # store_id: (open_date, acquisition_date)
+    '20156': (_date(2014, 11, 19), None),
+    '20218': (_date(2017, 12, 20), None),
+    '20267': (_date(2018,  6, 13), None),
+    '20294': (_date(2019,  7, 31), None),
+    '20026': (_date(2019, 11,  1), None),
+    '20311': (_date(2020,  2, 10), None),
+    '20352': (_date(2021, 11, 10), None),
+    '20363': (_date(2022,  3, 16), None),
+    '20273': (_date(2022,  6,  3), None),
+    '20366': (_date(2022,  8, 24), None),
+    '20011': (_date(2022, 10,  1), None),
+    '20048': (_date(2022, 10,  1), None),
+    '20245': (_date(2022, 10,  1), None),
+    '20255': (_date(2022, 10,  1), None),
+    '20381': (_date(2023,  3, 29), None),
+    '20116': (_date(2023,  6, 29), None),
+    '20388': (_date(2023,  7, 19), None),
+    '20075': (_date(2024,  8, 15), None),
+    '20335': (_date(2024,  8, 15), None),
+    '20360': (_date(2024,  8, 15), None),
+    '20424': (_date(2025,  5, 21), None),
+    '20013': (_date(2026,  2, 25), None),
+    '20071': (None, _date(2026,  2, 28)),
+    '20091': (None, _date(2026,  2, 28)),
+    '20171': (None, _date(2026,  2, 28)),
+    '20177': (None, _date(2026,  2, 28)),
+    '20291': (None, _date(2026,  2, 28)),
+    '20292': (None, _date(2026,  2, 28)),
+    '20300': (None, _date(2026,  2, 28)),
+}
+# Effective date = open_date if organic opening, else acquisition_date
+STORE_EFFECTIVE_DATE = {
+    sid: (od or acq) for sid, (od, acq) in STORE_DATES.items()
+}
+
 @st.cache_data(ttl=300)
 def load_data():
     conn, _ = get_db_connection()
