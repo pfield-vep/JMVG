@@ -219,10 +219,11 @@ st.markdown(f"""
     /* ── MOBILE RESPONSIVE ── */
     @media (max-width: 768px) {{
 
-        /* Filter bar: stack vertically */
+        /* Stack ALL columns full-width on mobile */
         [data-testid="stHorizontalBlock"] > div {{
-            min-width: 45% !important;
-            flex: 0 0 45% !important;
+            min-width: 100% !important;
+            flex: 0 0 100% !important;
+            width: 100% !important;
         }}
 
         /* KPI tiles: 2 across */
@@ -248,12 +249,19 @@ st.markdown(f"""
             letter-spacing: 0.3px !important;
         }}
 
-        /* Charts: allow scroll/zoom, no clipping */
+        /* Charts: full width, no clipping */
         [data-testid="stPlotlyChart"] {{
             overflow: visible !important;
+            width: 100% !important;
         }}
+        /* Touch: allow page scroll (pan-y) + pinch zoom on charts,
+           but NOT panning along x so bars don't drift sideways */
         .js-plotly-plot .plotly {{
             touch-action: pan-y pinch-zoom !important;
+        }}
+        /* Taller charts on mobile so bars aren't squished */
+        .js-plotly-plot {{
+            min-height: 280px;
         }}
 
         /* Section headers: smaller */
@@ -773,9 +781,21 @@ with tab1:
                        bgcolor='rgba(255,255,255,0.9)'),
             title=dict(text=title, font=dict(size=14, color=TEXT, family='Arial')),
             barmode='group')
-        fig.update_xaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
+        fig.update_xaxes(tickfont=dict(size=11, family='Arial', color=TEXT),
+                         fixedrange=True)   # x-axis locked — bars don't need panning
+        # Y-axis: bounded range (±30% padding beyond data) so pinch-zoom
+        # stays meaningful and double-tap always resets to a sensible view.
+        _vals = d[col].dropna()
+        if len(_vals):
+            _pad = max(3.0, _vals.abs().max() * 0.35)
+            _ylo = _vals.min() - _pad
+            _yhi = _vals.max() + _pad
+        else:
+            _ylo, _yhi = -15, 15
         fig.update_yaxes(tickfont=dict(size=11, family='Arial'),
-                         zeroline=True, zerolinecolor=BORDER, zerolinewidth=1.5)
+                         zeroline=True, zerolinecolor=BORDER, zerolinewidth=1.5,
+                         range=[_ylo, _yhi],
+                         fixedrange=False)  # allow pinch-zoom on y only
         return fig
 
     # ── Pull CA-level system totals for avg lines ────────────────────────────
@@ -805,19 +825,19 @@ with tab1:
             reg_raw, 'sss_pct',
             f"SS Sales % — Week ending {selected_week}", "SS Sales %",
             system_avg=sys_sss),
-            use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+            use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
     with rw2:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'same_store_ticket_pct',
             f"SS Transactions % — Week ending {selected_week}", "SS Transactions %",
             system_avg=sys_txn),
-            use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+            use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
     with rw3:
         st.plotly_chart(make_regional_vertical(
             reg_raw, 'same_store_txn_pct',
             f"SS Avg Ticket % — Week ending {selected_week}", "SS Avg Ticket %",
             system_avg=sys_ticket),
-            use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+            use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     # ── YTD: Sales | Transactions | Avg Ticket ───────────────────────────────
     st.markdown('<div class="section-header">SAME STORE METRICS BY REGION — YEAR TO DATE</div>', unsafe_allow_html=True)
@@ -893,7 +913,7 @@ with tab1:
         title=dict(text=f"Week ending {selected_week}", font=dict(size=15, color=TEXT, family='Arial')))
     fig_sw.update_xaxes(tickfont=dict(size=11, family='Arial'))
     fig_sw.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
-    st.plotly_chart(fig_sw, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fig_sw, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     # YTD — full width below
     fig_sf = go.Figure()
@@ -920,7 +940,7 @@ with tab1:
         title=dict(text=f"Year to Date (as of {selected_week})", font=dict(size=15, color=TEXT, family='Arial')))
     fig_sf.update_xaxes(tickfont=dict(size=11, family='Arial'))
     fig_sf.update_yaxes(tickfont=dict(size=11, family='Arial', color=TEXT))
-    st.plotly_chart(fig_sf, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fig_sf, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">NET SALES BY STORE</div>', unsafe_allow_html=True)
     # Shared legend for Net Sales
@@ -951,7 +971,7 @@ with tab1:
                                   font=dict(size=15, color=TEXT, family='Arial')),
                        xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
                        margin=dict(l=40, r=20, t=45, b=60))
-    st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     # YTD Net Sales — full width below
     ns2 = week_sales[['store_id', 'fytd_net_sales', 'co_op']].copy()
@@ -971,7 +991,7 @@ with tab1:
                                    font=dict(size=15, color=TEXT, family='Arial')),
                         xaxis_tickangle=-40, xaxis_tickfont=dict(size=10),
                         margin=dict(l=40, r=20, t=45, b=60))
-    st.plotly_chart(fig2b, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fig2b, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">AVERAGE SALES CHANNEL MIX</div>', unsafe_allow_html=True)
     don_a, don_b = st.columns(2)
@@ -995,7 +1015,7 @@ with tab1:
                            title=dict(text=f"Weekly Channel Mix — Week ending {selected_week}",
                                       font=dict(size=16, color=TEXT, family='Arial')),
                            legend=DEFAULT_LEGEND)
-        st.plotly_chart(fig3, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+        st.plotly_chart(fig3, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     with don_b:
         ov2 = week_sales['online_sales_pct'].mean()   # reuse weekly — no FYTD channel split stored
@@ -1024,7 +1044,7 @@ with tab1:
                             title=dict(text=f"YTD Channel Mix (as of {selected_week})",
                                        font=dict(size=16, color=TEXT, family='Arial')),
                             legend=DEFAULT_LEGEND)
-        st.plotly_chart(fig3b, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+        st.plotly_chart(fig3b, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
 # ── TAB 2: STORE DETAIL ───────────────────────────────────────────────────────
 with tab2:
@@ -1062,7 +1082,7 @@ color_pct, subset=['SSS %', 'Transactions %', 'FYTD SSS %'])
                 fn = px.line(ss, x='week_ending', y='net_sales', title='Net Sales Over Time', markers=True)
                 fn.update_traces(line_color=RED, marker_color=RED, marker_size=8, line_width=2.5)
                 fn.update_layout(**PLOTLY_THEME, height=300)
-                st.plotly_chart(fn, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+                st.plotly_chart(fn, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
             with col2:
                 ss2 = ss.dropna(subset=['sss_pct'])
                 fs = go.Figure(go.Bar(x=ss2['week_ending'], y=ss2['sss_pct'],
@@ -1070,7 +1090,7 @@ color_pct, subset=['SSS %', 'Transactions %', 'FYTD SSS %'])
                 fs.add_hline(y=0, line_color=BORDER, line_width=1.5)
                 fs.update_layout(**PLOTLY_THEME, height=300,
                                  title=dict(text="SSS % Over Time", font=dict(size=16, color=MUTED)))
-                st.plotly_chart(fs, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+                st.plotly_chart(fs, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
         else:
             st.info("Trend charts appear once multiple weeks of data are loaded.")
 
@@ -1168,7 +1188,7 @@ with tab3:
                       title=dict(text=f"SS Bread % — Week ending {selected_week}",
                                  font=dict(size=15, color=TEXT, family='Arial')))
     fb1.update_yaxes(tickfont=dict(size=11, family='Arial'))
-    st.plotly_chart(fb1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fb1, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     ssb2 = week_bread[week_bread['fytd_sss_bread_pct'].notna()].copy()
     ssb2['label'] = ssb2['store_id'] + ' · ' + ssb2['store_id'].map(STORE_NAMES).fillna('')
@@ -1194,7 +1214,7 @@ with tab3:
                       title=dict(text=f"SS Bread % YTD (as of {selected_week})",
                                  font=dict(size=15, color=TEXT, family='Arial')))
     fb2.update_yaxes(tickfont=dict(size=11, family='Arial'))
-    st.plotly_chart(fb2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fb2, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     # ── Avg Daily Bread stacked ──
     st.markdown('<div class="section-header">AVG DAILY BREAD BY STORE</div>', unsafe_allow_html=True)
@@ -1221,7 +1241,7 @@ with tab3:
                        title=dict(text=f"Avg Daily Bread — Week ending {selected_week}",
                                   font=dict(size=15, color=TEXT, family='Arial')))
     fbc1.update_yaxes(tickfont=dict(size=11, family='Arial'))
-    st.plotly_chart(fbc1, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fbc1, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     bc2d = week_bread[week_bread['fytd_avg_daily_bread'].notna()].copy()
     bc2d['label'] = bc2d['store_id'] + ' · ' + bc2d['store_id'].map(STORE_NAMES).fillna('')
@@ -1244,7 +1264,7 @@ with tab3:
                        title=dict(text=f"Avg Daily Bread YTD (as of {selected_week})",
                                   font=dict(size=15, color=TEXT, family='Arial')))
     fbc2.update_yaxes(tickfont=dict(size=11, family='Arial'))
-    st.plotly_chart(fbc2, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fbc2, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
 
     st.markdown('<div class="section-header">DISCOUNT ANALYSIS</div>', unsafe_allow_html=True)
@@ -1276,7 +1296,7 @@ with tab3:
                      margin=dict(l=40,r=120,t=45,b=60),
                      title=dict(text="Discount % by Store", font=dict(size=15, color=TEXT, family='Arial')),
                      xaxis_tickangle=-40)
-    st.plotly_chart(fd, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fd, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
 # ── TAB 4: LOYALTY ────────────────────────────────────────────────────────────
 with tab4:
@@ -1300,7 +1320,7 @@ with tab4:
                                 marker_color=RED, hovertemplate='<b>%{y}</b><br>Transactions: %{x:,}<extra></extra>'))
         flt.update_layout(**PLOTLY_THEME, height=500,
                           title=dict(text="Loyalty Transactions This Week", font=dict(size=16, color=MUTED)))
-        st.plotly_chart(flt, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+        st.plotly_chart(flt, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
     with col_b:
         pc = week_loyalty.copy()
         pc['label'] = pc['store_id'] + ' · ' + pc['store_id'].map(STORE_NAMES).fillna('')
@@ -1311,7 +1331,7 @@ with tab4:
         fpts.update_layout(**PLOTLY_THEME, height=500, barmode='group',
                            title=dict(text="Points Earned vs Redeemed", font=dict(size=16, color=MUTED)),
                            xaxis_tickangle=-40, xaxis_tickfont=dict(size=9))
-        st.plotly_chart(fpts, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+        st.plotly_chart(fpts, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
     st.markdown('<div class="section-header">LOYALTY SALES % VS NET SALES</div>', unsafe_allow_html=True)
     ls = week_sales[['store_id', 'net_sales', 'loyalty_sales_pct']].copy()
@@ -1321,7 +1341,7 @@ with tab4:
     fls.update_traces(marker_color=RED, textfont_size=9, textposition='top center')
     fls.update_layout(**PLOTLY_THEME, height=400,
                       title=dict(text="Loyalty Sales % vs Net Sales", font=dict(size=16, color=MUTED)))
-    st.plotly_chart(fls, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+    st.plotly_chart(fls, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
 # ── TAB 5: MAP ────────────────────────────────────────────────────────────────
 with tab5:
@@ -1805,7 +1825,7 @@ with tab6:
                                               font=dict(size=16, color=TEXT, family='Arial')))
             fig_roll.update_xaxes(tickangle=-40, tickfont=dict(size=10, family='Arial'))
             fig_roll.update_yaxes(ticksuffix='%', tickfont=dict(size=11, family='Arial'))
-            st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": True, "responsive": True, "displayModeBar": True, "modeBarButtonsToRemove": ["zoom2d","pan2d","select2d","lasso2d","zoomIn2d","zoomOut2d","toImage","sendDataToCloud","hoverClosestCartesian","hoverCompareCartesian","toggleSpikelines"], "modeBarButtonsToAdd": []})
+            st.plotly_chart(fig_roll, use_container_width=True, config={"scrollZoom": False, "responsive": True, "displayModeBar": False})
 
             avg_comp = int(plot_df['comp_stores'].mean())
             st.markdown(f"""
