@@ -622,8 +622,8 @@ def color_pct(val):
         return f'color: {GREEN}' if val > 0 else f'color: {DANGER}'
     return ''
 
-tab1, tab6, tab5, tab3, tab4, tab2, tab_wx, tab_bm = st.tabs([
-    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL", "🌤️ WEATHER", "📊 BENCHMARK"
+tab1, tab6, tab5, tab3, tab4, tab2, tab_wx, tab_bm, tab_can = st.tabs([
+    "OVERVIEW", "TRENDS", "MAP", "BREAD & OPS", "LOYALTY", "STORE DETAIL", "🌤️ WEATHER", "📊 BENCHMARK", "🔬 CANNIBALIZATION"
 ])
 
 # ── TAB 1: OVERVIEW ───────────────────────────────────────────────────────────
@@ -2816,3 +2816,492 @@ with tab_bm:
             <code>py scripts/load_benchmark.py</code>.
         </div>
         """, unsafe_allow_html=True)
+
+# ── TAB: CANNIBALIZATION ─────────────────────────────────────────────────────
+with tab_can:
+    import math as _can_math
+
+    # ── Haversine distance (miles) ─────────────────────────────────────────────
+    def _haversine_miles(lat1, lon1, lat2, lon2):
+        R = 3958.8
+        φ1, φ2 = _can_math.radians(lat1), _can_math.radians(lat2)
+        dφ = _can_math.radians(lat2 - lat1)
+        dλ = _can_math.radians(lon2 - lon1)
+        a = (_can_math.sin(dφ / 2) ** 2
+             + _can_math.cos(φ1) * _can_math.cos(φ2) * _can_math.sin(dλ / 2) ** 2)
+        return 2 * R * _can_math.asin(_can_math.sqrt(a))
+
+    # ── Market lookup from stores_df ───────────────────────────────────────────
+    _store_market = dict(
+        zip(
+            stores_df['store_id'].astype(str),
+            stores_df['co_op'].str.replace('\n', ' ').str.strip()
+        )
+    )
+
+    # ── Build candidate events ─────────────────────────────────────────────────
+    # Eligible if: has effective date, has coords, ≥4 post-event weeks in sales,
+    # and ≥1 same-market store existed before the event.
+    _all_weeks_sorted = sorted(sales_df['week_ending'].unique())
+
+    _candidate_events = []
+    for _sid, _eff in STORE_EFFECTIVE_DATE.items():
+        if _eff is None or _sid not in STORE_COORDS:
+            continue
+        _market = _store_market.get(_sid)
+        if not _market:
+            continue
+        _post_wks = [w for w in _all_weeks_sorted
+                     if pd.Timestamp(w).date() > _eff]
+        _pre_wks  = [w for w in _all_weeks_sorted
+                     if pd.Timestamp(w).date() <= _eff]
+        if len(_post_wks) < 4:
+            continue
+        # Must have at least one same-market store with pre-event sales
+        _mkt_peers = [s for s in _store_market
+                      if _store_market[s] == _market and s != _sid]
+        _pre_peer_sales = sales_df[
+            (sales_df['store_id'].astype(str).isin(_mkt_peers)) &
+            (sales_df['week_ending'].isin(_pre_wks))
+        ]
+        if _pre_peer_sales.empty:
+            continue
+        _candidate_events.append({
+            'store_id':       _sid,
+            'name':           STORE_NAMES.get(_sid, _sid),
+            'market':         _market,
+            'eff_date':       _eff,
+            'post_wks_count': len(_post_wks),
+        })
+
+    _candidate_events.sort(key=lambda x: x['eff_date'], reverse=True)
+
+    # ── Page header ────────────────────────────────────────────────────────────
+    st.markdown(
+        f"<h3 style='font-family:Arial,sans-serif;color:{NAVY};margin-bottom:2px;'>"
+        "🔬 Cannibalization Analysis</h3>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"<p style='font-family:Arial,sans-serif;font-size:13px;color:{MUTED};"
+        "margin-bottom:16px;'>"
+        "Difference-in-Differences (DiD): compares Y/Y SSS change in nearby stores "
+        "(test cohort) vs. same-market stores further away (control cohort), "
+        "before vs. after a new opening. "
+        "Negative DiD = cannibalization signal.</p>",
+        unsafe_allow_html=True,
+    )
+
+    if not _candidate_events:
+        st.warning(
+            "No eligible cannibalization events found — need stores with effective "
+            "dates and ≥4 weeks of post-event sales data plus at least one "
+            "same-market peer store."
+        )
+    else:
+        # ── Controls ───────────────────────────────────────────────────────────
+        cc1, cc2, cc3 = st.columns([2.2, 1.2, 1.0])
+        with cc1:
+            _event_labels = [
+                f"{e['name']}  ({e['eff_date'].strftime('%b %d, %Y')}) — {e['market']}"
+                for e in _candidate_events
+            ]
+            _ev_idx = st.selectbox(
+                "📍 New Store Opening / Acquisition Event",
+                range(len(_candidate_events)),
+                format_func=lambda i: _event_labels[i],
+                key="can_event",
+            )
+        with cc2:
+            _radius_mi = st.slider(
+                "📏 Proximity Radius (miles)",
+                min_value=1.0, max_value=10.0, value=3.0, step=0.5,
+                key="can_radius",
+            )
+        with cc3:
+            _window_wks = st.radio(
+                "📆 Analysis Window",
+                [4, 8, 13], index=1,
+                horizontal=True,
+                key="can_window",
+            )
+
+        _ev     = _candidate_events[_ev_idx]
+        _ev_sid = _ev['store_id']
+        _ev_dt  = _ev['eff_date']
+        _ev_mkt = _ev['market']
+        _ev_lat, _ev_lon, _ = STORE_COORDS[_ev_sid]
+
+        # ── Window slicing ─────────────────────────────────────────────────────
+        _pre_all  = [w for w in _all_weeks_sorted
+                     if pd.Timestamp(w).date() <= _ev_dt]
+        _post_all = [w for w in _all_weeks_sorted
+                     if pd.Timestamp(w).date() > _ev_dt]
+
+        _pre_win  = _pre_all[-_window_wks:]   if len(_pre_all)  >= _window_wks else _pre_all
+        _post_win = _post_all[:_window_wks]
+
+        # ── Cohort assignment ──────────────────────────────────────────────────
+        _test_ids, _ctrl_ids = [], []
+        for _s in _store_market:
+            if _store_market[_s] != _ev_mkt or _s == _ev_sid:
+                continue
+            if _s not in STORE_COORDS:
+                continue
+            # Only include stores that pre-dated this event
+            _s_eff = STORE_EFFECTIVE_DATE.get(_s)
+            if _s_eff and _s_eff >= _ev_dt:
+                continue
+            _slat, _slon, _ = STORE_COORDS[_s]
+            _dist = _haversine_miles(_ev_lat, _ev_lon, _slat, _slon)
+            if _dist <= _radius_mi:
+                _test_ids.append((_s, _dist))
+            else:
+                _ctrl_ids.append((_s, _dist))
+
+        _test_ids.sort(key=lambda x: x[1])
+        _ctrl_ids.sort(key=lambda x: x[1])
+
+        # ── DiD calculation ────────────────────────────────────────────────────
+        def _cohort_avg(ids, weeks):
+            sids = [s for s, _ in ids]
+            if not sids or not weeks:
+                return None
+            sub = sales_df[
+                (sales_df['store_id'].astype(str).isin(sids)) &
+                (sales_df['week_ending'].isin(weeks)) &
+                (sales_df['sss_pct'].notna())
+            ]
+            return sub['sss_pct'].mean() if not sub.empty else None
+
+        _tb = _cohort_avg(_test_ids, _pre_win)
+        _ta = _cohort_avg(_test_ids, _post_win)
+        _cb = _cohort_avg(_ctrl_ids, _pre_win)
+        _ca = _cohort_avg(_ctrl_ids, _post_win)
+
+        _test_delta = (_ta - _tb) if (_ta is not None and _tb is not None) else None
+        _ctrl_delta = (_ca - _cb) if (_ca is not None and _cb is not None) else None
+        _did        = (_test_delta - _ctrl_delta) if (
+            _test_delta is not None and _ctrl_delta is not None
+        ) else None
+
+        # ── Cohort badges ──────────────────────────────────────────────────────
+        st.markdown("---")
+        _bh1, _bh2 = st.columns(2)
+
+        def _store_pill_list(ids):
+            if not ids:
+                return "<em style='color:#9ca3af;'>none</em>"
+            return "  ".join(
+                f"<span style='background:rgba(0,0,0,0.07);border-radius:4px;"
+                f"padding:1px 6px;font-size:11px;'>"
+                f"{STORE_NAMES.get(s, s)} <span style='color:#9ca3af;'>({d:.1f}mi)</span>"
+                f"</span>"
+                for s, d in ids
+            )
+
+        with _bh1:
+            st.markdown(
+                f"<div style='background:#f0fdf4;border:1px solid #86efac;"
+                f"border-radius:8px;padding:12px 16px;'>"
+                f"<div style='font-family:Arial,sans-serif;font-size:11px;"
+                f"font-weight:700;color:#15803d;letter-spacing:1px;"
+                f"text-transform:uppercase;'>🎯 Test Cohort "
+                f"({len(_test_ids)} store{'s' if len(_test_ids) != 1 else ''})"
+                f"  ·  ≤{_radius_mi:.1f} mi from {_ev['name']}</div>"
+                f"<div style='font-family:Arial,sans-serif;margin-top:6px;'>"
+                f"{_store_pill_list(_test_ids)}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with _bh2:
+            st.markdown(
+                f"<div style='background:#eff6ff;border:1px solid #93c5fd;"
+                f"border-radius:8px;padding:12px 16px;'>"
+                f"<div style='font-family:Arial,sans-serif;font-size:11px;"
+                f"font-weight:700;color:#1d4ed8;letter-spacing:1px;"
+                f"text-transform:uppercase;'>🔵 Control Cohort "
+                f"({len(_ctrl_ids)} store{'s' if len(_ctrl_ids) != 1 else ''})"
+                f"  ·  >{_radius_mi:.1f} mi  ·  same market</div>"
+                f"<div style='font-family:Arial,sans-serif;margin-top:6px;'>"
+                f"{_store_pill_list(_ctrl_ids)}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
+
+        # ── Six-way KPI cards ──────────────────────────────────────────────────
+        def _fmt_pp(v, suffix="%"):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return "—"
+            return f"{v:+.1f}{suffix}"
+
+        def _kpi_color(v):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return MUTED
+            return GREEN if v > 0 else DANGER
+
+        _k1, _k2, _k3, _k4, _k5, _k6 = st.columns(6)
+        _kpi_base = ("font-family:Arial,sans-serif;text-align:center;"
+                     "padding:14px 4px;border-radius:8px;border:1px solid rgba(0,0,0,0.08);")
+
+        for _col, _lbl, _val, _bg, _fg in [
+            (_k1, "Test<br>Before",   _tb,         "#f0fdf4", "#15803d"),
+            (_k2, "Test<br>After",    _ta,         "#f0fdf4", "#15803d"),
+            (_k3, "Test Δ",           _test_delta, "#dcfce7", "#14532d"),
+            (_k4, "Control<br>Before", _cb,        "#eff6ff", "#1d4ed8"),
+            (_k5, "Control<br>After",  _ca,        "#eff6ff", "#1d4ed8"),
+            (_k6, "Control Δ",        _ctrl_delta, "#dbeafe", "#1e3a8a"),
+        ]:
+            _col.markdown(
+                f"<div style='{_kpi_base}background:{_bg};'>"
+                f"<div style='font-size:10px;font-weight:700;color:{_fg};"
+                f"text-transform:uppercase;letter-spacing:0.5px;'>{_lbl}</div>"
+                f"<div style='font-size:22px;font-weight:800;"
+                f"color:{_kpi_color(_val)};margin-top:4px;'>{_fmt_pp(_val)}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
+
+        # ── DiD headline ───────────────────────────────────────────────────────
+        if _did is not None:
+            _did_color = DANGER if _did < -1 else (GREEN if _did > 1 else MUTED)
+            if _did <= -3:
+                _interpretation = "strong cannibalization signal"
+            elif _did <= -1:
+                _interpretation = "moderate cannibalization signal"
+            elif _did < 1:
+                _interpretation = "no significant cannibalization detected"
+            else:
+                _interpretation = "test stores outperformed control (no cannibalization)"
+
+            st.markdown(
+                f"<div style='background:{NAVY};border-radius:10px;"
+                f"padding:20px 24px;text-align:center;margin-bottom:16px;'>"
+                f"<div style='font-family:Arial,sans-serif;font-size:12px;"
+                f"font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase;"
+                f"letter-spacing:1px;'>Difference-in-Differences (DiD)</div>"
+                f"<div style='font-family:Arial,sans-serif;font-size:48px;"
+                f"font-weight:800;color:{_did_color};margin:8px 0;'>"
+                f"{_did:+.1f}pp</div>"
+                f"<div style='font-family:Arial,sans-serif;font-size:13px;"
+                f"color:rgba(255,255,255,0.8);'>"
+                f"{_interpretation}&nbsp;·&nbsp;{_window_wks}-week window"
+                f"&nbsp;·&nbsp;{len(_test_ids)} test / {len(_ctrl_ids)} control stores"
+                f"</div>"
+                f"<div style='font-family:Arial,sans-serif;font-size:11px;"
+                f"color:rgba(255,255,255,0.45);margin-top:8px;'>"
+                f"DiD = (Test After − Test Before) − (Control After − Control Before)"
+                f" = ({_fmt_pp(_test_delta, 'pp')}) − ({_fmt_pp(_ctrl_delta, 'pp')})"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info(
+                "Insufficient data to compute DiD for this event. "
+                "Try adjusting the radius or selecting a different event."
+            )
+
+        # ── Charts ─────────────────────────────────────────────────────────────
+        _ch1, _ch2 = st.columns(2)
+
+        with _ch1:
+            # Before / After grouped bar chart
+            _bar_rows = [
+                ("Test",    "Before", _tb),
+                ("Test",    "After",  _ta),
+                ("Control", "Before", _cb),
+                ("Control", "After",  _ca),
+            ]
+            _bar_df = pd.DataFrame(_bar_rows, columns=["Cohort", "Period", "SSS%"]).dropna(subset=["SSS%"])
+
+            _bar_colors = {
+                ("Test",    "Before"): "#86efac",
+                ("Test",    "After"):  "#15803d",
+                ("Control", "Before"): "#93c5fd",
+                ("Control", "After"):  "#1d4ed8",
+            }
+
+            _fig_bar = go.Figure()
+            for _cohort, _period, *_ in _bar_rows:
+                _sub = _bar_df[(_bar_df["Cohort"] == _cohort) & (_bar_df["Period"] == _period)]
+                if _sub.empty:
+                    continue
+                _v = _sub["SSS%"].values[0]
+                _fig_bar.add_trace(go.Bar(
+                    name=f"{_cohort} {_period}",
+                    x=[f"{_cohort}<br><b>{_period}</b>"],
+                    y=[_v],
+                    marker_color=_bar_colors.get((_cohort, _period), NAVY),
+                    text=[f"{_v:+.1f}%"],
+                    textposition="outside",
+                    textfont=dict(size=12, family="Arial"),
+                    width=0.5,
+                ))
+            _fig_bar.add_hline(y=0, line_dash="dot", line_color="#9ca3af", line_width=1)
+            _fig_bar.update_layout(
+                title=dict(
+                    text=f"Before vs. After SSS%  ({_window_wks}-week window)",
+                    font=dict(family="Arial", size=13, color=NAVY),
+                ),
+                showlegend=False,
+                height=300,
+                margin=dict(l=10, r=10, t=45, b=10),
+                yaxis=dict(
+                    title="SSS %", ticksuffix="%",
+                    zeroline=True, zerolinecolor="#d1d5db",
+                    gridcolor="#f3f4f6",
+                ),
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                bargap=0.35,
+            )
+            st.plotly_chart(_fig_bar, use_container_width=True)
+
+        with _ch2:
+            # Week-by-week trend with event marker
+            _viz_weeks = sorted(set(_pre_win + _post_win))
+            _trend_rows = []
+            for _w in _viz_weeks:
+                for _label, _ids in [("Test", _test_ids), ("Control", _ctrl_ids)]:
+                    _sids = [s for s, _ in _ids]
+                    if not _sids:
+                        continue
+                    _sub = sales_df[
+                        (sales_df["store_id"].astype(str).isin(_sids)) &
+                        (sales_df["week_ending"] == _w) &
+                        (sales_df["sss_pct"].notna())
+                    ]
+                    if not _sub.empty:
+                        _trend_rows.append({
+                            "week_ending": _w,
+                            "Cohort": _label,
+                            "SSS%": _sub["sss_pct"].mean(),
+                        })
+
+            _fig_trend = go.Figure()
+            _trend_pal = {"Test": "#15803d", "Control": "#1d4ed8"}
+
+            if _trend_rows:
+                _trend_df = pd.DataFrame(_trend_rows)
+                for _cohort in ["Test", "Control"]:
+                    _sub = _trend_df[_trend_df["Cohort"] == _cohort].sort_values("week_ending")
+                    if _sub.empty:
+                        continue
+                    _fig_trend.add_trace(go.Scatter(
+                        x=_sub["week_ending"],
+                        y=_sub["SSS%"],
+                        name=_cohort,
+                        mode="lines+markers",
+                        line=dict(color=_trend_pal[_cohort], width=2.5),
+                        marker=dict(size=5, color=_trend_pal[_cohort]),
+                    ))
+
+            # Event line at first post-event week
+            if _post_win:
+                _fig_trend.add_vline(
+                    x=_post_win[0],
+                    line_dash="dash",
+                    line_color=RED,
+                    line_width=2,
+                    annotation_text=f"  {_ev['name']} opens",
+                    annotation_font=dict(color=RED, size=10, family="Arial"),
+                    annotation_position="top right",
+                )
+
+            _fig_trend.add_hline(y=0, line_dash="dot", line_color="#9ca3af", line_width=1)
+            _fig_trend.update_layout(
+                title=dict(
+                    text="Week-by-Week SSS% Trend",
+                    font=dict(family="Arial", size=13, color=NAVY),
+                ),
+                height=300,
+                margin=dict(l=10, r=10, t=45, b=10),
+                yaxis=dict(
+                    title="SSS %", ticksuffix="%",
+                    zeroline=False, gridcolor="#f3f4f6",
+                ),
+                xaxis=dict(title="Week Ending", tickangle=-30),
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1, font=dict(size=11),
+                ),
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+            )
+            st.plotly_chart(_fig_trend, use_container_width=True)
+
+        # ── Store-level detail table ───────────────────────────────────────────
+        st.markdown(
+            f"<h4 style='font-family:Arial,sans-serif;color:{NAVY};"
+            f"margin:4px 0 8px;'>Store-Level Detail</h4>",
+            unsafe_allow_html=True,
+        )
+
+        _detail_rows = []
+        for _label, _ids in [("Test", _test_ids), ("Control", _ctrl_ids)]:
+            for _s, _dist in _ids:
+                _s_bef = sales_df[
+                    (sales_df["store_id"].astype(str) == _s) &
+                    (sales_df["week_ending"].isin(_pre_win)) &
+                    (sales_df["sss_pct"].notna())
+                ]["sss_pct"].mean()
+                _s_aft = sales_df[
+                    (sales_df["store_id"].astype(str) == _s) &
+                    (sales_df["week_ending"].isin(_post_win)) &
+                    (sales_df["sss_pct"].notna())
+                ]["sss_pct"].mean()
+                _s_dlt = (_s_aft - _s_bef) if (
+                    not pd.isna(_s_bef) and not pd.isna(_s_aft)
+                ) else None
+                _detail_rows.append({
+                    "Cohort":      _label,
+                    "Store":       STORE_NAMES.get(_s, _s),
+                    "Dist (mi)":   round(_dist, 1),
+                    "Before SSS%": round(float(_s_bef), 1) if not pd.isna(_s_bef) else None,
+                    "After SSS%":  round(float(_s_aft), 1) if not pd.isna(_s_aft) else None,
+                    "Δ (pp)":      round(float(_s_dlt), 1) if _s_dlt is not None else None,
+                })
+
+        if _detail_rows:
+            _dtl_df = pd.DataFrame(_detail_rows)
+
+            def _style_did_delta(v):
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    return ""
+                return (f"color:{GREEN};font-weight:700" if v > 0
+                        else f"color:{DANGER};font-weight:700")
+
+            _styled_dtl = (
+                _dtl_df.style
+                .format({
+                    "Dist (mi)":   "{:.1f}",
+                    "Before SSS%": "{:+.1f}%",
+                    "After SSS%":  "{:+.1f}%",
+                    "Δ (pp)":      "{:+.1f}pp",
+                }, na_rep="—")
+                .map(_style_did_delta, subset=["Δ (pp)"])
+            )
+            st.dataframe(_styled_dtl, use_container_width=True, hide_index=True)
+
+        # ── Footnote ───────────────────────────────────────────────────────────
+        _n_pre  = len(_pre_win)
+        _n_post = len(_post_win)
+        st.markdown(
+            f"<div style='font-family:Arial,sans-serif;font-size:11px;"
+            f"color:{MUTED};margin-top:12px;'>"
+            f"<b>Event:</b> {_ev['name']} — {_ev_dt.strftime('%B %d, %Y')}"
+            f" &nbsp;|&nbsp; "
+            f"<b>Pre-window:</b> {_n_pre} week{'s' if _n_pre != 1 else ''} "
+            f"({_pre_win[0] if _pre_win else '—'} → {_pre_win[-1] if _pre_win else '—'})"
+            f" &nbsp;|&nbsp; "
+            f"<b>Post-window:</b> {_n_post} week{'s' if _n_post != 1 else ''} "
+            f"({_post_win[0] if _post_win else '—'} → {_post_win[-1] if _post_win else '—'})"
+            f"<br><b>Methodology:</b> DiD = (Test After − Test Before) − "
+            f"(Control After − Control Before). Y/Y SSS already adjusts for seasonality; "
+            f"DiD further removes market-wide trends. Negative DiD = test stores "
+            f"underperformed control after the opening → cannibalization signal."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
