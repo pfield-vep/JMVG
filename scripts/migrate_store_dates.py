@@ -80,13 +80,21 @@ def main():
 
     # ── Add columns if missing ─────────────────────────────────────────────────
     if dialect == 'postgres':
+        # Use information_schema to check existence — avoids failed-transaction state
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'stores'
+        """)
+        existing_pg = {r[0] for r in cur.fetchall()}
+        conn.commit()
         for col, typ in [('open_date','TEXT'), ('acquisition_date','TEXT'),
                          ('lat','REAL'), ('lon','REAL')]:
-            try:
+            if col not in existing_pg:
                 cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {typ}")
+                conn.commit()
                 print(f"  Added column: {col}")
-            except Exception:
-                pass  # already exists
+            else:
+                print(f"  Column already exists: {col}")
     else:
         existing = [r[1] for r in cur.execute("PRAGMA table_info(stores)").fetchall()]
         for col, typ in [('open_date','TEXT'), ('acquisition_date','TEXT'),
@@ -94,7 +102,7 @@ def main():
             if col not in existing:
                 cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {typ}")
                 print(f"  Added column: {col}")
-    conn.commit()
+        conn.commit()
 
     # ── Upsert ─────────────────────────────────────────────────────────────────
     p = '%s' if dialect == 'postgres' else '?'
