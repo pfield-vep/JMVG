@@ -2087,6 +2087,288 @@ with tab_wx:
         </div>
         """, unsafe_allow_html=True)
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 5 — Year-over-Year Weather Delta
+    # Compares this week's weather to the SAME week 364 days ago (52 weeks,
+    # preserving weekday alignment — exactly how SSS is calculated).
+    # A positive temp delta means it was WARMER this year → likely tailwind.
+    # A positive rain delta means MORE rain this year → likely headwind.
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="section-header">YEAR-OVER-YEAR WEATHER CHANGE vs. SSS %</div>',
+                unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style='font-family:Arial,sans-serif;font-size:12px;color:{MUTED};
+                margin-bottom:14px;line-height:1.6;'>
+        SSS % is itself a year-over-year metric — so the <em>change</em> in weather vs. last year
+        is more explanatory than absolute conditions.  A week that was 10°F colder than the same
+        week last year is a real headwind even if temperatures were "normal."
+        Each dot = one week × one market.
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Compute Y/Y delta via self-merge (364-day offset = 52 weeks, same weekday) ──
+    import numpy as _np_yy
+    _wx_yy = wx_df[["week_ending","market","avg_temp_f","total_precip_in",
+                     "rainy_days","cold_days",
+                     wx_metric.replace("SSS %","sss_pct")
+                              .replace("SS Transactions %","same_store_txn_pct")
+                              .replace("SS Avg Ticket %","same_store_ticket_pct")]].copy()
+
+    # Re-map cleanly
+    _metric_col = (
+        "sss_pct"               if wx_metric == "SSS %"            else
+        "same_store_txn_pct"    if wx_metric == "SS Transactions %" else
+        "same_store_ticket_pct"
+    )
+    _wx_yy = wx_df[["week_ending","market","avg_temp_f","total_precip_in",
+                     "rainy_days","cold_days", _metric_col]].copy()
+    _wx_yy["week_ending"] = _np_yy.array(wx_df["week_ending"])
+
+    # Prior-year frame: shift week_ending forward 364 days so it aligns with current year
+    _wx_prior = _wx_yy.copy()
+    _wx_prior["week_ending_cur"] = [
+        (w + "_364") for w in _wx_prior["week_ending"]
+    ]
+    # Proper date arithmetic
+    import pandas as _pdyy
+    _wx_yy["week_dt"]   = _pdyy.to_datetime(_wx_yy["week_ending"])
+    _wx_prior["week_dt"] = _pdyy.to_datetime(_wx_prior["week_ending"]) + _pdyy.DateOffset(days=364)
+
+    _delta_df = _pdyy.merge(
+        _wx_yy.rename(columns={
+            "avg_temp_f":      "temp_cur",
+            "total_precip_in": "precip_cur",
+            "rainy_days":      "rainy_cur",
+            "cold_days":       "cold_cur",
+            _metric_col:       "sss_cur",
+        }),
+        _wx_prior[["market","week_dt","avg_temp_f","total_precip_in","rainy_days","cold_days"]].rename(columns={
+            "avg_temp_f":      "temp_prior",
+            "total_precip_in": "precip_prior",
+            "rainy_days":      "rainy_prior",
+            "cold_days":       "cold_prior",
+        }),
+        on=["market","week_dt"],
+        how="inner",
+    )
+
+    _delta_df["temp_delta"]   = _delta_df["temp_cur"]   - _delta_df["temp_prior"]    # +ve = warmer this yr
+    _delta_df["precip_delta"] = _delta_df["precip_cur"] - _delta_df["precip_prior"]  # +ve = wetter this yr
+    _delta_df["rainy_delta"]  = _delta_df["rainy_cur"]  - _delta_df["rainy_prior"]   # +ve = more rain days
+    _delta_df["cold_delta"]   = _delta_df["cold_cur"]   - _delta_df["cold_prior"]    # +ve = more cold days
+    _delta_df = _delta_df.dropna(subset=["sss_cur","temp_delta"])
+    _delta_df["week_str"] = _delta_df["week_dt"].dt.strftime("%-m/%-d/%y")
+
+    if _delta_df.empty:
+        st.info("Not enough Y/Y overlap yet — need at least 2 years of weather data. "
+                "Re-run `py scripts/fetch_weather.py` to backfill the prior year.")
+    else:
+        # ── Chart A: Time series — Temp Delta Y/Y + SSS % ────────────────────
+        _yy_mkt_df = _delta_df[_delta_df["market"] == wx_mkt].sort_values("week_dt")
+
+        if not _yy_mkt_df.empty:
+            _fig_yy1 = go.Figure()
+
+            # SSS bars
+            _yy_bar_clrs = [GREEN if v >= 0 else DANGER for v in _yy_mkt_df["sss_cur"]]
+            _fig_yy1.add_trace(go.Bar(
+                x=_yy_mkt_df["week_str"], y=_yy_mkt_df["sss_cur"],
+                name=wx_metric, marker_color=_yy_bar_clrs,
+                yaxis="y",
+                hovertemplate="<b>%{x}</b><br>" + wx_metric + ": %{y:+.1f}%<extra></extra>",
+            ))
+            # Temp delta line
+            _fig_yy1.add_trace(go.Scatter(
+                x=_yy_mkt_df["week_str"], y=_yy_mkt_df["temp_delta"],
+                name="Temp Δ Y/Y (°F)", mode="lines+markers",
+                line=dict(color=GOLD, width=2.5, dash="dot"),
+                marker=dict(size=4, color=GOLD),
+                yaxis="y2",
+                hovertemplate="<b>%{x}</b><br>Temp Δ Y/Y: %{y:+.1f}°F<extra></extra>",
+            ))
+            # Zero lines
+            _fig_yy1.add_hline(y=0, line_color=MUTED, line_width=1, line_dash="dot")
+
+            _fig_yy1.update_layout(
+                **PLOTLY_THEME, height=360,
+                title=dict(
+                    text=f"{wx_mkt} — {wx_metric} vs. Temperature Change Y/Y",
+                    font=dict(size=14, color=TEXT, family='Arial')),
+                yaxis2=dict(title="Temp Δ vs. Last Year (°F)",
+                            overlaying="y", side="right", showgrid=False,
+                            tickfont=dict(color=GOLD, size=10)),
+                legend=DEFAULT_LEGEND,
+                margin=dict(l=50, r=70, t=55, b=70),
+            )
+            _fig_yy1.update_layout(
+                yaxis=dict(title=wx_metric, ticksuffix="%", zeroline=True,
+                           zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                xaxis=dict(tickangle=-40, tickfont=dict(size=10), gridcolor=GRID_COLOR),
+            )
+            st.plotly_chart(_fig_yy1, use_container_width=True,
+                            config={"scrollZoom": True, "responsive": True,
+                                    "displayModeBar": False})
+
+        # ── Charts B & C: Scatter — SSS vs Temp Δ | SSS vs Rain Δ ───────────
+        st.markdown('<div class="section-header">SCATTER — SSS % vs. WEATHER CHANGE Y/Y (ALL MARKETS)</div>',
+                    unsafe_allow_html=True)
+
+        _sy1, _sy2 = st.columns(2)
+
+        for _col, _x_col, _x_label, _x_suffix in [
+            (_sy1, "temp_delta",   "Temp Change Y/Y",        "°F"),
+            (_sy2, "rainy_delta",  "Rainy Days Added Y/Y",   " days"),
+        ]:
+            with _col:
+                _fig_sc = go.Figure()
+                for _mkt in wx_markets:
+                    _sub = _delta_df[_delta_df["market"] == _mkt]
+                    if len(_sub) < 3:
+                        continue
+                    _clr = REGION_COLORS_WX.get(_mkt, GRAY)
+                    _fig_sc.add_trace(go.Scatter(
+                        x=_sub[_x_col], y=_sub["sss_cur"],
+                        mode="markers", name=_mkt,
+                        marker=dict(color=_clr, size=7, opacity=0.75,
+                                    line=dict(width=1, color="white")),
+                        hovertemplate=(
+                            f"<b>{_mkt}</b><br>Week: %{{customdata}}<br>"
+                            f"{_x_label}: %{{x:+.1f}}{_x_suffix}<br>"
+                            f"{wx_metric}: %{{y:+.1f}}%<extra></extra>"
+                        ),
+                        customdata=_sub["week_str"],
+                    ))
+                    # Trendline
+                    try:
+                        _m, _b = _np_yy.polyfit(_sub[_x_col], _sub["sss_cur"], 1)
+                        _xs = _np_yy.linspace(_sub[_x_col].min(), _sub[_x_col].max(), 40)
+                        _fig_sc.add_trace(go.Scatter(
+                            x=_xs, y=_m * _xs + _b, mode="lines",
+                            line=dict(color=_clr, width=1.5, dash="dash"),
+                            showlegend=False, hoverinfo="skip",
+                        ))
+                    except Exception:
+                        pass
+
+                _fig_sc.add_hline(y=0, line_color=MUTED, line_width=1, line_dash="dot")
+                _fig_sc.add_vline(x=0, line_color=MUTED, line_width=1, line_dash="dot")
+                _fig_sc.update_layout(
+                    **PLOTLY_THEME, height=360,
+                    title=dict(text=f"{wx_metric} vs. {_x_label}",
+                               font=dict(size=14, color=TEXT, family='Arial')),
+                    legend=DEFAULT_LEGEND,
+                    margin=dict(l=50, r=20, t=55, b=50),
+                )
+                _fig_sc.update_layout(
+                    xaxis=dict(title=f"{_x_label} ({_x_suffix.strip()})",
+                               zeroline=True, zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                    yaxis=dict(title=wx_metric, ticksuffix="%",
+                               zeroline=True, zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                )
+                st.plotly_chart(_fig_sc, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
+        # ── Chart D: Cold days added Y/Y ──────────────────────────────────────
+        _sy3, _sy4 = st.columns(2)
+        with _sy3:
+            _fig_cold = go.Figure()
+            for _mkt in wx_markets:
+                _sub = _delta_df[_delta_df["market"] == _mkt]
+                if len(_sub) < 3:
+                    continue
+                _clr = REGION_COLORS_WX.get(_mkt, GRAY)
+                _fig_cold.add_trace(go.Scatter(
+                    x=_sub["cold_delta"], y=_sub["sss_cur"],
+                    mode="markers", name=_mkt,
+                    marker=dict(color=_clr, size=7, opacity=0.75,
+                                line=dict(width=1, color="white")),
+                    hovertemplate=(
+                        f"<b>{_mkt}</b><br>Week: %{{customdata}}<br>"
+                        f"Cold Days Added: %{{x:+d}}<br>"
+                        f"{wx_metric}: %{{y:+.1f}}%<extra></extra>"
+                    ),
+                    customdata=_sub["week_str"],
+                ))
+                try:
+                    _m, _b = _np_yy.polyfit(_sub["cold_delta"], _sub["sss_cur"], 1)
+                    _xs = _np_yy.linspace(_sub["cold_delta"].min(), _sub["cold_delta"].max(), 40)
+                    _fig_cold.add_trace(go.Scatter(
+                        x=_xs, y=_m * _xs + _b, mode="lines",
+                        line=dict(color=_clr, width=1.5, dash="dash"),
+                        showlegend=False, hoverinfo="skip",
+                    ))
+                except Exception:
+                    pass
+            _fig_cold.add_hline(y=0, line_color=MUTED, line_width=1, line_dash="dot")
+            _fig_cold.add_vline(x=0, line_color=MUTED, line_width=1, line_dash="dot")
+            _fig_cold.update_layout(
+                **PLOTLY_THEME, height=360,
+                title=dict(text=f"{wx_metric} vs. Cold Days Added Y/Y (<60°F)",
+                           font=dict(size=14, color=TEXT, family='Arial')),
+                legend=DEFAULT_LEGEND,
+                margin=dict(l=50, r=20, t=55, b=50),
+            )
+            _fig_cold.update_layout(
+                xaxis=dict(title="Cold Days Added vs. Last Year",
+                           zeroline=True, zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+                yaxis=dict(title=wx_metric, ticksuffix="%",
+                           zeroline=True, zerolinecolor=MUTED, gridcolor=GRID_COLOR),
+            )
+            st.plotly_chart(_fig_cold, use_container_width=True,
+                            config={"responsive": True, "displayModeBar": False})
+
+        # ── Chart E: Correlation summary table — Y/Y deltas ──────────────────
+        with _sy4:
+            _yy_corr_rows = []
+            for _mkt in wx_markets:
+                _sub = _delta_df[_delta_df["market"] == _mkt].dropna(
+                    subset=["sss_cur","temp_delta","rainy_delta","cold_delta"])
+                if len(_sub) < 5:
+                    continue
+                _yy_corr_rows.append({
+                    "Market":               _mkt,
+                    "Weeks":                len(_sub),
+                    "Temp Δ Corr (r)":      round(float(_sub["sss_cur"].corr(_sub["temp_delta"])),  2),
+                    "Rain Days Δ Corr (r)": round(float(_sub["sss_cur"].corr(_sub["rainy_delta"])), 2),
+                    "Cold Days Δ Corr (r)": round(float(_sub["sss_cur"].corr(_sub["cold_delta"])),  2),
+                })
+            if _yy_corr_rows:
+                import pandas as _pdyy2
+                _yy_corr_tbl = _pdyy2.DataFrame(_yy_corr_rows)
+
+                def _yy_color(v):
+                    if not isinstance(v, float):
+                        return ""
+                    a = min(abs(v), 1.0)
+                    if v > 0.1:
+                        return f"background-color: rgba(22,163,74,{a*0.4})"
+                    elif v < -0.1:
+                        return f"background-color: rgba(238,50,39,{a*0.4})"
+                    return ""
+
+                _yy_styled = (
+                    _yy_corr_tbl.style
+                    .map(_yy_color, subset=["Temp Δ Corr (r)","Rain Days Δ Corr (r)","Cold Days Δ Corr (r)"])
+                    .format({"Temp Δ Corr (r)": "{:+.2f}",
+                             "Rain Days Δ Corr (r)": "{:+.2f}",
+                             "Cold Days Δ Corr (r)": "{:+.2f}"})
+                )
+                st.markdown(f"""
+                <div style='font-size:12px;font-weight:700;color:{TEXT};
+                             font-family:Arial;margin-bottom:8px;margin-top:4px;'>
+                    Y/Y DELTA CORRELATIONS WITH {wx_metric.upper()}
+                </div>""", unsafe_allow_html=True)
+                st.dataframe(_yy_styled, use_container_width=True, hide_index=True)
+                st.markdown(f"""
+                <div style='font-family:Arial,sans-serif;font-size:11px;color:{MUTED};margin-top:6px;'>
+                    Temp Δ: positive r = warmer this year → higher SSS (tailwind).
+                    Rain Days Δ / Cold Days Δ: negative r = more rain/cold this year → lower SSS (headwind).
+                    Y/Y deltas use a 364-day offset (52 exact weeks) matching how SSS is calculated.
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("Need ≥5 overlapping Y/Y weeks per market to show correlation table.")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB: BENCHMARK  —  JM Valley vs. BlakeWard peer operator
 # ═══════════════════════════════════════════════════════════════════════════════
