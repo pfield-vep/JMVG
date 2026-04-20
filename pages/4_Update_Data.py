@@ -449,84 +449,78 @@ except Exception as e:
     st.warning(f"Could not load status: {e}")
 
 # ── Section 1: JM Store Data ─────────────────────────────────────────────────
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📧 JM Store Data — Fetch from Email</div>', unsafe_allow_html=True)
-st.markdown(
-    "Connects to your Microsoft 365 inbox, finds the latest Jersey Mike's weekly report, "
-    "downloads all PDFs, and loads any new data into the database.",
-    unsafe_allow_html=False
-)
-if st.button("🔄 Fetch & Process Latest JM Report", key="fetch_jm"):
-    jm_log_ph  = st.empty()
-    jm_done_ph = st.empty()
-    jm_log_ph.markdown('<div class="log-box">Starting...</div>', unsafe_allow_html=True)
-    log = StLogger(jm_log_ph)
-    try:
-        n = fetch_jm_from_email(log)
-        if n > 0:
-            jm_done_ph.success(f"✅ Done — {n} new PDF(s) loaded. Reload the dashboard to see updated data.")
-        else:
-            jm_done_ph.info("ℹ️ No new files — everything is already up to date.")
-        get_conn.clear()
-    except Exception as e:
-        log.write(f"\n[FATAL] {e}")
-        st.error(f"Update failed: {e}")
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ── Section 2: Benchmark Data ────────────────────────────────────────────────
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📊 BlakeWard Benchmark — Upload PDFs</div>', unsafe_allow_html=True)
-st.markdown(
-    "Upload the **Sales Dashboard Summary (Weekly)** PDF from BlakeWard — one per week. "
-    "You can drop multiple weeks at once. Detail, Loyalty, and SSS PDFs are automatically skipped.",
-    unsafe_allow_html=False
-)
-uploaded = st.file_uploader(
-    "Drop BlakeWard Summary PDFs here",
-    type=["pdf"],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-)
-if uploaded:
-    if st.button(f"📊 Process {len(uploaded)} PDF(s)", key="process_bm"):
-        bm_log_ph  = st.empty()
-        bm_done_ph = st.empty()
-        bm_log_ph.markdown('<div class="log-box">Starting benchmark parse...</div>', unsafe_allow_html=True)
-        log = StLogger(bm_log_ph)
+with st.container(border=True):
+    st.markdown('<div class="section-title">📧 JM Store Data — Fetch from Email</div>', unsafe_allow_html=True)
+    st.markdown(
+        "Connects to your Microsoft 365 inbox, finds the latest Jersey Mike's weekly report, "
+        "downloads all PDFs, and loads any new data into the database."
+    )
+    if st.button("🔄 Fetch & Process Latest JM Report", key="fetch_jm"):
+        jm_log_ph  = st.empty()
+        jm_done_ph = st.empty()
+        jm_log_ph.markdown('<div class="log-box">Starting...</div>', unsafe_allow_html=True)
+        log = StLogger(jm_log_ph)
         try:
-            n = process_benchmark_files(uploaded, log)
+            n = fetch_jm_from_email(log)
             if n > 0:
-                bm_done_ph.success(f"✅ Done — {n} benchmark file(s) loaded.")
+                jm_done_ph.success(f"✅ Done — {n} new PDF(s) loaded. Reload the dashboard to see updated data.")
             else:
-                bm_done_ph.info("ℹ️ No new data loaded — check the log above for details.")
+                jm_done_ph.info("ℹ️ No new files — everything is already up to date.")
             get_conn.clear()
         except Exception as e:
             log.write(f"\n[FATAL] {e}")
-            st.error(f"Benchmark update failed: {e}")
-st.markdown("</div>", unsafe_allow_html=True)
+            st.error(f"Update failed: {e}")
+
+# ── Section 2: Benchmark Data ────────────────────────────────────────────────
+with st.container(border=True):
+    st.markdown('<div class="section-title">📊 BlakeWard Benchmark — Upload PDFs</div>', unsafe_allow_html=True)
+    st.markdown(
+        "Upload the **Sales Dashboard Summary (Weekly)** PDF from BlakeWard — one per week. "
+        "You can drop multiple weeks at once. Detail, Loyalty, and SSS PDFs are automatically skipped."
+    )
+    uploaded = st.file_uploader(
+        "Drop BlakeWard Summary PDFs here",
+        type=["pdf"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+    )
+    if uploaded:
+        if st.button(f"📊 Process {len(uploaded)} PDF(s)", key="process_bm"):
+            bm_log_ph  = st.empty()
+            bm_done_ph = st.empty()
+            bm_log_ph.markdown('<div class="log-box">Starting benchmark parse...</div>', unsafe_allow_html=True)
+            log = StLogger(bm_log_ph)
+            try:
+                n = process_benchmark_files(uploaded, log)
+                if n > 0:
+                    bm_done_ph.success(f"✅ Done — {n} benchmark file(s) loaded.")
+                else:
+                    bm_done_ph.info("ℹ️ No new data loaded — check the log above for details.")
+                get_conn.clear()
+            except Exception as e:
+                log.write(f"\n[FATAL] {e}")
+                st.error(f"Benchmark update failed: {e}")
 
 # ── Section 3: Weather Data ──────────────────────────────────────────────────
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">🌤️ Weather Data — Sync from Open-Meteo</div>', unsafe_allow_html=True)
-st.markdown(
-    "Fetches historical weather (temperature, precipitation) for all four JM Valley markets "
-    "from the free Open-Meteo archive API — no API key required. "
-    "Run this after loading new store data to keep the Weather tab current.",
-    unsafe_allow_html=False
-)
-if st.button("🌤️ Update Weather Data", key="fetch_weather_btn"):
-    wx_log_ph  = st.empty()
-    wx_done_ph = st.empty()
-    wx_log_ph.markdown('<div class="log-box">Connecting to Open-Meteo...</div>', unsafe_allow_html=True)
-    log = StLogger(wx_log_ph)
-    try:
-        ok = fetch_weather(log)
-        if ok:
-            wx_done_ph.success("✅ Weather data updated. Reload the dashboard to see the latest Weather tab.")
-        else:
-            wx_done_ph.warning("⚠️ Weather update completed with errors — check the log above.")
-        get_conn.clear()
-    except Exception as e:
-        log.write(f"\n[FATAL] {e}")
-        st.error(f"Weather update failed: {e}")
-st.markdown("</div>", unsafe_allow_html=True)
+with st.container(border=True):
+    st.markdown('<div class="section-title">🌤️ Weather Data — Sync from Open-Meteo</div>', unsafe_allow_html=True)
+    st.markdown(
+        "Fetches historical weather (temperature, precipitation) for all four JM Valley markets "
+        "from the free Open-Meteo archive API — no API key required. "
+        "Run this after loading new store data to keep the Weather tab current."
+    )
+    if st.button("🌤️ Update Weather Data", key="fetch_weather_btn"):
+        wx_log_ph  = st.empty()
+        wx_done_ph = st.empty()
+        wx_log_ph.markdown('<div class="log-box">Connecting to Open-Meteo...</div>', unsafe_allow_html=True)
+        log = StLogger(wx_log_ph)
+        try:
+            ok = fetch_weather(log)
+            if ok:
+                wx_done_ph.success("✅ Weather data updated. Reload the dashboard to see the latest Weather tab.")
+            else:
+                wx_done_ph.warning("⚠️ Weather update completed with errors — check the log above.")
+            get_conn.clear()
+        except Exception as e:
+            log.write(f"\n[FATAL] {e}")
+            st.error(f"Weather update failed: {e}")
