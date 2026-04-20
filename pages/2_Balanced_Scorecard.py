@@ -57,7 +57,7 @@ def load_stores():
 # ── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    [data-testid="stAppViewContainer"] { background:#FFFFFF; }
+    [data-testid="stAppViewContainer"] { background:#F5F6F8; }
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
     header { visibility:hidden; }
@@ -67,146 +67,122 @@ st.markdown("""
     [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapseButton"] * { visibility: visible !important; }
 
-    .block-container { padding-bottom: 20px !important; }
-
-    /* ── Header row (first stHorizontalBlock) ── */
-    div[data-testid="stHorizontalBlock"]:first-of-type {
-        background: #134A7C !important;
-        padding: 8px 20px 8px 20px !important;
-        margin: 0 -4rem 0 -4rem !important;
-        border-bottom: 1px solid #0d3a5e !important;
-        align-items: center !important;
-        min-height: 70px !important;
-    }
-    /* Home button in header — red */
-    div[data-testid="stHorizontalBlock"]:first-of-type button {
-        background: #EE3227 !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 7px !important;
-        font-size: 0.82em !important;
-        font-weight: 700 !important;
-        padding: 5px 14px !important;
-        width: 100% !important;
-    }
-    div[data-testid="stHorizontalBlock"]:first-of-type button:hover {
-        background: #c42010 !important;
-    }
-    /* Shrink selectbox labels in header */
-    div[data-testid="stHorizontalBlock"]:first-of-type label {
-        font-size: 0.68em !important;
-        font-weight: 700 !important;
-        color: rgba(255,255,255,0.85) !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-        margin-bottom: 1px !important;
-    }
-    div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stSelectbox"] > div > div {
-        font-size: 0.82em !important;
-        padding: 4px 10px !important;
-        min-height: 32px !important;
+    /* Full width — remove Streamlit's default side padding */
+    .block-container {
+        padding: 0.75rem 1.25rem 1.5rem !important;
+        max-width: 100% !important;
     }
 
-    /* ── Overall score box ── */
-    .overall-box {
-        display:flex;align-items:center;justify-content:center;gap:12px;
-        background:#f0f4f8;border:1.5px solid #c8d8ea;border-radius:10px;
-        padding:8px 20px;margin-bottom:10px;
-    }
-    .overall-bubble {
-        width:42px;height:42px;border-radius:50%;
-        display:flex;align-items:center;justify-content:center;
-        font-size:0.68em;font-weight:900;color:#FFFFFF;
-        text-transform:uppercase;letter-spacing:0.5px;font-family:Arial,sans-serif;
-    }
-    .overall-pct {
-        font-size:1.8em;font-weight:900;color:#111;
-        font-family:Arial,sans-serif;line-height:1;
-    }
-    .overall-label {
-        font-size:0.82em;font-weight:700;color:#444;
-        font-family:Arial,sans-serif;letter-spacing:1px;text-transform:uppercase;
-    }
-
-    /* ── Category header card ── */
-    .cat-header {
-        background: #134A7C !important;
-        border-radius:10px;padding:8px 12px;
-        display:flex;align-items:center;justify-content:space-between;
-        margin-bottom:5px;
-        min-height:46px;box-sizing:border-box;
-    }
-    .cat-left {display:flex;align-items:center;gap:8px;}
-    .cat-bubble {
-        width:30px;height:30px;border-radius:50%;
-        display:flex;align-items:center;justify-content:center;
-        font-size:0.85em;font-weight:900;color:#FFFFFF;
-        box-shadow:0 0 6px rgba(0,0,0,0.25);
-    }
-    .cat-name {
-        font-size:0.88em;font-weight:700;color:#FFFFFF;
-        font-family:Arial,sans-serif;
-    }
-    .cat-pct {
-        font-size:1.1em;font-weight:900;color:#FFFFFF;
-        font-family:Arial,sans-serif;
-    }
-
-    /* ── Metric card ── */
-    .metric-card {
-        background:#4a90d9;border-radius:8px;
-        padding:6px 10px;margin-bottom:5px;
-        min-height:70px;box-sizing:border-box;
-    }
-    .metric-top {
-        display:flex;align-items:center;gap:8px;margin-bottom:5px;
-    }
-    .harvey-ball {
-        width:24px;height:24px;border-radius:50%;flex-shrink:0;
-        display:flex;align-items:center;justify-content:center;
-        font-size:0.78em;font-weight:900;color:#FFFFFF;
-    }
-    .hb-green  {background:#27AE60;box-shadow:0 0 5px rgba(39,174,96,0.5);}
-    .hb-yellow {background:#F39C12;box-shadow:0 0 5px rgba(243,156,18,0.5);}
-    .hb-red    {background:#E74C3C;box-shadow:0 0 5px rgba(231,76,60,0.5);}
-    .hb-grey   {background:#4a5568;}
-    .metric-name-row {
-        display:flex;align-items:center;justify-content:space-between;flex-grow:1;
-    }
-    .metric-name {
-        font-size:0.78em;font-weight:700;color:#FFFFFF;font-family:Arial,sans-serif;
-    }
-    .metric-arrow {color:rgba(255,255,255,0.4);font-size:0.8em;}
-    .stats-row {
-        display:flex;gap:3px;border-top:1px solid rgba(255,255,255,0.12);padding-top:5px;
-    }
-    .stat-cell {flex:1;text-align:center;}
-    .stat-val {
-        font-size:0.78em;font-weight:700;color:#FFFFFF;
-        font-family:Arial,sans-serif;line-height:1;
-    }
-    .stat-lbl {
-        font-size:0.55em;color:rgba(255,255,255,0.50);text-transform:uppercase;
-        letter-spacing:0.3px;margin-top:1px;font-family:Arial,sans-serif;
-    }
-
-    /* ── Top-align all columns so rows line up visually ── */
+    /* ── Top-align all columns ── */
     div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
         vertical-align: top !important;
         align-self: flex-start !important;
     }
 
+    /* ── Overall score strip ── */
+    .overall-strip {
+        display:flex; align-items:center; justify-content:center; gap:14px;
+        background:#FFFFFF; border:1.5px solid #E0E3E8; border-radius:10px;
+        padding:10px 24px; margin-bottom:14px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .overall-bubble {
+        width:48px; height:48px; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-size:11px; font-weight:900; color:#FFFFFF;
+        text-transform:uppercase; letter-spacing:0.5px; font-family:Arial,sans-serif;
+    }
+    .overall-pct {
+        font-size:2.2em; font-weight:900; color:#1a1a2e;
+        font-family:Arial,sans-serif; line-height:1;
+    }
+    .overall-label {
+        font-size:11px; font-weight:700; color:#6B7280;
+        font-family:Arial,sans-serif; letter-spacing:1.5px; text-transform:uppercase;
+    }
+
+    /* ── Category header card ── */
+    .cat-header {
+        background: #134A7C;
+        border-radius: 10px 10px 0 0;
+        padding: 14px 16px;
+        display: flex; align-items: center; justify-content: space-between;
+        box-sizing: border-box;
+    }
+    .cat-left { display:flex; align-items:center; gap:10px; }
+    .cat-bubble {
+        width:34px; height:34px; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-size:14px; font-weight:900; color:#FFFFFF;
+        box-shadow: 0 0 8px rgba(0,0,0,0.3);
+        flex-shrink: 0;
+    }
+    .cat-name {
+        font-size:15px; font-weight:800; color:#FFFFFF;
+        font-family:Arial,sans-serif; letter-spacing:0.5px;
+    }
+    .cat-pct {
+        font-size:20px; font-weight:900; color:#FFFFFF;
+        font-family:Arial,sans-serif;
+    }
+
+    /* ── Metric card (white, colored left border) ── */
+    .metric-card {
+        background: #FFFFFF;
+        border: 1px solid #E0E3E8;
+        border-radius: 0;
+        padding: 10px 14px;
+        margin-bottom: 0;
+        box-sizing: border-box;
+        border-top: none;
+    }
+    .metric-card:last-child {
+        border-radius: 0 0 10px 10px;
+        margin-bottom: 12px;
+    }
+    .metric-top {
+        display:flex; align-items:center; gap:10px; margin-bottom:8px;
+    }
+    .harvey-ball {
+        width:28px; height:28px; border-radius:50%; flex-shrink:0;
+        display:flex; align-items:center; justify-content:center;
+        font-size:13px; font-weight:900; color:#FFFFFF;
+    }
+    .hb-green  { background:#27AE60; box-shadow:0 0 6px rgba(39,174,96,0.4); }
+    .hb-yellow { background:#F39C12; box-shadow:0 0 6px rgba(243,156,18,0.4); }
+    .hb-red    { background:#E74C3C; box-shadow:0 0 6px rgba(231,76,60,0.4); }
+    .hb-grey   { background:#9CA3AF; }
+    .metric-name-row {
+        display:flex; align-items:center; justify-content:space-between; flex-grow:1;
+    }
+    .metric-name {
+        font-size:13px; font-weight:700; color:#1a1a2e; font-family:Arial,sans-serif;
+    }
+    .stats-row {
+        display:flex; gap:0; border-top:1px solid #E0E3E8; padding-top:8px;
+    }
+    .stat-cell { flex:1; text-align:center; }
+    .stat-cell + .stat-cell { border-left: 1px solid #E0E3E8; }
+    .stat-val {
+        font-size:13px; font-weight:700; color:#1a1a2e;
+        font-family:Arial,sans-serif; line-height:1;
+    }
+    .stat-lbl {
+        font-size:10px; color:#6B7280; text-transform:uppercase;
+        letter-spacing:0.5px; margin-top:3px; font-family:Arial,sans-serif;
+    }
+
     /* ── Legend ── */
     .legend-bar {
-        display:flex;gap:20px;justify-content:center;align-items:center;
-        padding:7px;background:#f5f5f5;border-radius:7px;
-        border:1px solid #e0e0e0;font-family:Arial,sans-serif;margin-top:8px;
+        display:flex; gap:24px; justify-content:center; align-items:center;
+        padding:8px 16px; background:#FFFFFF; border-radius:8px;
+        border:1px solid #E0E3E8; font-family:Arial,sans-serif; margin-top:12px;
     }
     .legend-item {
-        display:flex;align-items:center;gap:6px;
-        font-size:0.75em;color:#444;font-weight:600;
+        display:flex; align-items:center; gap:7px;
+        font-size:12px; color:#444; font-weight:600;
     }
-    .legend-dot {width:10px;height:10px;border-radius:50%;display:inline-block;}
+    .legend-dot { width:11px; height:11px; border-radius:50%; display:inline-block; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -231,27 +207,24 @@ markets = (["All Markets"]+sorted(stores_df["co_op"].dropna().unique().tolist())
            if stores_df is not None else ["All Markets","Los Angeles","Santa Barbara","San Diego"])
 
 # ── HEADER ROW: logo | period | market | store | home ─────────────────────────
-logo_col, period_col, market_col, store_col, home_col = st.columns([2.5, 1.4, 1.8, 2.4, 1])
-
-with logo_col:
-    st.markdown(f'''
-    <div style="display:flex;flex-direction:column;align-items:flex-start;">
-        <img src="{_LOGO}" style="height:40px;width:auto;"/>
-        <div style="font-size:0.68em;font-weight:800;color:#FFFFFF;letter-spacing:2px;
-                    text-transform:uppercase;margin-top:3px;font-family:Arial,sans-serif;">
-            Balanced Scorecard
-        </div>
+st.markdown(f"""
+<div style="display:flex;align-items:center;gap:8px;
+            background:#134A7C;border-radius:10px;padding:12px 20px;
+            margin-bottom:14px;">
+    <img src="{_LOGO}" style="height:44px;width:auto;flex-shrink:0;"/>
+    <div style="font-size:13px;font-weight:800;color:#FFFFFF;letter-spacing:2px;
+                text-transform:uppercase;font-family:Arial,sans-serif;margin-right:16px;">
+        Balanced Scorecard
     </div>
-    ''', unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
-with period_col:
-    selected_period = st.selectbox("Period",
-        ["2026-02","2026-01","2025-12","2025-11"])
-
-with market_col:
+ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4 = st.columns([1.2, 1.5, 2.5, 0.8])
+with ctrl_col1:
+    selected_period = st.selectbox("Period", ["2026-02","2026-01","2025-12","2025-11"])
+with ctrl_col2:
     selected_market = st.selectbox("Market", markets)
-
-with store_col:
+with ctrl_col3:
     if stores_df is not None:
         filtered = stores_df.copy()
         if selected_market != "All Markets":
@@ -264,9 +237,8 @@ with store_col:
         store_opts = {"All Stores":None}
     selected_store_label = st.selectbox("Store", list(store_opts.keys()))
     selected_store = store_opts.get(selected_store_label)
-
-with home_col:
-    st.markdown("<div style=\'height:22px\'></div>", unsafe_allow_html=True)
+with ctrl_col4:
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     if st.button("⌂  Home", key="home_btn"):
         st.switch_page("app.py")
 
@@ -332,18 +304,16 @@ overall_pct = int(round(sum(all_scores)/len(all_scores)*100)) if all_scores else
 ov_color = "#27AE60" if overall_pct>=80 else ("#F39C12" if overall_pct>=60 else "#E74C3C")
 ov_shadow = "rgba(39,174,96,0.3)" if overall_pct>=80 else ("rgba(243,156,18,0.3)" if overall_pct>=60 else "rgba(231,76,60,0.3)")
 
-# ── Overall score box ─────────────────────────────────────────────────────────
-oc1,oc2,oc3,oc4,oc5 = st.columns([2,1,2,1,2])
-with oc3:
-    st.markdown(f'''
-    <div class="overall-box">
-        <div class="overall-bubble" style="background:{ov_color};box-shadow:0 3px 10px {ov_shadow};">BSC</div>
-        <div>
-            <div class="overall-pct">{overall_pct}%</div>
-            <div class="overall-label">Overall Score</div>
-        </div>
+# ── Overall score strip ───────────────────────────────────────────────────────
+st.markdown(f'''
+<div class="overall-strip">
+    <div class="overall-bubble" style="background:{ov_color};box-shadow:0 3px 12px {ov_shadow};">BSC</div>
+    <div>
+        <div class="overall-pct">{overall_pct}%</div>
+        <div class="overall-label">Overall Score</div>
     </div>
-    ''', unsafe_allow_html=True)
+</div>
+''', unsafe_allow_html=True)
 
 # ── Category columns ──────────────────────────────────────────────────────────
 cols = st.columns(4)
@@ -367,20 +337,26 @@ for col,(cat_name,cat) in zip(cols,METRICS.items()):
         </div>
         ''', unsafe_allow_html=True)
 
-        for item in items:
-            hb = harvey_html(item["_status"])
+        for idx, item in enumerate(items):
+            hb     = harvey_html(item["_status"])
             iname  = item["name"]
             iavail = item["pts_avail"]
             iscored= item["pts_scored"]
             iavg   = item["average"]
             iinlier= item["inlier_pct"]
+            is_last = idx == len(items) - 1
+            extra_cls = " last-card" if is_last else ""
+            # Left border color matches status
+            border_colors = {"green":"#27AE60","yellow":"#F39C12","red":"#E74C3C","grey":"#9CA3AF"}
+            left_border = border_colors.get(item["_status"], "#9CA3AF")
+            radius = "border-radius:0 0 10px 10px;" if is_last else ""
+            mb = "margin-bottom:12px;" if is_last else ""
             st.markdown(f'''
-            <div class="metric-card">
+            <div class="metric-card" style="border-left:4px solid {left_border};{radius}{mb}">
                 <div class="metric-top">
                     {hb}
                     <div class="metric-name-row">
                         <span class="metric-name">{iname}</span>
-                        <span class="metric-arrow">→</span>
                     </div>
                 </div>
                 <div class="stats-row">
