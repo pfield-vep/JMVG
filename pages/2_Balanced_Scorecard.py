@@ -61,7 +61,11 @@ st.markdown("""
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
     header { visibility:hidden; }
-    [data-testid="collapsedControl"] { display: block !important; }
+    [data-testid="stToolbar"] { visibility: visible !important; }
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="stExpandSidebarButton"] * { visibility: visible !important; }
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapseButton"] * { visibility: visible !important; }
 
     .block-container { padding-bottom: 20px !important; }
 

@@ -29,6 +29,14 @@ MUTED  = "#6B7280"
 
 st.markdown(f"""<style>
   [data-testid="stAppViewContainer"] {{ background:{LIGHT}; }}
+  #MainMenu {{ visibility: hidden; }}
+  footer {{ visibility: hidden; }}
+  header {{ visibility: hidden; }}
+  [data-testid="stToolbar"] {{ visibility: visible !important; }}
+  [data-testid="stExpandSidebarButton"],
+  [data-testid="stExpandSidebarButton"] * {{ visibility: visible !important; }}
+  [data-testid="stSidebarCollapseButton"],
+  [data-testid="stSidebarCollapseButton"] * {{ visibility: visible !important; }}
   .page-title {{
     font-family:Arial,sans-serif; font-size:22px; font-weight:700;
     color:{BLUE}; border-bottom:3px solid {RED}; padding-bottom:8px;

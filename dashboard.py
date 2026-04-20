@@ -208,7 +208,12 @@ st.markdown(f"""
     #MainMenu {{ visibility: hidden; }}
     footer {{ visibility: hidden; }}
     header {{ visibility: hidden; }}
-    [data-testid="collapsedControl"] {{ display: block !important; }}
+    /* Keep sidebar expand/collapse button visible even though header is hidden */
+    [data-testid="stToolbar"] {{ visibility: visible !important; }}
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="stExpandSidebarButton"] * {{ visibility: visible !important; }}
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapseButton"] * {{ visibility: visible !important; }}
 
     /* Hide plotly modebar on mobile — overlaps with title */
     @media (max-width: 768px) {{

@@ -67,7 +67,11 @@ st.markdown(f"""
     #MainMenu {{ visibility: hidden; }}
     footer {{ visibility: hidden; }}
     header {{ visibility: hidden; }}
-    [data-testid="collapsedControl"] {{ display: block !important; }}
+    [data-testid="stToolbar"] {{ visibility: visible !important; }}
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="stExpandSidebarButton"] * {{ visibility: visible !important; }}
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapseButton"] * {{ visibility: visible !important; }}
     .block-container {{ padding-top: 0 !important; padding-bottom: 1rem; }}
 
     /* Blue header bar — same style as BSC */
