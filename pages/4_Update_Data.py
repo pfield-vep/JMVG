@@ -401,9 +401,16 @@ def process_benchmark_files(uploaded_files, log: StLogger):
     create_table(conn, dialect)
 
     processed = 0
+    skipped   = 0
     with tempfile.TemporaryDirectory() as tmp:
         for uf in uploaded_files:
             fname = uf.name
+            # Only the "Sales Dashboard Summary" PDF has the right table structure
+            if "summary" not in fname.lower():
+                log.write(f"  [SKIP] {fname} — only Summary PDFs are needed")
+                skipped += 1
+                continue
+
             tmp_path = os.path.join(tmp, fname)
             with open(tmp_path, "wb") as f:
                 f.write(uf.read())
@@ -420,6 +427,9 @@ def process_benchmark_files(uploaded_files, log: StLogger):
                 processed += 1
             except Exception as e:
                 log.write(f"  [ERROR] {fname}: {e}")
+
+    if skipped:
+        log.write(f"\n  ℹ️  {skipped} non-Summary file(s) skipped — only 'Sales Dashboard Summary' PDFs are parsed.")
 
     conn.close()
     return processed
@@ -467,8 +477,8 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📊 BlakeWard Benchmark — Upload PDFs</div>', unsafe_allow_html=True)
 st.markdown(
-    "Upload one or more **Sales Dashboard Summary (Weekly)** PDFs from BlakeWard. "
-    "You can drop multiple weeks at once — duplicates are safely skipped.",
+    "Upload the **Sales Dashboard Summary (Weekly)** PDF from BlakeWard — one per week. "
+    "You can drop multiple weeks at once. Detail, Loyalty, and SSS PDFs are automatically skipped.",
     unsafe_allow_html=False
 )
 uploaded = st.file_uploader(
