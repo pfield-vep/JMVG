@@ -234,28 +234,78 @@ def fetch_jm_from_email(log: StLogger):
     log.write("[OK] Access token obtained.")
 
     # ── Find latest JM email ──
+    # Strategy 1: search by subject keyword across ALL mail (catches subfolders)
+    # Strategy 2: fall back to scanning recent inbox by sender
     headers = {"Authorization": f"Bearer {access_token}"}
-    log.write(f"Searching for latest email from {SENDER}...")
-    search_resp = requests.get(
-        "https://graph.microsoft.com/v1.0/me/messages"
-        "?$orderby=receivedDateTime desc"
-        "&$select=id,subject,receivedDateTime,hasAttachments,from"
-        "&$top=30",
-        headers=headers
-    )
-    search_resp.raise_for_status()
-    messages = search_resp.json().get("value", [])
 
     message_id = None
-    for msg in messages:
-        from_addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
-        if from_addr.lower() == SENDER.lower() and msg.get("hasAttachments"):
-            log.write(f"[OK] Found: \"{msg['subject']}\" ({msg['receivedDateTime'][:10]})")
-            message_id = msg["id"]
-            break
+
+    # --- Strategy 1: Graph search by subject keyword ---
+    log.write("Searching mailbox for 'Sales Dashboard' emails...")
+    try:
+        srch = requests.get(
+            "https://graph.microsoft.com/v1.0/me/messages"
+            "?$search=\"Sales Dashboard\""
+            "&$select=id,subject,receivedDateTime,hasAttachments,from"
+            "&$top=10",
+            headers={**headers, "ConsistencyLevel": "eventual"},
+        )
+        if srch.status_code == 200:
+            for msg in srch.json().get("value", []):
+                subj = msg.get("subject", "")
+                has_att = msg.get("hasAttachments", False)
+                from_addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+                log.write(f"  Found: \"{subj}\" from {from_addr} ({msg['receivedDateTime'][:10]}) att={has_att}")
+                if has_att and ("jersey" in subj.lower() or "jersey" in from_addr.lower()
+                                or from_addr.lower() == SENDER.lower()):
+                    log.write(f"[OK] Matched: \"{subj}\"")
+                    message_id = msg["id"]
+                    break
+        else:
+            log.write(f"  Search returned {srch.status_code}, trying inbox scan...")
+    except Exception as e:
+        log.write(f"  Search error: {e}")
+
+    # --- Strategy 2: scan recent inbox by sender ---
+    if not message_id:
+        log.write(f"Scanning recent inbox for {SENDER}...")
+        scan = requests.get(
+            "https://graph.microsoft.com/v1.0/me/messages"
+            "?$orderby=receivedDateTime desc"
+            "&$select=id,subject,receivedDateTime,hasAttachments,from"
+            "&$top=100",
+            headers=headers,
+        )
+        scan.raise_for_status()
+        recent_msgs = scan.json().get("value", [])
+        log.write(f"  Scanned {len(recent_msgs)} messages.")
+
+        # Log the first 8 senders so we can diagnose if sender address differs
+        seen_senders = []
+        for msg in recent_msgs[:8]:
+            addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+            subj = msg.get("subject", "")[:50]
+            if addr not in seen_senders:
+                seen_senders.append(addr)
+                log.write(f"  → {addr}: \"{subj}\"")
+
+        for msg in recent_msgs:
+            from_addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+            subj      = msg.get("subject", "")
+            if msg.get("hasAttachments") and (
+                from_addr.lower() == SENDER.lower()
+                or "jerseymikes" in from_addr.lower()
+                or ("jersey" in subj.lower() and "dashboard" in subj.lower())
+            ):
+                log.write(f"[OK] Matched: \"{subj}\" from {from_addr} ({msg['receivedDateTime'][:10]})")
+                message_id = msg["id"]
+                break
 
     if not message_id:
-        log.write(f"[WARN] No emails from {SENDER} with attachments in recent 30 messages.")
+        log.write("")
+        log.write("[WARN] Could not find the JM report email.")
+        log.write("  Check the senders listed above — the email may be using a")
+        log.write("  different address. Contact support if the issue persists.")
         return 0
 
     # ── Download attachments ──
