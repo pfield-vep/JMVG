@@ -438,8 +438,6 @@ try:
 except Exception as e:
     st.warning(f"Could not load status: {e}")
 
-st.markdown("---")
-
 # ── Section 1: JM Store Data ─────────────────────────────────────────────────
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📧 JM Store Data — Fetch from Email</div>', unsafe_allow_html=True)
@@ -448,11 +446,9 @@ st.markdown(
     "downloads all PDFs, and loads any new data into the database.",
     unsafe_allow_html=False
 )
-
-jm_log_ph  = st.empty()
-jm_done_ph = st.empty()
-
 if st.button("🔄 Fetch & Process Latest JM Report", key="fetch_jm"):
+    jm_log_ph  = st.empty()
+    jm_done_ph = st.empty()
     jm_log_ph.markdown('<div class="log-box">Starting...</div>', unsafe_allow_html=True)
     log = StLogger(jm_log_ph)
     try:
@@ -461,11 +457,10 @@ if st.button("🔄 Fetch & Process Latest JM Report", key="fetch_jm"):
             jm_done_ph.success(f"✅ Done — {n} new PDF(s) loaded. Reload the dashboard to see updated data.")
         else:
             jm_done_ph.info("ℹ️ No new files — everything is already up to date.")
-        get_conn.clear()   # bust the cached connection so status refreshes
+        get_conn.clear()
     except Exception as e:
         log.write(f"\n[FATAL] {e}")
-        jm_done_ph.error(f"Update failed: {e}")
-
+        st.error(f"Update failed: {e}")
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Section 2: Benchmark Data ────────────────────────────────────────────────
@@ -476,25 +471,16 @@ st.markdown(
     "You can drop multiple weeks at once — duplicates are safely skipped.",
     unsafe_allow_html=False
 )
-
 uploaded = st.file_uploader(
     "Drop BlakeWard Summary PDFs here",
     type=["pdf"],
     accept_multiple_files=True,
     label_visibility="collapsed",
 )
-
-bm_log_ph  = st.empty()
-bm_done_ph = st.empty()
-
 if uploaded:
-    names = [f.name for f in uploaded]
-    st.markdown(
-        "**Selected:** " + " · ".join(f"`{n}`" for n in names),
-        unsafe_allow_html=False
-    )
-
     if st.button(f"📊 Process {len(uploaded)} PDF(s)", key="process_bm"):
+        bm_log_ph  = st.empty()
+        bm_done_ph = st.empty()
         bm_log_ph.markdown('<div class="log-box">Starting benchmark parse...</div>', unsafe_allow_html=True)
         log = StLogger(bm_log_ph)
         try:
@@ -506,8 +492,7 @@ if uploaded:
             get_conn.clear()
         except Exception as e:
             log.write(f"\n[FATAL] {e}")
-            bm_done_ph.error(f"Benchmark update failed: {e}")
-
+            st.error(f"Benchmark update failed: {e}")
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Section 3: Weather Data ──────────────────────────────────────────────────
@@ -519,11 +504,9 @@ st.markdown(
     "Run this after loading new store data to keep the Weather tab current.",
     unsafe_allow_html=False
 )
-
-wx_log_ph  = st.empty()
-wx_done_ph = st.empty()
-
 if st.button("🌤️ Update Weather Data", key="fetch_weather_btn"):
+    wx_log_ph  = st.empty()
+    wx_done_ph = st.empty()
     wx_log_ph.markdown('<div class="log-box">Connecting to Open-Meteo...</div>', unsafe_allow_html=True)
     log = StLogger(wx_log_ph)
     try:
@@ -535,6 +518,5 @@ if st.button("🌤️ Update Weather Data", key="fetch_weather_btn"):
         get_conn.clear()
     except Exception as e:
         log.write(f"\n[FATAL] {e}")
-        wx_done_ph.error(f"Weather update failed: {e}")
-
+        st.error(f"Weather update failed: {e}")
 st.markdown("</div>", unsafe_allow_html=True)
