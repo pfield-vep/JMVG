@@ -368,6 +368,29 @@ def fetch_jm_from_email(log: StLogger):
     return processed
 
 
+# ── Weather data fetch ────────────────────────────────────────────────────────
+def fetch_weather(log: StLogger):
+    """Run the Open-Meteo weather backfill and stream output to StLogger."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import importlib, fetch_weather as fw
+    importlib.reload(fw)   # ensure fresh import on each run
+
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            fw.backfill()
+        for line in buf.getvalue().splitlines():
+            if line.strip():
+                log.write(line)
+        return True
+    except Exception as e:
+        for line in buf.getvalue().splitlines():
+            if line.strip():
+                log.write(line)
+        log.write(f"[ERROR] {e}")
+        return False
+
+
 # ── Benchmark PDF processing ──────────────────────────────────────────────────
 def process_benchmark_files(uploaded_files, log: StLogger):
     """Parse uploaded BlakeWard Summary PDFs and upsert into weekly_benchmark."""
@@ -484,5 +507,34 @@ if uploaded:
         except Exception as e:
             log.write(f"\n[FATAL] {e}")
             bm_done_ph.error(f"Benchmark update failed: {e}")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ── Section 3: Weather Data ──────────────────────────────────────────────────
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">🌤️ Weather Data — Sync from Open-Meteo</div>', unsafe_allow_html=True)
+st.markdown(
+    "Fetches historical weather (temperature, precipitation) for all four JM Valley markets "
+    "from the free Open-Meteo archive API — no API key required. "
+    "Run this after loading new store data to keep the Weather tab current.",
+    unsafe_allow_html=False
+)
+
+wx_log_ph  = st.empty()
+wx_done_ph = st.empty()
+
+if st.button("🌤️ Update Weather Data", key="fetch_weather_btn"):
+    wx_log_ph.markdown('<div class="log-box">Connecting to Open-Meteo...</div>', unsafe_allow_html=True)
+    log = StLogger(wx_log_ph)
+    try:
+        ok = fetch_weather(log)
+        if ok:
+            wx_done_ph.success("✅ Weather data updated. Reload the dashboard to see the latest Weather tab.")
+        else:
+            wx_done_ph.warning("⚠️ Weather update completed with errors — check the log above.")
+        get_conn.clear()
+    except Exception as e:
+        log.write(f"\n[FATAL] {e}")
+        wx_done_ph.error(f"Weather update failed: {e}")
 
 st.markdown("</div>", unsafe_allow_html=True)
