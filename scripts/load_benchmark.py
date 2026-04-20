@@ -110,8 +110,6 @@ CREATE TABLE IF NOT EXISTS weekly_benchmark (
 def create_table(conn, dialect):
     cur = conn.cursor()
     if dialect == "postgres":
-        # Drop and recreate so schema is always current
-        cur.execute("DROP TABLE IF EXISTS weekly_benchmark")
         cur.execute(CREATE_PG)
     else:
         cur.execute(CREATE_SQLITE)
