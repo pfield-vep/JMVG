@@ -109,3 +109,12 @@ with col3:
         label="📥  Data Export",
         use_container_width=True,
     )
+
+st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+_, col_upd, _ = st.columns([2.3, 3, 2.3])
+with col_upd:
+    st.page_link(
+        "pages/4_Update_Data.py",
+        label="🔄  Update Weekly Data",
+        use_container_width=True,
+    )

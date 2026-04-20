@@ -61,7 +61,7 @@ st.markdown("""
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
     header { visibility:hidden; }
-    [data-testid="collapsedControl"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: block !important; }
 
     .block-container { padding-bottom: 20px !important; }
 
