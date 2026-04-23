@@ -459,6 +459,50 @@ def load_data():
 
 stores_df, sales_df, bread_df, loyalty_df, mkt_df, bread_totals_df = load_data()
 
+@st.cache_data(ttl=300)
+def load_daily_snapshot():
+    """Last 7 days SSS%, SST%, avg ticket vs. same 7 days 364 days prior."""
+    try:
+        conn, _ = get_db_connection()
+        df = pd.read_sql("""
+            SELECT store_id, sale_date, net_sales, total_transactions
+            FROM daily_sales
+            WHERE net_sales IS NOT NULL AND net_sales > 0
+            ORDER BY sale_date DESC
+            LIMIT 5000
+        """, conn)
+        conn.close()
+        if df.empty:
+            return None
+        df["sale_date"] = pd.to_datetime(df["sale_date"])
+        max_d  = df["sale_date"].max()
+        win_start = max_d - pd.Timedelta(days=6)
+        curr = df[df["sale_date"] >= win_start]
+        prior_end   = win_start - pd.Timedelta(days=364)
+        prior_start = prior_end - pd.Timedelta(days=6)
+        prior = df[(df["sale_date"] >= prior_start) & (df["sale_date"] <= prior_end)]
+        # Comp stores only
+        c_agg = curr.groupby("store_id").agg(cs=("net_sales","sum"), ct=("total_transactions","sum")).reset_index()
+        p_agg = prior.groupby("store_id").agg(ps=("net_sales","sum"), pt=("total_transactions","sum")).reset_index()
+        mg = c_agg.merge(p_agg, on="store_id").query("ps > 0")
+        if mg.empty:
+            return None
+        sss = (mg["cs"].sum() - mg["ps"].sum()) / mg["ps"].sum() * 100
+        sst = (mg["ct"].sum() - mg["pt"].sum()) / mg["pt"].sum() * 100 if mg["pt"].sum() > 0 else None
+        total_txn  = curr["total_transactions"].sum()
+        avg_ticket = curr["net_sales"].sum() / total_txn if total_txn else None
+        return {
+            "sss":         sss,
+            "sst":         sst,
+            "avg_ticket":  avg_ticket,
+            "comp_stores": len(mg),
+            "thru_date":   max_d.strftime("%b %d"),
+        }
+    except Exception:
+        return None
+
+_daily_snap = load_daily_snapshot()
+
 # ── Top filter bar ───────────────────────────────────────────────────────────
 st.markdown(f"""
     <div style='background:{BLUE}; padding:10px 24px 10px 24px;
@@ -724,7 +768,7 @@ with tab1:
     st.markdown(f"""<style>
     .kpi-groups {{
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 12px;
         margin-bottom: 20px;
     }}
@@ -784,6 +828,9 @@ with tab1:
         margin-top: 3px;
         min-height: 13px;
     }}
+    @media (max-width: 1024px) {{
+        .kpi-groups {{ grid-template-columns: repeat(2, 1fr); }}
+    }}
     @media (max-width: 768px) {{
         .kpi-groups {{ grid-template-columns: 1fr; }}
         .kg-val {{ font-size: 20px; }}
@@ -825,6 +872,43 @@ with tab1:
               f"YTD {fytd_3p:.1f}%" if fytd_3p is not None else "")
     )
 
+    # ── Daily SSS snapshot tile ───────────────────────────────────────────────
+    if _daily_snap:
+        _d = _daily_snap
+        def _dsss_clr(v):
+            return GREEN if v is not None and v >= 0 else DANGER
+        def _dfmt(v):
+            return f"{v:+.1f}%" if v is not None else "—"
+        _daily_html = (
+            _tile("SSS",
+                  _dfmt(_d["sss"]),
+                  f"{_d['comp_stores']} comp stores",
+                  _dsss_clr(_d["sss"])) +
+            _tile("SST",
+                  _dfmt(_d.get("sst")),
+                  "vs. prior year",
+                  _dsss_clr(_d.get("sst"))) +
+            _tile("Avg Ticket",
+                  f"${_d['avg_ticket']:.2f}" if _d["avg_ticket"] else "—",
+                  f"thru {_d['thru_date']}")
+        )
+        _daily_group = f"""
+            <div class="kpi-group">
+                <div class="kg-header" style="background:{RED};">Daily — Last 7 Days</div>
+                <div class="kg-tiles">{_daily_html}</div>
+            </div>"""
+    else:
+        _daily_group = f"""
+            <div class="kpi-group">
+                <div class="kg-header" style="background:{RED};">Daily — Last 7 Days</div>
+                <div class="kg-tiles">
+                  <div class="kg-tile" style="grid-column:span 3;padding:12px;
+                       font-size:11px;color:{MUTED};text-align:center;">
+                    No daily data yet
+                  </div>
+                </div>
+            </div>"""
+
     st.markdown(f"""
         <div class="kpi-groups">
             <div class="kpi-group">
@@ -839,6 +923,7 @@ with tab1:
                 <div class="kg-header">Sales Mix</div>
                 <div class="kg-tiles">{_mix_html}</div>
             </div>
+            {_daily_group}
         </div>
     """, unsafe_allow_html=True)
 
