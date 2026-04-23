@@ -34,12 +34,12 @@ AMBER  = "#d97706"
 
 # ── Market → store mapping ─────────────────────────────────────────────────────
 SAN_DIEGO_IDS = ['20071','20091','20171','20177','20291','20292','20300']
-TAMPA_IDS     = ['20026']
+CA_ONLY_STORES = None  # Tampa (20026) excluded — not owned by JM Valley Group
 
 def get_market(store_id):
-    if store_id in SAN_DIEGO_IDS:   return "San Diego"
-    if store_id in TAMPA_IDS:       return "Tampa"
-    return "Los Angeles"   # weather DB uses "Los Angeles" not "LA / SoCal"
+    if store_id in SAN_DIEGO_IDS: return "San Diego"
+    if store_id == '20026':       return None   # Tampa — exclude
+    return "Los Angeles"
 
 # ── DB connection ──────────────────────────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jerseymikes.db")
@@ -156,7 +156,7 @@ with c1:
         ["Last 90 Days", "Last 180 Days", "Last 365 Days", "All Available"],
         index=1, label_visibility="collapsed")
 with c2:
-    mkt_opts = ["All Markets", "Los Angeles", "San Diego", "Tampa"]
+    mkt_opts = ["All Markets", "Los Angeles", "San Diego"]
     mkt_sel  = st.selectbox("Market", mkt_opts, label_visibility="collapsed")
 with c3:
     st.markdown(
@@ -198,6 +198,7 @@ def load_correlation_data():
     sales["sale_date"] = pd.to_datetime(sales["sale_date"])
     weather["date"]    = pd.to_datetime(weather["date"])
     sales["market"]    = sales["store_id"].apply(get_market)
+    sales = sales[sales["market"].notna()]   # drop Tampa and any unmapped stores
 
     return sales, weather
 
@@ -365,7 +366,7 @@ with sc1:
     ).fillna(MUTED)
 
     fig_t = go.Figure()
-    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED), ("Tampa", GOLD)]:
+    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
         sub = scatter_df[scatter_df["market"] == mkt]
         if sub.empty: continue
         fig_t.add_trace(go.Scatter(
@@ -402,7 +403,7 @@ with sc1:
 with sc2:
     scatter_p = df_clean.dropna(subset=["precip_delta","sss_pct"])
     fig_p = go.Figure()
-    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED), ("Tampa", GOLD)]:
+    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
         sub = scatter_p[scatter_p["market"] == mkt]
         if sub.empty: continue
         fig_p.add_trace(go.Scatter(
@@ -527,7 +528,7 @@ with b2:
 st.markdown('<div class="section-title">SSS% by Market & Weather Condition</div>',
             unsafe_allow_html=True)
 
-markets_avail = [m for m in ["Los Angeles","San Diego","Tampa"]
+markets_avail = [m for m in ["Los Angeles","San Diego"]
                  if m in df_clean["market"].unique()]
 
 pivot = (df_clean[df_clean["weather_bucket"].isin(BUCKET_ORDER)]

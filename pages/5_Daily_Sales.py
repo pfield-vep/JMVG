@@ -33,7 +33,6 @@ AMBER  = "#d97706"
 
 # ── Market definitions ─────────────────────────────────────────────────────────
 SAN_DIEGO_IDS = ['20071','20091','20171','20177','20291','20292','20300']
-TAMPA_IDS     = ['20026']
 
 STORE_NAMES = {
     '20156':'North Hollywood','20218':'Mission Hills','20267':'Balboa',
@@ -51,8 +50,6 @@ STORE_NAMES = {
 def get_market(store_id):
     if store_id in SAN_DIEGO_IDS:
         return "San Diego"
-    if store_id in TAMPA_IDS:
-        return "Tampa"
     return "LA / SoCal"
 
 # ── DB connection ──────────────────────────────────────────────────────────────
@@ -333,7 +330,7 @@ with ctrl3:
 
 with ctrl4:
     mkt_filter = st.selectbox(
-        "Market", ["All Markets", "LA / SoCal", "San Diego", "Tampa"],
+        "Market", ["All Markets", "LA / SoCal", "San Diego"],
         label_visibility="collapsed",
     )
 
