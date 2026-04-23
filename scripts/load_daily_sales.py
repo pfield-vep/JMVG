@@ -80,8 +80,17 @@ def create_table(conn, dialect):
     print("daily_sales table ready")
 
 def parse_excel(path):
-    import pandas as pd
-    df = pd.read_excel(path)
+    import pandas as pd, shutil, tempfile, io
+    # path can be a file path string OR a BytesIO object (from email fetch).
+    # For file paths: copy to a temp file first to avoid OneDrive/Excel file-lock.
+    if isinstance(path, (str, os.PathLike)):
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        tmp.close()
+        shutil.copy2(path, tmp.name)
+        df = pd.read_excel(tmp.name)
+        os.remove(tmp.name)
+    else:
+        df = pd.read_excel(path)
     # Clean dollar columns
     for col in ["Net Sales","Walk-In Sales","Online Sales","3rd Party Payments",
                 "Lunch Net Sales","Dinner Net Sales"]:
