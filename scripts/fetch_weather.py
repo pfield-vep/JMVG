@@ -10,8 +10,9 @@ Populates two weather tables using the free Open-Meteo historical API
   daily_weather    — one row per (date, market) — raw daily data for future
                      daily-sales correlation and Y/Y delta analysis.
 
-Run once to backfill all history, then weekly to stay current:
-    py scripts/fetch_weather.py
+Run once to backfill all history, then it runs daily via scheduled task:
+    py scripts/fetch_weather.py            # full backfill
+    py scripts/fetch_weather.py --update   # fast daily update (last 7 days → today)
 
 Works against both SQLite (local) and Supabase/Postgres (production).
 Supabase credentials are read from .streamlit/secrets.toml if present.
@@ -27,11 +28,25 @@ sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
 # ── Market → GPS coordinates ──────────────────────────────────────────────────
+# JM Valley Group markets
 MARKET_COORDS = {
     "Los Angeles":               (34.0522, -118.2437),
     "Santa Barbara":             (34.4208, -119.6982),
     "Santa Barbara / San Luis Ob": (35.2828, -120.6596),   # SLO airport
     "San Diego":                 (32.7157, -117.1611),
+    "Tampa":                     (27.9506, -82.4572),
+}
+
+# BlakeWard benchmark regions — representative major metros per state/region
+# Keys match the `region` codes in weekly_benchmark (FL, KC, KS, MO, NC, NY, SC)
+BENCHMARK_COORDS = {
+    "FL": (27.9506, -82.4572),   # Tampa, FL
+    "KC": (39.0997, -94.5786),   # Kansas City, MO
+    "KS": (37.6872, -97.3301),   # Wichita, KS
+    "MO": (38.6270, -90.1994),   # St. Louis, MO
+    "NC": (35.2271, -80.8431),   # Charlotte, NC
+    "NY": (40.7128, -74.0060),   # New York City, NY
+    "SC": (34.0007, -81.0348),   # Columbia, SC
 }
 
 # ── DB connection ─────────────────────────────────────────────────────────────
@@ -319,11 +334,13 @@ def backfill():
     create_tables(conn, dialect)
     cur = conn.cursor()
 
-    # ── Weekly scope: all weeks present in sales tables ───────────────────────
+    # ── Weekly scope: all weeks across all sales + benchmark tables ───────────
     cur.execute("""
         SELECT DISTINCT week_ending FROM weekly_store_history
         UNION
         SELECT DISTINCT week_ending FROM weekly_sales
+        UNION
+        SELECT DISTINCT week_ending FROM weekly_benchmark
         ORDER BY week_ending
     """)
     all_weeks = [r[0] for r in cur.fetchall()]
@@ -355,7 +372,7 @@ def backfill():
         first_sales_week = date.fromisoformat(all_weeks[0])
         last_sales_week  = date.fromisoformat(all_weeks[-1])
         daily_start      = first_sales_week - timedelta(days=365)  # 1 yr lookback
-        daily_end        = last_sales_week
+        daily_end        = date.today()   # always fetch through today
 
         if market in daily_coverage:
             cov_min, cov_max = daily_coverage[market]
@@ -398,11 +415,132 @@ def backfill():
         conn.commit()
         time.sleep(0.5)   # be polite to the free API
 
+    # ── Benchmark regions (weekly_weather only, no daily needed) ─────────────
+    print("\nFetching benchmark region weather (FL, KC, KS, MO, NC, NY, SC)…")
+    cur.execute("SELECT DISTINCT week_ending FROM weekly_benchmark ORDER BY week_ending")
+    bmark_weeks = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT DISTINCT week_ending, market FROM weekly_weather")
+    weekly_done_now = set(cur.fetchall())
+
+    for region, (lat, lon) in BENCHMARK_COORDS.items():
+        missing = [w for w in bmark_weeks if (w, region) not in weekly_done_now]
+        if not missing:
+            print(f"  {region}: up to date ✓")
+            continue
+        earliest = (date.fromisoformat(missing[0]) - timedelta(days=7)).isoformat()
+        latest   = date.fromisoformat(missing[-1]).isoformat()
+        print(f"  {region}: fetching {earliest} → {latest} ({len(missing)} weeks)…")
+        try:
+            data = fetch_open_meteo(lat, lon, earliest, latest)
+        except Exception as e:
+            print(f"    ⚠️  API error for {region}: {e}")
+            time.sleep(2)
+            continue
+        for wk in missing:
+            row = aggregate_to_weekly(data, wk)
+            if row:
+                upsert_weekly(cur, dialect, wk, region, row)
+                weekly_inserted += 1
+        conn.commit()
+        time.sleep(0.4)
+
     print(f"\nDone.")
     print(f"  Weekly rows written : {weekly_inserted}")
     print(f"  Daily  rows written : {daily_inserted}")
     conn.close()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# FAST DAILY UPDATE  (runs via scheduled task every morning)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def update_to_today():
+    """
+    Lightweight daily refresh — fetches the last 10 days through today for
+    every market.  Upserts both daily_weather and weekly_weather rows.
+    Safe to run multiple times (upserts are idempotent).
+    """
+    conn, dialect = get_conn()
+    create_tables(conn, dialect)
+    cur = conn.cursor()
+
+    today     = date.today()
+    fetch_end = today.isoformat()
+
+    # Find the furthest back we need to go per market (last covered date - 10 days)
+    cur.execute("SELECT market, MAX(date) FROM daily_weather GROUP BY market")
+    market_max = {r[0]: r[1] for r in cur.fetchall()}
+
+    total_daily  = 0
+    total_weekly = 0
+
+    for market, (lat, lon) in MARKET_COORDS.items():
+        if market in market_max:
+            last_covered = date.fromisoformat(market_max[market])
+            fetch_start  = (last_covered - timedelta(days=10)).isoformat()
+        else:
+            # No data yet for this market — go back 14 months
+            fetch_start = (today - timedelta(days=425)).isoformat()
+
+        print(f"  {market}: {fetch_start} → {fetch_end}")
+        try:
+            data = fetch_open_meteo(lat, lon, fetch_start, fetch_end)
+        except Exception as e:
+            print(f"    ⚠️  API error: {e}")
+            time.sleep(2)
+            continue
+
+        # Daily rows
+        daily_rows = build_daily_rows(data, market)
+        upsert_daily_batch(cur, dialect, daily_rows)
+        total_daily += len(daily_rows)
+
+        # Weekly rows — derive week_ending dates covered by this fetch window
+        start_d = date.fromisoformat(fetch_start)
+        end_d   = today
+        # Walk forward to find Sundays (week_ending = Sunday)
+        d = start_d
+        while d <= end_d:
+            if d.weekday() == 6:   # Sunday
+                row = aggregate_to_weekly(data, d.isoformat())
+                if row:
+                    upsert_weekly(cur, dialect, d.isoformat(), market, row)
+                    total_weekly += 1
+            d += timedelta(days=1)
+
+        conn.commit()
+        time.sleep(0.4)
+
+    # ── Benchmark regions: update weekly_weather for last 2 weeks ────────────
+    print("\nUpdating benchmark region weekly weather…")
+    for region, (lat, lon) in BENCHMARK_COORDS.items():
+        fetch_start_b = (today - timedelta(days=14)).isoformat()
+        try:
+            data = fetch_open_meteo(lat, lon, fetch_start_b, fetch_end)
+        except Exception as e:
+            print(f"  ⚠️  {region}: {e}")
+            time.sleep(2)
+            continue
+        d = today - timedelta(days=14)
+        while d <= today:
+            if d.weekday() == 6:   # Sunday = week_ending
+                row = aggregate_to_weekly(data, d.isoformat())
+                if row:
+                    upsert_weekly(cur, dialect, d.isoformat(), region, row)
+                    total_weekly += 1
+            d += timedelta(days=1)
+        conn.commit()
+        time.sleep(0.3)
+
+    print(f"\nUpdate complete — {total_daily} daily rows, {total_weekly} weekly rows written.")
+    conn.close()
+
+
 if __name__ == "__main__":
-    backfill()
+    import sys as _sys
+    if "--update" in _sys.argv:
+        print("=== Weather Daily Update ===")
+        update_to_today()
+    else:
+        print("=== Weather Full Backfill ===")
+        backfill()
