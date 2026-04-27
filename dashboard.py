@@ -76,6 +76,9 @@ DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
 st.markdown(f"""
 <style>
+    /* Load Material Icons so sidebar expand/collapse arrow renders correctly */
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
     /* Arial everywhere */
     html, body, [class*="css"] {{
         font-family: Arial, sans-serif !important;

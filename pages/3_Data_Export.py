@@ -63,6 +63,7 @@ def get_db_connection():
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
     html, body, [class*="css"] {{ font-family: Arial, sans-serif !important; }}
     #MainMenu {{ visibility: hidden; }}
     footer {{ visibility: hidden; }}

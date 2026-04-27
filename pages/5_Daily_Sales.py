@@ -129,6 +129,7 @@ def get_date_range():
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
   html, body, [class*="css"] {{
     font-family: Arial, sans-serif !important;
     background-color: {WHITE};
