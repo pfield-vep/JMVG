@@ -58,31 +58,34 @@ def get_conn():
         return sqlite3.connect(DB_PATH), "sqlite"
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
-st.markdown(f"""
+st.markdown("""
 <style>
-
-    /* Sidebar arrow: replace Material Icons text with Unicode arrow (CSP-safe) */
     [data-testid="stSidebarCollapseButton"] span,
     [data-testid="stExpandSidebarButton"] span {
         font-size: 0 !important;
         line-height: 0 !important;
         color: transparent !important;
         display: inline-block !important;
-        width: 20px !important; height: 20px !important;
+        width: 20px !important;
+        height: 20px !important;
     }
     [data-testid="stSidebarCollapseButton"] span::before {
-        content: "◀";
+        content: "\25C0";
         font-size: 16px !important;
         font-family: Arial, sans-serif !important;
-        color: #FFFFFF !important; line-height: 20px !important;
+        color: #FFFFFF !important;
     }
     [data-testid="stExpandSidebarButton"] span::before {
-        content: "▶";
+        content: "\25B6";
         font-size: 16px !important;
         font-family: Arial, sans-serif !important;
-        color: #134A7C !important; line-height: 20px !important;
+        color: #134A7C !important;
     }
-html, body, [class*="css"] {{
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown(f"""
+<style>html, body, [class*="css"] {{
     font-family: Arial, sans-serif !important;
     background-color: {WHITE};
   }}
