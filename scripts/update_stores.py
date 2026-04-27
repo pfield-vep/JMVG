@@ -83,11 +83,15 @@ def migrate_schema(conn, dialect):
         ("address",           "TEXT"),
     ]
     for col, dtype in new_cols:
-        try:
-            cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
-            print(f"  + Added column: stores.{col}")
-        except Exception:
-            pass  # column already exists
+        if dialect == "postgres":
+            # IF NOT EXISTS avoids transaction abort on duplicate column
+            cur.execute(f"ALTER TABLE stores ADD COLUMN IF NOT EXISTS {col} {dtype}")
+        else:
+            try:
+                cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
+            except Exception:
+                conn.rollback()   # reset SQLite transaction so we can continue
+        print(f"  + Ensured column: stores.{col}")
 
     # store_dm_history table
     if dialect == "postgres":
