@@ -155,51 +155,86 @@ def parse_file(source, after_date=None):
 
 
 def upsert_rows(conn, dialect, df, batch_size=500):
-    """Upsert DataFrame into hourly_sales in batches."""
+    """Upsert DataFrame into hourly_sales.
+
+    Postgres: uses COPY into a temp table then INSERT ... ON CONFLICT —
+    bulk-streams the entire dataset in one shot, typically 10-50x faster
+    than executemany.
+
+    SQLite: falls back to executemany in batches.
+    """
     if df.empty:
         return 0
-    p = "%s" if dialect == "postgres" else "?"
+
+    total = len(df)
+
     if dialect == "postgres":
-        sql = f"""
+        import io as _io
+        cur = conn.cursor()
+
+        # Build CSV in memory
+        print(f"  Preparing {total:,} rows for bulk upload...", flush=True)
+        buf = _io.StringIO()
+        for _, row in df.iterrows():
+            ns  = "" if row["net_sales"]  != row["net_sales"]  else str(float(row["net_sales"]))
+            txn = "" if row["total_transactions"] != row["total_transactions"] else str(int(row["total_transactions"]))
+            buf.write(f"{row['store_id']}\t{row['sale_date'].date()}\t{int(row['hour'])}\t{ns}\t{txn}\n")
+        buf.seek(0)
+
+        # Stream into temp table then upsert
+        print(f"  Streaming to Supabase via COPY...", flush=True)
+        cur.execute("""
+            CREATE TEMP TABLE hourly_tmp (
+                store_id TEXT, sale_date DATE, hour INTEGER,
+                net_sales REAL, total_transactions INTEGER
+            ) ON COMMIT DROP
+        """)
+        cur.copy_expert(
+            "COPY hourly_tmp (store_id, sale_date, hour, net_sales, total_transactions) "
+            "FROM STDIN WITH (FORMAT text, NULL '')",
+            buf
+        )
+        cur.execute("""
             INSERT INTO hourly_sales
                 (store_id, sale_date, hour, net_sales, total_transactions)
-            VALUES ({p},{p},{p},{p},{p})
+            SELECT store_id, sale_date, hour, net_sales, total_transactions
+            FROM hourly_tmp
             ON CONFLICT (store_id, sale_date, hour) DO UPDATE SET
                 net_sales          = EXCLUDED.net_sales,
                 total_transactions = EXCLUDED.total_transactions
-        """
+        """)
+        conn.commit()
+        print(f"  {total:,} / {total:,} rows (100%) — complete")
+        return total
+
     else:
-        sql = f"""
+        # SQLite fallback — batched executemany
+        sql = """
             INSERT OR REPLACE INTO hourly_sales
                 (store_id, sale_date, hour, net_sales, total_transactions)
-            VALUES ({p},{p},{p},{p},{p})
+            VALUES (?,?,?,?,?)
         """
-    cur = conn.cursor()
-    batch = []
-    total = len(df)
-    inserted = 0
-    for _, row in df.iterrows():
-        ns  = float(row["net_sales"])  if row["net_sales"]  == row["net_sales"]  else None
-        txn = int(row["total_transactions"]) if row["total_transactions"] == row["total_transactions"] else None
-        batch.append((
-            str(row["store_id"]),
-            str(row["sale_date"].date()),
-            int(row["hour"]),
-            ns, txn,
-        ))
-        if len(batch) >= batch_size:
+        cur = conn.cursor()
+        batch = []
+        inserted = 0
+        for _, row in df.iterrows():
+            ns  = float(row["net_sales"]) if row["net_sales"] == row["net_sales"] else None
+            txn = int(row["total_transactions"]) if row["total_transactions"] == row["total_transactions"] else None
+            batch.append((str(row["store_id"]), str(row["sale_date"].date()),
+                          int(row["hour"]), ns, txn))
+            if len(batch) >= batch_size:
+                cur.executemany(sql, batch)
+                conn.commit()
+                inserted += len(batch)
+                batch = []
+                print(f"  {inserted:,} / {total:,} rows ({inserted/total*100:.0f}%)",
+                      end="\r", flush=True)
+        if batch:
             cur.executemany(sql, batch)
             conn.commit()
             inserted += len(batch)
-            batch = []
-            pct = inserted / total * 100
-            print(f"  {inserted:,} / {total:,} rows ({pct:.0f}%)", end="\r", flush=True)
-    if batch:
-        cur.executemany(sql, batch)
-        conn.commit()
-        inserted += len(batch)
-    print(f"  {inserted:,} / {total:,} rows (100%) — complete          ")
-    return inserted
+        print(f"  {inserted:,} / {total:,} rows (100%) — complete          ")
+        return inserted
 
 
 def main():
