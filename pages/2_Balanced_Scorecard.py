@@ -57,6 +57,13 @@ def load_stores():
 # ── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+    /* Restore Material Icons font for sidebar arrow buttons */
+    [data-testid="stExpandSidebarButton"] span,
+    [data-testid="stSidebarCollapseButton"] span,
+    .material-icons {
+        font-family: 'Material Icons' !important;
+        font-size: 24px !important;
+    }
     [data-testid="stAppViewContainer"] { background:#F5F6F8; }
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }

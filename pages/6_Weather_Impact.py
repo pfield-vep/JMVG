@@ -58,9 +58,19 @@ def get_conn():
         return sqlite3.connect(DB_PATH), "sqlite"
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
+st.markdown("""
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+""", unsafe_allow_html=True)
+
 st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+    /* Restore Material Icons font for sidebar arrow buttons */
+    [data-testid="stExpandSidebarButton"] span,
+    [data-testid="stSidebarCollapseButton"] span,
+    .material-icons {
+        font-family: 'Material Icons' !important;
+        font-size: 24px !important;
+    }
   html, body, [class*="css"] {{
     font-family: Arial, sans-serif !important;
     background-color: {WHITE};

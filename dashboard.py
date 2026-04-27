@@ -74,16 +74,24 @@ DEFAULT_LEGEND = dict(
 )
 DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
+st.markdown("""
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+""", unsafe_allow_html=True)
+
 st.markdown(f"""
 <style>
-    /* Load Material Icons so sidebar expand/collapse arrow renders correctly */
-    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-
-    /* Arial everywhere */
+    /* Arial everywhere — but NOT on Material Icons spans */
     html, body, [class*="css"] {{
         font-family: Arial, sans-serif !important;
         font-size: 15px !important;
         background-color: {WHITE};
+    }}
+    /* Restore Material Icons font for sidebar arrow buttons */
+    [data-testid="stExpandSidebarButton"] span,
+    [data-testid="stSidebarCollapseButton"] span,
+    .material-icons {{
+        font-family: 'Material Icons' !important;
+        font-size: 24px !important;
     }}
     .stApp, .main {{ background-color: {WHITE} !important; }}
     .block-container {{ padding-top: 1rem !important; }}
