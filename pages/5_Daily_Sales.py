@@ -128,28 +128,15 @@ def get_date_range():
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
-<style>html, body, [class*="css"] {{
-    font-family: Arial, sans-serif !important;
-    background-color: {WHITE};
-  }}
-  /* Restore native font on sidebar arrow buttons so Material Icons renders correctly */
-  header span,
-  [data-testid="stSidebarCollapseButton"] span,
-  [data-testid="stExpandSidebarButton"] span {{
-    font-family: unset !important;
-  }}
+<style>body {{
+        font-family: Arial, sans-serif;
+    }}
 
   .stApp, .main {{ background-color: {WHITE} !important; }}
   .block-container {{
     padding: 0.75rem 1.25rem 1.5rem !important;
     max-width: 100% !important;
   }}
-  section[data-testid="stSidebar"] {{ background-color: {BLUE} !important; }}
-  section[data-testid="stSidebar"] label,
-  section[data-testid="stSidebar"] span {{ color: white !important; }}
-
-  /* Sidebar expand button */
-  [data-testid="stToolbar"] {{ visibility: visible !important; }}
   [data-testid="stExpandSidebarButton"],
   [data-testid="stExpandSidebarButton"] * {{ visibility: visible !important; }}
   [data-testid="stSidebarCollapseButton"],

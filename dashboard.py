@@ -76,16 +76,8 @@ DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
 st.markdown(f"""
 <style>/* Arial everywhere */
-    html, body, [class*="css"] {{
-        font-family: Arial, sans-serif !important;
-        font-size: 15px !important;
-        background-color: {WHITE};
-    }}
-    /* Restore native font on sidebar arrow buttons so Material Icons renders correctly */
-    header span,
-    [data-testid="stSidebarCollapseButton"] span,
-    [data-testid="stExpandSidebarButton"] span {{
-        font-family: unset !important;
+    body {{
+        font-family: Arial, sans-serif;
     }}
 
     /* ── Sidebar arrow buttons: hide icon text, show Unicode arrow instead ──
@@ -119,25 +111,6 @@ st.markdown(f"""
 
     /* ── Sidebar: blue background, white text ──
        DO NOT touch [data-testid="collapsedControl"] — let Streamlit handle it natively */
-    section[data-testid="stSidebar"] {{
-        background-color: {BLUE} !important;
-    }}
-    section[data-testid="stSidebar"] .stMarkdown,
-    section[data-testid="stSidebar"] .stMarkdown p,
-    section[data-testid="stSidebar"] .stMarkdown div,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] span {{
-        color: white !important;
-        font-family: Arial, sans-serif !important;
-        font-size: 14px !important;
-    }}
-    section[data-testid="stSidebar"] .stSelectbox > div > div {{
-        background-color: rgba(255,255,255,0.15) !important;
-        border: 1px solid rgba(255,255,255,0.35) !important;
-    }}
-    section[data-testid="stSidebar"] .stSelectbox svg {{
-        fill: white !important;
-    }}
 
     /* ── KPI Cards — fixed height, flex layout ── */
     .kpi-card {{
