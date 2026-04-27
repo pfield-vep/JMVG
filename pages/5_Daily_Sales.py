@@ -498,367 +498,479 @@ def kpi_delta_html(v):
     arrow = "▲" if v >= 0 else "▼"
     return f'<span class="{cls}">{arrow} {fmt_pct(v)}</span> vs prior year'
 
-# ── KPI Cards ──────────────────────────────────────────────────────────────────
-st.markdown('<div class="section-title">Consolidated Performance</div>', unsafe_allow_html=True)
-
-k1, k2, k3, k4, k5, k6 = st.columns(6)
-
-cards = [
-    (k1, "Net Sales", fmt_dollar(totals["net_sales"]),
-     kpi_delta_html((totals["net_sales"]-totals["prior_sales"])/totals["prior_sales"]*100
-                    if totals["prior_sales"] else None), "kpi-card"),
-    (k2, "Same Store Sales", fmt_pct(totals["sss_pct"]),
-     f'<span style="font-size:11px;color:{MUTED};">{totals["comp_count"]} comp stores</span>',
-     "kpi-card kpi-card-blue"),
-    (k3, "Same Store Txns", fmt_pct(totals["sst_pct"]),
-     f'<span style="font-size:11px;color:{MUTED};">{totals["comp_count"]} comp stores</span>',
-     "kpi-card kpi-card-blue"),
-    (k4, "Avg Ticket", f"${totals['avg_ticket']:.2f}" if totals["avg_ticket"] else "—",
-     f'{int(totals["transactions"]):,} transactions', "kpi-card kpi-card-green"),
-    (k5, "Online Mix", f"{totals['online_pct']:.1f}%" if totals["online_pct"] else "—",
-     f'3P: {totals["thirdp_pct"]:.1f}%' if totals["thirdp_pct"] else "", "kpi-card kpi-card-gold"),
-    (k6, "Lunch Mix", f"{totals['lunch_pct']:.1f}%" if totals["lunch_pct"] else "—",
-     f'Dinner: {totals["dinner_pct"]:.1f}%' if totals["dinner_pct"] else "", "kpi-card"),
-]
-
-for col, label, val, delta, cls in cards:
-    col.markdown(f"""
-    <div class="{cls}">
-      <div class="kpi-label">{label}</div>
-      <div class="kpi-value">{val}</div>
-      <div class="kpi-delta">{delta}</div>
-    </div>""", unsafe_allow_html=True)
-
-# ── By-Market Table ────────────────────────────────────────────────────────────
-st.markdown('<div class="section-title">By Market</div>', unsafe_allow_html=True)
-
-markets = curr_df["market"].unique().tolist()
-if mkt_filter == "All Markets":
-    markets = sorted(markets)
-
-mkt_rows = []
-for mkt in markets:
-    mc = curr_df[curr_df["market"] == mkt]
-    mp = prior_df[prior_df["market"] == mkt]
-    m  = comp_metrics(mc, mp)
-    mkt_rows.append({
-        "market": mkt,
-        "stores": mc["store_id"].nunique(),
-        **m,
-    })
-
-# Add TOTAL row
-mkt_rows.append({
-    "market": "TOTAL",
-    "stores": curr_df["store_id"].nunique(),
-    **totals,
-})
-
-def _row_html(r, is_total=False):
-    sss_cls  = pct_class(r["sss_pct"])
-    sst_cls  = pct_class(r["sst_pct"])
-    online   = f"{r['online_pct']:.1f}%" if r["online_pct"] else "—"
-    thirdp   = f"{r['thirdp_pct']:.1f}%" if r["thirdp_pct"] else "—"
-    avg_t    = f"${r['avg_ticket']:.2f}" if r["avg_ticket"] else "—"
-    return (
-        f"<tr>"
-        f"<td>{r['market']}</td>"
-        f"<td>{r['stores']}</td>"
-        f"<td>{fmt_dollar(r['net_sales'])}</td>"
-        f"<td class='{sss_cls}'>{fmt_pct(r['sss_pct'])}</td>"
-        f"<td class='{sst_cls}'>{fmt_pct(r['sst_pct'])}</td>"
-        f"<td>{avg_t}</td>"
-        f"<td>{online}</td>"
-        f"<td>{thirdp}</td>"
-        f"<td>{r['comp_count']}</td>"
-        f"</tr>"
-    )
-
-rows_html = "".join(_row_html(r, r["market"] == "TOTAL") for r in mkt_rows)
-st.markdown(f"""
-<table class="mkt-table">
-  <thead><tr>
-    <th>Market</th><th style="text-align:center">Stores</th>
-    <th>Net Sales</th><th>SSS%</th><th>SST%</th>
-    <th>Avg Ticket</th><th>Online%</th><th>3P%</th>
-    <th style="text-align:center">Comps</th>
-  </tr></thead>
-  <tbody>{rows_html}</tbody>
-</table>
-""", unsafe_allow_html=True)
-
-# ── Charts row ─────────────────────────────────────────────────────────────────
-st.markdown('<div class="section-title">Sales Mix</div>', unsafe_allow_html=True)
-
-ch1, ch2 = st.columns(2)
-
-PLOTLY_LAYOUT = dict(
-    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
-    font=dict(family="Arial, sans-serif", size=12, color=TEXT),
-    margin=dict(l=20, r=20, t=40, b=20),
-    legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
-                font=dict(size=11), orientation="h",
-                yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
-)
-
-# Daypart mix
-with ch1:
-    dp_labels  = ["Morning", "Lunch", "Dinner"]
-    dp_values  = [
-        totals["morning_sales"] or 0,
-        totals["lunch_sales"]   or 0,
-        totals["dinner_sales"]  or 0,
+tab1, tab2 = st.tabs(["Overview", "By District Manager"])
+with tab1:
+    st.markdown('<div class="section-title">Consolidated Performance</div>', unsafe_allow_html=True)
+    
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    
+    cards = [
+        (k1, "Net Sales", fmt_dollar(totals["net_sales"]),
+         kpi_delta_html((totals["net_sales"]-totals["prior_sales"])/totals["prior_sales"]*100
+                        if totals["prior_sales"] else None), "kpi-card"),
+        (k2, "Same Store Sales", fmt_pct(totals["sss_pct"]),
+         f'<span style="font-size:11px;color:{MUTED};">{totals["comp_count"]} comp stores</span>',
+         "kpi-card kpi-card-blue"),
+        (k3, "Same Store Txns", fmt_pct(totals["sst_pct"]),
+         f'<span style="font-size:11px;color:{MUTED};">{totals["comp_count"]} comp stores</span>',
+         "kpi-card kpi-card-blue"),
+        (k4, "Avg Ticket", f"${totals['avg_ticket']:.2f}" if totals["avg_ticket"] else "—",
+         f'{int(totals["transactions"]):,} transactions', "kpi-card kpi-card-green"),
+        (k5, "Online Mix", f"{totals['online_pct']:.1f}%" if totals["online_pct"] else "—",
+         f'3P: {totals["thirdp_pct"]:.1f}%' if totals["thirdp_pct"] else "", "kpi-card kpi-card-gold"),
+        (k6, "Lunch Mix", f"{totals['lunch_pct']:.1f}%" if totals["lunch_pct"] else "—",
+         f'Dinner: {totals["dinner_pct"]:.1f}%' if totals["dinner_pct"] else "", "kpi-card"),
     ]
-    dp_colors  = [GOLD, RED, BLUE]
-
-    # Daily trend by daypart
-    daily_dp = curr_df.groupby("sale_date").agg(
-        morning=("morning_sales","sum"),
-        lunch=("lunch_sales","sum"),
-        dinner=("dinner_sales","sum"),
-    ).reset_index().sort_values("sale_date")
-
-    fig_dp = go.Figure()
-    for col, color, label in [
-        ("morning", GOLD, "Morning"),
-        ("lunch",   RED,  "Lunch"),
-        ("dinner",  BLUE, "Dinner"),
-    ]:
-        fig_dp.add_trace(go.Bar(
-            x=daily_dp["sale_date"],
-            y=daily_dp[col],
-            name=label,
-            marker_color=color,
-        ))
-    fig_dp.update_layout(
-        **PLOTLY_LAYOUT,
-        barmode="stack",
-        title=dict(text="Daily Sales by Daypart", font=dict(size=13, color=BLUE), x=0),
-        xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
-        yaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor="#E5E7EB"),
-    )
-    st.plotly_chart(fig_dp, use_container_width=True)
-
-# Channel mix
-with ch2:
-    daily_ch = curr_df.groupby("sale_date").agg(
-        walkin=("walkin_sales","sum"),
-        online=("online_sales","sum"),
-        thirdp=("third_party_sales","sum"),
-    ).reset_index().sort_values("sale_date")
-
-    fig_ch = go.Figure()
-    for col, color, label in [
-        ("walkin", BLUE,  "Walk-In"),
-        ("online", RED,   "Online"),
-        ("thirdp", GOLD,  "3rd Party"),
-    ]:
-        fig_ch.add_trace(go.Bar(
-            x=daily_ch["sale_date"],
-            y=daily_ch[col],
-            name=label,
-            marker_color=color,
-        ))
-    fig_ch.update_layout(
-        **PLOTLY_LAYOUT,
-        barmode="stack",
-        title=dict(text="Daily Sales by Channel", font=dict(size=13, color=BLUE), x=0),
-        xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
-        yaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor="#E5E7EB"),
-    )
-    st.plotly_chart(fig_ch, use_container_width=True)
-
-# ── SSS Trend Chart ────────────────────────────────────────────────────────────
-st.markdown('<div class="section-title">SSS% Trend (Rolling 7-Day)</div>', unsafe_allow_html=True)
-
-# Build daily SSS: for each day in curr period, compare to same day 364 days back
-curr_daily = curr_df.groupby("sale_date")["net_sales"].sum().reset_index()
-curr_daily.columns = ["sale_date","curr_sales"]
-curr_daily["prior_date"] = curr_daily["sale_date"] - pd.Timedelta(days=364)
-
-prior_daily = prior_df.groupby("sale_date")["net_sales"].sum().reset_index()
-prior_daily.columns = ["prior_date","prior_sales"]
-
-sss_trend = curr_daily.merge(prior_daily, on="prior_date", how="left")
-sss_trend = sss_trend[sss_trend["prior_sales"] > 0].copy()
-sss_trend["sss_pct"] = (sss_trend["curr_sales"] - sss_trend["prior_sales"]) / sss_trend["prior_sales"] * 100
-sss_trend["sss_7d"]  = sss_trend["sss_pct"].rolling(7, min_periods=1).mean()
-
-fig_sss = go.Figure()
-fig_sss.add_trace(go.Bar(
-    x=sss_trend["sale_date"], y=sss_trend["sss_pct"],
-    name="Daily SSS%",
-    marker_color=[GREEN if v >= 0 else DANGER for v in sss_trend["sss_pct"]],
-    opacity=0.5,
-))
-fig_sss.add_trace(go.Scatter(
-    x=sss_trend["sale_date"], y=sss_trend["sss_7d"],
-    name="7-Day Avg", line=dict(color=BLUE, width=2),
-))
-fig_sss.add_hline(y=0, line_color=MUTED, line_width=1)
-fig_sss.update_layout(
-    **PLOTLY_LAYOUT,
-    title=dict(text="Same Store Sales % vs. Prior Year", font=dict(size=13, color=BLUE), x=0),
-    xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
-    yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB"),
-    height=280,
-)
-st.plotly_chart(fig_sss, use_container_width=True)
-
-# ── Store Detail Table ─────────────────────────────────────────────────────────
-with st.expander("Store Detail", expanded=False):
-    store_curr = curr_df.groupby(["store_id","store_name","market"]).agg(
-        net_sales=("net_sales","sum"),
-        transactions=("total_transactions","sum"),
-        walkin=("walkin_sales","sum"),
-        online=("online_sales","sum"),
-        thirdp=("third_party_sales","sum"),
-        lunch=("lunch_sales","sum"),
-        dinner=("dinner_sales","sum"),
-        morning=("morning_sales","sum"),
-    ).reset_index()
-
-    store_prior = prior_df.groupby("store_id").agg(
-        net_sales_prior=("net_sales","sum"),
-        txn_prior=("total_transactions","sum"),
-    ).reset_index()
-
-    store_all = store_curr.merge(store_prior, on="store_id", how="left")
-    store_all["sss_pct"] = (
-        (store_all["net_sales"] - store_all["net_sales_prior"])
-        / store_all["net_sales_prior"] * 100
-    ).where(store_all["net_sales_prior"] > 0)
-    store_all["sst_pct"] = (
-        (store_all["transactions"] - store_all["txn_prior"])
-        / store_all["txn_prior"] * 100
-    ).where(store_all["txn_prior"] > 0)
-    store_all["avg_ticket"] = store_all["net_sales"] / store_all["transactions"].replace(0, float("nan"))
-    store_all["online_pct"] = store_all["online"] / store_all["net_sales"].replace(0, float("nan")) * 100
-
-    store_all = store_all.sort_values(["market","net_sales"], ascending=[True,False])
-
-    def store_row(r):
-        sss_c = pct_class(r["sss_pct"])
-        sst_c = pct_class(r["sst_pct"])
-        sss   = fmt_pct(r["sss_pct"]) if pd.notna(r.get("sss_pct")) else "—"
-        sst   = fmt_pct(r["sst_pct"]) if pd.notna(r.get("sst_pct")) else "—"
-        tkt   = f"${r['avg_ticket']:.2f}" if pd.notna(r.get("avg_ticket")) else "—"
-        onl   = f"{r['online_pct']:.1f}%" if pd.notna(r.get("online_pct")) else "—"
-        return (
-            f"<tr>"
-            f"<td>{r['store_name']}</td>"
-            f"<td>{r['market']}</td>"
-            f"<td>{fmt_dollar(r['net_sales'])}</td>"
-            f"<td class='{sss_c}'>{sss}</td>"
-            f"<td class='{sst_c}'>{sst}</td>"
-            f"<td>{tkt}</td>"
-            f"<td>{onl}</td>"
-            f"</tr>"
-        )
-
-    store_rows = "".join(store_row(r) for _, r in store_all.iterrows())
-    st.markdown(f"""
-    <table class="store-table">
-      <thead><tr>
-        <th>Store</th><th>Market</th>
-        <th>Net Sales</th><th>SSS%</th><th>SST%</th>
-        <th>Avg Ticket</th><th>Online%</th>
-      </tr></thead>
-      <tbody>{store_rows}</tbody>
-    </table>
-    """, unsafe_allow_html=True)
-
-# ── By District Manager ───────────────────────────────────────────────────────
-st.markdown('<div class="section-title">By District Manager</div>', unsafe_allow_html=True)
-
-dm_map = load_dm_store_map()
-if dm_map is not None and not dm_map.empty:
-    # Respect the market filter
-    if mkt_filter != "All Markets":
-        dm_map = dm_map[dm_map["display_market"] == mkt_filter]
-
-    MARKET_ORDER = {"LA / SoCal": 0, "San Diego": 1, "Santa Barbara": 2}
-    dm_rows = []
-
-    for dm_group, grp in dm_map.groupby("dm_group"):
-        store_ids   = set(grp["store_id"].tolist())
-        market_name = grp["display_market"].iloc[0]
-
-        # Current and prior period rows for this DM's stores
-        c = curr_df[curr_df["store_id"].isin(store_ids)]
-        p = prior_df[prior_df["store_id"].isin(store_ids)]
-
-        # Comp stores: must be comp-eligible AND have prior-year data
-        c_comp = c[c["store_id"].isin(comp_eligible)]
-        p_comp = p[p["store_id"].isin(comp_eligible)]
-
-        c_agg = c_comp.groupby("store_id").agg(
-            cs=("net_sales", "sum"), ct=("total_transactions", "sum")
-        ).reset_index()
-        p_agg = p_comp.groupby("store_id").agg(
-            ps=("net_sales", "sum"), pt=("total_transactions", "sum")
-        ).reset_index()
-        mg = c_agg.merge(p_agg, on="store_id", how="inner")
-
-        # SSS: net_sales only — comp = prior net_sales > 0
-        sss_mg      = mg[mg["ps"] > 0]
-        prior_sales = sss_mg["ps"].sum()
-        curr_sales  = sss_mg["cs"].sum()
-        sss = (curr_sales - prior_sales) / prior_sales * 100 \
-              if prior_sales > 0 else None
-
-        # SST: total_transactions only — comp = prior txn > 0
-        sst_mg    = mg[mg["pt"] > 0]
-        prior_txn = sst_mg["pt"].sum()
-        curr_txn  = sst_mg["ct"].sum()
-        sst = (curr_txn - prior_txn) / prior_txn * 100 \
-              if prior_txn > 0 else None
-
-        dm_rows.append({
-            "dm_group":    dm_group,
-            "market":      market_name,
-            "net_sales":   c["net_sales"].sum(),
-            "txn":         int(c["total_transactions"].sum()),
-            "sss_pct":     sss,
-            "sst_pct":     sst,
-            "comp_count":  len(sss_mg),
-            "store_count": len(store_ids),
+    
+    for col, label, val, delta, cls in cards:
+        col.markdown(f"""
+        <div class="{cls}">
+          <div class="kpi-label">{label}</div>
+          <div class="kpi-value">{val}</div>
+          <div class="kpi-delta">{delta}</div>
+        </div>""", unsafe_allow_html=True)
+    
+    # ── By-Market Table ────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-title">By Market</div>', unsafe_allow_html=True)
+    
+    markets = curr_df["market"].unique().tolist()
+    if mkt_filter == "All Markets":
+        markets = sorted(markets)
+    
+    mkt_rows = []
+    for mkt in markets:
+        mc = curr_df[curr_df["market"] == mkt]
+        mp = prior_df[prior_df["market"] == mkt]
+        m  = comp_metrics(mc, mp)
+        mkt_rows.append({
+            "market": mkt,
+            "stores": mc["store_id"].nunique(),
+            **m,
         })
-
-    dm_rows.sort(key=lambda r: (MARKET_ORDER.get(r["market"], 9), r["dm_group"]))
-
-    def _dm_row(r):
-        sc  = pct_class(r["sss_pct"])
-        tc  = pct_class(r["sst_pct"])
+    
+    # Add TOTAL row
+    mkt_rows.append({
+        "market": "TOTAL",
+        "stores": curr_df["store_id"].nunique(),
+        **totals,
+    })
+    
+    def _row_html(r, is_total=False):
+        sss_cls  = pct_class(r["sss_pct"])
+        sst_cls  = pct_class(r["sst_pct"])
+        online   = f"{r['online_pct']:.1f}%" if r["online_pct"] else "—"
+        thirdp   = f"{r['thirdp_pct']:.1f}%" if r["thirdp_pct"] else "—"
+        avg_t    = f"${r['avg_ticket']:.2f}" if r["avg_ticket"] else "—"
         return (
             f"<tr>"
-            f"<td>{r['dm_group']}</td>"
-            f"<td style='text-align:center'>{r['store_count']}</td>"
+            f"<td>{r['market']}</td>"
+            f"<td>{r['stores']}</td>"
             f"<td>{fmt_dollar(r['net_sales'])}</td>"
-            f"<td>{r['txn']:,}</td>"
-            f"<td class='{sc}'>{fmt_pct(r['sss_pct'])}</td>"
-            f"<td class='{tc}'>{fmt_pct(r['sst_pct'])}</td>"
-            f"<td style='text-align:center'>{r['comp_count']}</td>"
+            f"<td class='{sss_cls}'>{fmt_pct(r['sss_pct'])}</td>"
+            f"<td class='{sst_cls}'>{fmt_pct(r['sst_pct'])}</td>"
+            f"<td>{avg_t}</td>"
+            f"<td>{online}</td>"
+            f"<td>{thirdp}</td>"
+            f"<td>{r['comp_count']}</td>"
             f"</tr>"
         )
-
-    dm_html = "".join(_dm_row(r) for r in dm_rows)
+    
+    rows_html = "".join(_row_html(r, r["market"] == "TOTAL") for r in mkt_rows)
     st.markdown(f"""
     <table class="mkt-table">
       <thead><tr>
-        <th style="text-align:left">DM Group</th>
-        <th style="text-align:center">Stores</th>
-        <th>Net Sales</th>
-        <th>Transactions</th>
-        <th>SSS%</th>
-        <th>SST%</th>
-        <th style="text-align:center">Comp Stores</th>
+        <th>Market</th><th style="text-align:center">Stores</th>
+        <th>Net Sales</th><th>SSS%</th><th>SST%</th>
+        <th>Avg Ticket</th><th>Online%</th><th>3P%</th>
+        <th style="text-align:center">Comps</th>
       </tr></thead>
-      <tbody>{dm_html}</tbody>
+      <tbody>{rows_html}</tbody>
     </table>
     """, unsafe_allow_html=True)
-else:
-    st.info("DM data not yet loaded — run `py scripts/update_stores.py` to populate.")
+    
+    # ── Charts row ─────────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-title">Sales Mix</div>', unsafe_allow_html=True)
+    
+    ch1, ch2 = st.columns(2)
+    
+    PLOTLY_LAYOUT = dict(
+        plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+        font=dict(family="Arial, sans-serif", size=12, color=TEXT),
+        margin=dict(l=20, r=20, t=40, b=20),
+        legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
+                    font=dict(size=11), orientation="h",
+                    yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
+    )
+    
+    # Daypart mix
+    with ch1:
+        dp_labels  = ["Morning", "Lunch", "Dinner"]
+        dp_values  = [
+            totals["morning_sales"] or 0,
+            totals["lunch_sales"]   or 0,
+            totals["dinner_sales"]  or 0,
+        ]
+        dp_colors  = [GOLD, RED, BLUE]
+    
+        # Daily trend by daypart
+        daily_dp = curr_df.groupby("sale_date").agg(
+            morning=("morning_sales","sum"),
+            lunch=("lunch_sales","sum"),
+            dinner=("dinner_sales","sum"),
+        ).reset_index().sort_values("sale_date")
+    
+        fig_dp = go.Figure()
+        for col, color, label in [
+            ("morning", GOLD, "Morning"),
+            ("lunch",   RED,  "Lunch"),
+            ("dinner",  BLUE, "Dinner"),
+        ]:
+            fig_dp.add_trace(go.Bar(
+                x=daily_dp["sale_date"],
+                y=daily_dp[col],
+                name=label,
+                marker_color=color,
+            ))
+        fig_dp.update_layout(
+            **PLOTLY_LAYOUT,
+            barmode="stack",
+            title=dict(text="Daily Sales by Daypart", font=dict(size=13, color=BLUE), x=0),
+            xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
+            yaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor="#E5E7EB"),
+        )
+        st.plotly_chart(fig_dp, use_container_width=True)
+    
+    # Channel mix
+    with ch2:
+        daily_ch = curr_df.groupby("sale_date").agg(
+            walkin=("walkin_sales","sum"),
+            online=("online_sales","sum"),
+            thirdp=("third_party_sales","sum"),
+        ).reset_index().sort_values("sale_date")
+    
+        fig_ch = go.Figure()
+        for col, color, label in [
+            ("walkin", BLUE,  "Walk-In"),
+            ("online", RED,   "Online"),
+            ("thirdp", GOLD,  "3rd Party"),
+        ]:
+            fig_ch.add_trace(go.Bar(
+                x=daily_ch["sale_date"],
+                y=daily_ch[col],
+                name=label,
+                marker_color=color,
+            ))
+        fig_ch.update_layout(
+            **PLOTLY_LAYOUT,
+            barmode="stack",
+            title=dict(text="Daily Sales by Channel", font=dict(size=13, color=BLUE), x=0),
+            xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
+            yaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor="#E5E7EB"),
+        )
+        st.plotly_chart(fig_ch, use_container_width=True)
+    
+    # ── SSS Trend Chart ────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-title">SSS% Trend (Rolling 7-Day)</div>', unsafe_allow_html=True)
+    
+    # Build daily SSS: for each day in curr period, compare to same day 364 days back
+    curr_daily = curr_df.groupby("sale_date")["net_sales"].sum().reset_index()
+    curr_daily.columns = ["sale_date","curr_sales"]
+    curr_daily["prior_date"] = curr_daily["sale_date"] - pd.Timedelta(days=364)
+    
+    prior_daily = prior_df.groupby("sale_date")["net_sales"].sum().reset_index()
+    prior_daily.columns = ["prior_date","prior_sales"]
+    
+    sss_trend = curr_daily.merge(prior_daily, on="prior_date", how="left")
+    sss_trend = sss_trend[sss_trend["prior_sales"] > 0].copy()
+    sss_trend["sss_pct"] = (sss_trend["curr_sales"] - sss_trend["prior_sales"]) / sss_trend["prior_sales"] * 100
+    sss_trend["sss_7d"]  = sss_trend["sss_pct"].rolling(7, min_periods=1).mean()
+    
+    fig_sss = go.Figure()
+    fig_sss.add_trace(go.Bar(
+        x=sss_trend["sale_date"], y=sss_trend["sss_pct"],
+        name="Daily SSS%",
+        marker_color=[GREEN if v >= 0 else DANGER for v in sss_trend["sss_pct"]],
+        opacity=0.5,
+    ))
+    fig_sss.add_trace(go.Scatter(
+        x=sss_trend["sale_date"], y=sss_trend["sss_7d"],
+        name="7-Day Avg", line=dict(color=BLUE, width=2),
+    ))
+    fig_sss.add_hline(y=0, line_color=MUTED, line_width=1)
+    fig_sss.update_layout(
+        **PLOTLY_LAYOUT,
+        title=dict(text="Same Store Sales % vs. Prior Year", font=dict(size=13, color=BLUE), x=0),
+        xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
+        yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB"),
+        height=280,
+    )
+    st.plotly_chart(fig_sss, use_container_width=True)
+    
+    # ── Store Detail Table ─────────────────────────────────────────────────────────
+    with st.expander("Store Detail", expanded=False):
+        store_curr = curr_df.groupby(["store_id","store_name","market"]).agg(
+            net_sales=("net_sales","sum"),
+            transactions=("total_transactions","sum"),
+            walkin=("walkin_sales","sum"),
+            online=("online_sales","sum"),
+            thirdp=("third_party_sales","sum"),
+            lunch=("lunch_sales","sum"),
+            dinner=("dinner_sales","sum"),
+            morning=("morning_sales","sum"),
+        ).reset_index()
+    
+        store_prior = prior_df.groupby("store_id").agg(
+            net_sales_prior=("net_sales","sum"),
+            txn_prior=("total_transactions","sum"),
+        ).reset_index()
+    
+        store_all = store_curr.merge(store_prior, on="store_id", how="left")
+        store_all["sss_pct"] = (
+            (store_all["net_sales"] - store_all["net_sales_prior"])
+            / store_all["net_sales_prior"] * 100
+        ).where(store_all["net_sales_prior"] > 0)
+        store_all["sst_pct"] = (
+            (store_all["transactions"] - store_all["txn_prior"])
+            / store_all["txn_prior"] * 100
+        ).where(store_all["txn_prior"] > 0)
+        store_all["avg_ticket"] = store_all["net_sales"] / store_all["transactions"].replace(0, float("nan"))
+        store_all["online_pct"] = store_all["online"] / store_all["net_sales"].replace(0, float("nan")) * 100
+    
+        store_all = store_all.sort_values(["market","net_sales"], ascending=[True,False])
+    
+        def store_row(r):
+            sss_c = pct_class(r["sss_pct"])
+            sst_c = pct_class(r["sst_pct"])
+            sss   = fmt_pct(r["sss_pct"]) if pd.notna(r.get("sss_pct")) else "—"
+            sst   = fmt_pct(r["sst_pct"]) if pd.notna(r.get("sst_pct")) else "—"
+            tkt   = f"${r['avg_ticket']:.2f}" if pd.notna(r.get("avg_ticket")) else "—"
+            onl   = f"{r['online_pct']:.1f}%" if pd.notna(r.get("online_pct")) else "—"
+            return (
+                f"<tr>"
+                f"<td>{r['store_name']}</td>"
+                f"<td>{r['market']}</td>"
+                f"<td>{fmt_dollar(r['net_sales'])}</td>"
+                f"<td class='{sss_c}'>{sss}</td>"
+                f"<td class='{sst_c}'>{sst}</td>"
+                f"<td>{tkt}</td>"
+                f"<td>{onl}</td>"
+                f"</tr>"
+            )
+    
+        store_rows = "".join(store_row(r) for _, r in store_all.iterrows())
+        st.markdown(f"""
+        <table class="store-table">
+          <thead><tr>
+            <th>Store</th><th>Market</th>
+            <th>Net Sales</th><th>SSS%</th><th>SST%</th>
+            <th>Avg Ticket</th><th>Online%</th>
+          </tr></thead>
+          <tbody>{store_rows}</tbody>
+        </table>
+        """, unsafe_allow_html=True)
+    
+
+with tab2:
+    # ── CSS for nested tree table ──────────────────────────────────────────────
+    st.markdown(f"""
+    <style>
+      .dm-tree {{ font-family: Arial, sans-serif; font-size: 13px; width: 100%; }}
+      .dm-tree summary {{ list-style: none; cursor: pointer; }}
+      .dm-tree summary::-webkit-details-marker {{ display: none; }}
+      .tree-header {{
+        display: grid;
+        grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
+        background: {BLUE}; color: white;
+        font-size: 11px; font-weight: 700; letter-spacing: 1px;
+        text-transform: uppercase;
+        padding: 8px 12px; border-radius: 6px 6px 0 0;
+        margin-bottom: 2px;
+      }}
+      .tree-header span, .tree-row span {{ padding: 0 4px; }}
+      .tree-header span:not(:first-child), .tree-row span:not(:first-child) {{
+        text-align: right;
+      }}
+      .tree-row {{
+        display: grid;
+        grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
+        padding: 8px 12px; align-items: center;
+      }}
+      /* Market rows */
+      .mkt-summary .tree-row {{
+        background: #1e3a5f; color: white;
+        font-weight: 700; font-size: 13px;
+        border-radius: 4px; margin: 3px 0;
+      }}
+      .mkt-summary:hover .tree-row {{ background: #245080; }}
+      /* DM rows */
+      .dm-summary .tree-row {{
+        background: {LIGHT}; color: {TEXT};
+        font-weight: 600; border-bottom: 1px solid {BORDER};
+        padding-left: 28px;
+      }}
+      .dm-summary:hover .tree-row {{ background: #e4eaf4; }}
+      /* Store rows */
+      .store-row .tree-row {{
+        background: white; color: {TEXT};
+        border-bottom: 1px solid {BORDER};
+        padding-left: 52px; font-size: 12px;
+      }}
+      .store-row:last-child .tree-row {{ border-bottom: none; }}
+      .pos-val {{ color: {GREEN}; font-weight: 700; }}
+      .neg-val {{ color: {DANGER}; font-weight: 700; }}
+      .na-val  {{ color: {MUTED}; }}
+      details > summary {{ display: block; }}
+      details[open] .mkt-summary .tree-row span:first-child::before {{ content: "▼ "; }}
+      details:not([open]) .mkt-summary .tree-row span:first-child::before {{ content: "▶ "; }}
+      details[open] .dm-summary .tree-row span:first-child::before {{ content: "▼ "; }}
+      details:not([open]) .dm-summary .tree-row span:first-child::before {{ content: "▶ "; }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(
+        f"<div style='font-size:11px;color:{MUTED};margin-bottom:8px;'>"
+        "Markets expanded by default · Click a DM row to expand individual stores · "
+        "<b>Note:</b> Column sorting is not available in this tree view — "
+        "use the Store Detail section in the Overview tab for a sortable flat table."
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+    dm_map = load_dm_store_map()
+
+    if dm_map is None or dm_map.empty:
+        st.info("DM data not yet loaded — run `py scripts/update_stores.py`.")
+    else:
+        # ── Compute store-level SSS/SST ────────────────────────────────────────
+        def _store_metrics(store_id):
+            c = curr_df[curr_df["store_id"] == store_id]
+            p = prior_df[prior_df["store_id"] == store_id]
+            ns  = c["net_sales"].sum()
+            txn = int(c["total_transactions"].sum())
+            if store_id not in comp_eligible:
+                return ns, txn, None, None
+            pns  = p["net_sales"].sum()
+            ptxn = p["total_transactions"].sum()
+            sss = (ns  - pns)  / pns  * 100 if pns  > 0 else None
+            sst = (txn - ptxn) / ptxn * 100 if ptxn > 0 else None
+            return ns, txn, sss, sst
+
+        # ── HTML helpers ───────────────────────────────────────────────────────
+        def _pct_span(v):
+            if v is None: return f'<span class="na-val">—</span>'
+            cls = "pos-val" if v >= 0 else "neg-val"
+            sign = "+" if v >= 0 else ""
+            return f'<span class="{cls}">{sign}{v:.1f}%</span>'
+
+        def _row(name, stores, ns, txn, sss, sst, comps=""):
+            return (
+                f'<div class="tree-row">'
+                f'<span>{name}</span>'
+                f'<span style="text-align:right">{stores}</span>'
+                f'<span style="text-align:right">{fmt_dollar(ns)}</span>'
+                f'<span style="text-align:right">{txn:,}</span>'
+                f'<span style="text-align:right">{_pct_span(sss)}</span>'
+                f'<span style="text-align:right">{_pct_span(sst)}</span>'
+                f'<span style="text-align:right">{comps}</span>'
+                f'</div>'
+            )
+
+        MARKET_ORDER = {"LA / SoCal": 0, "San Diego": 1, "Santa Barbara": 2}
+        html_parts = [
+            '<div class="dm-tree">',
+            '<div class="tree-header">'
+            '<span>Group / Store</span><span>Stores</span>'
+            '<span>Net Sales</span><span>Transactions</span>'
+            '<span>SSS%</span><span>SST%</span><span>Comps</span>'
+            '</div>',
+        ]
+
+        for market in sorted(dm_map["display_market"].unique(),
+                             key=lambda m: MARKET_ORDER.get(m, 9)):
+            mkt_dm = dm_map[dm_map["display_market"] == market]
+            if mkt_filter != "All Markets" and market != mkt_filter:
+                continue
+
+            # Market-level aggregation
+            mkt_c = curr_df[curr_df["market"] == market]  if market != "Santa Barbara" \
+                    else curr_df[~curr_df["market"].isin(["LA / SoCal","San Diego"])]
+            # Override: use DM store_ids to define market scope accurately
+            mkt_store_ids = set(mkt_dm["store_id"].tolist())
+            mkt_c = curr_df[curr_df["store_id"].isin(mkt_store_ids)]
+            mkt_p = prior_df[prior_df["store_id"].isin(mkt_store_ids)]
+
+            mkt_sss_mg = mkt_c[mkt_c["store_id"].isin(comp_eligible)].groupby("store_id")["net_sales"].sum()
+            mkt_sss_p  = mkt_p[mkt_p["store_id"].isin(comp_eligible)].groupby("store_id")["net_sales"].sum()
+            mkt_sss_mg2 = mkt_sss_mg.reset_index().merge(mkt_sss_p.reset_index(), on="store_id", suffixes=("_c","_p"))
+            mkt_sss_mg2 = mkt_sss_mg2[mkt_sss_mg2["net_sales_p"] > 0]
+            mkt_sss = (mkt_sss_mg2["net_sales_c"].sum() - mkt_sss_mg2["net_sales_p"].sum()) / \
+                       mkt_sss_mg2["net_sales_p"].sum() * 100 if mkt_sss_mg2["net_sales_p"].sum() > 0 else None
+
+            mkt_sst_mg = mkt_c[mkt_c["store_id"].isin(comp_eligible)].groupby("store_id")["total_transactions"].sum()
+            mkt_sst_p  = mkt_p[mkt_p["store_id"].isin(comp_eligible)].groupby("store_id")["total_transactions"].sum()
+            mkt_sst_mg2 = mkt_sst_mg.reset_index().merge(mkt_sst_p.reset_index(), on="store_id", suffixes=("_c","_p"))
+            mkt_sst_mg2 = mkt_sst_mg2[mkt_sst_mg2["total_transactions_p"] > 0]
+            mkt_sst = (mkt_sst_mg2["total_transactions_c"].sum() - mkt_sst_mg2["total_transactions_p"].sum()) / \
+                       mkt_sst_mg2["total_transactions_p"].sum() * 100 if mkt_sst_mg2["total_transactions_p"].sum() > 0 else None
+
+            mkt_ns  = mkt_c["net_sales"].sum()
+            mkt_txn = int(mkt_c["total_transactions"].sum())
+            mkt_comps = len(mkt_sss_mg2)
+
+            # Build market details block (open by default)
+            mkt_html = [f'<details open><summary class="mkt-summary">']
+            mkt_html.append(_row(market, len(mkt_store_ids), mkt_ns, mkt_txn,
+                                 mkt_sss, mkt_sst, mkt_comps))
+            mkt_html.append('</summary>')
+
+            # DM groups within market
+            for dm_group, dm_grp in mkt_dm.groupby("dm_group"):
+                dm_store_ids = set(dm_grp["store_id"].tolist())
+                dm_c = curr_df[curr_df["store_id"].isin(dm_store_ids)]
+                dm_p = prior_df[prior_df["store_id"].isin(dm_store_ids)]
+
+                # DM-level SSS/SST
+                dc_agg = dm_c[dm_c["store_id"].isin(comp_eligible)].groupby("store_id").agg(
+                    cs=("net_sales","sum"), ct=("total_transactions","sum")).reset_index()
+                dp_agg = dm_p[dm_p["store_id"].isin(comp_eligible)].groupby("store_id").agg(
+                    ps=("net_sales","sum"), pt=("total_transactions","sum")).reset_index()
+                dm_mg = dc_agg.merge(dp_agg, on="store_id", how="inner")
+                dm_sss_mg = dm_mg[dm_mg["ps"] > 0]
+                dm_sss = (dm_sss_mg["cs"].sum() - dm_sss_mg["ps"].sum()) / dm_sss_mg["ps"].sum() * 100 \
+                         if dm_sss_mg["ps"].sum() > 0 else None
+                dm_sst_mg = dm_mg[dm_mg["pt"] > 0]
+                dm_sst = (dm_sst_mg["ct"].sum() - dm_sst_mg["pt"].sum()) / dm_sst_mg["pt"].sum() * 100 \
+                         if dm_sst_mg["pt"].sum() > 0 else None
+
+                dm_ns  = dm_c["net_sales"].sum()
+                dm_txn = int(dm_c["total_transactions"].sum())
+                dm_name_short = dm_group.split(" - ")[-1]  # just first name
+
+                # DM details block (collapsed by default — expand to see stores)
+                mkt_html.append('<details><summary class="dm-summary">')
+                mkt_html.append(_row(f"{market} - {dm_name_short}",
+                                     len(dm_store_ids), dm_ns, dm_txn,
+                                     dm_sss, dm_sst, len(dm_sss_mg)))
+                mkt_html.append('</summary>')
+
+                # Store rows within DM
+                for _, srow in dm_grp.iterrows():
+                    sid   = srow["store_id"]
+                    sname = STORE_NAMES.get(sid, sid)
+                    s_ns, s_txn, s_sss, s_sst = _store_metrics(sid)
+                    mkt_html.append(
+                        f'<div class="store-row">'
+                        + _row(sname, "", s_ns, s_txn, s_sss, s_sst,
+                               "✓" if sid in comp_eligible else "—")
+                        + '</div>'
+                    )
+                mkt_html.append('</details>')  # close DM details
+
+            mkt_html.append('</details>')  # close market details
+            html_parts.extend(mkt_html)
+
+        html_parts.append('</div>')  # close dm-tree
+        st.markdown('\n'.join(html_parts), unsafe_allow_html=True)
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
