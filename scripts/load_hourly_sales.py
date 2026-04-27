@@ -176,6 +176,8 @@ def upsert_rows(conn, dialect, df, batch_size=500):
         """
     cur = conn.cursor()
     batch = []
+    total = len(df)
+    inserted = 0
     for _, row in df.iterrows():
         ns  = float(row["net_sales"])  if row["net_sales"]  == row["net_sales"]  else None
         txn = int(row["total_transactions"]) if row["total_transactions"] == row["total_transactions"] else None
@@ -188,11 +190,16 @@ def upsert_rows(conn, dialect, df, batch_size=500):
         if len(batch) >= batch_size:
             cur.executemany(sql, batch)
             conn.commit()
+            inserted += len(batch)
             batch = []
+            pct = inserted / total * 100
+            print(f"  {inserted:,} / {total:,} rows ({pct:.0f}%)", end="\r", flush=True)
     if batch:
         cur.executemany(sql, batch)
         conn.commit()
-    return len(df)
+        inserted += len(batch)
+    print(f"  {inserted:,} / {total:,} rows (100%) — complete          ")
+    return inserted
 
 
 def main():
