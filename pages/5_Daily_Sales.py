@@ -127,52 +127,18 @@ def get_date_range():
     return date(2024, 1, 1), date.today()
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    /* Sidebar toggle arrows — font-independent, CSP-safe */
-    [data-testid="stSidebarCollapseButton"] span,
-    [data-testid="stExpandSidebarButton"] span {
-        width: 0 !important;
-        overflow: hidden !important;
-        display: inline-block !important;
-    }
-    [data-testid="stSidebarCollapseButton"]::after {
-        content: "\25C0";
-        font-family: Arial, sans-serif !important;
-        font-size: 16px !important;
-        color: #FFFFFF !important;
-    }
-    [data-testid="stExpandSidebarButton"]::after {
-        content: "\25B6";
-        font-family: Arial, sans-serif !important;
-        font-size: 16px !important;
-        color: #134A7C !important;
-    }
-    /* Blue sidebar — applied globally so all pages match */
-    section[data-testid="stSidebar"] {
-        background-color: #134A7C !important;
-    }
-    section[data-testid="stSidebar"] .stMarkdown,
-    section[data-testid="stSidebar"] .stMarkdown p,
-    section[data-testid="stSidebar"] .stMarkdown div,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] span {
-        color: white !important;
-        font-family: Arial, sans-serif !important;
-        font-size: 14px !important;
-    }
-    section[data-testid="stSidebar"] .stSelectbox > div > div {
-        background-color: rgba(255,255,255,0.15) !important;
-        border: 1px solid rgba(255,255,255,0.35) !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 st.markdown(f"""
 <style>html, body, [class*="css"] {{
     font-family: Arial, sans-serif !important;
     background-color: {WHITE};
   }}
+  /* Restore native font on sidebar arrow buttons so Material Icons renders correctly */
+  header span,
+  [data-testid="stSidebarCollapseButton"] span,
+  [data-testid="stExpandSidebarButton"] span {{
+    font-family: unset !important;
+  }}
+
   .stApp, .main {{ background-color: {WHITE} !important; }}
   .block-container {{
     padding: 0.75rem 1.25rem 1.5rem !important;
