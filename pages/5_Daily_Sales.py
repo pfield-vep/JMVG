@@ -368,9 +368,9 @@ with ctrl4:
     )
 
 # Prior period = same date range 364 days back (preserves day of week)
-delta_days   = (end_date - start_date).days
-prior_end    = start_date - timedelta(days=364)
-prior_start  = prior_end - timedelta(days=delta_days)
+# Correct: subtract 364 from BOTH endpoints so the window aligns exactly
+prior_start  = start_date - timedelta(days=364)
+prior_end    = end_date   - timedelta(days=364)
 
 st.markdown(
     f"<div style='font-size:11px;color:{MUTED};margin-bottom:8px;'>"

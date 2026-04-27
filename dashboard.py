@@ -464,8 +464,10 @@ def load_daily_snapshot():
         comp_stores = df[df["open_date"].notna() & (df["open_date"] <= comp_cutoff)]["store_id"].unique()
 
         curr  = df[df["sale_date"] >= win_start]
-        prior_end   = win_start - pd.Timedelta(days=364)
-        prior_start = prior_end - pd.Timedelta(days=6)
+        # Subtract 364 from BOTH endpoints so the prior window aligns exactly
+        win_end     = df[df["sale_date"] >= win_start]["sale_date"].max()
+        prior_start = win_start - pd.Timedelta(days=364)
+        prior_end   = win_end   - pd.Timedelta(days=364)
         prior = df[(df["sale_date"] >= prior_start) & (df["sale_date"] <= prior_end)]
 
         # Restrict to comp-eligible stores only
