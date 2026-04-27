@@ -72,6 +72,8 @@ def migrate_schema(conn, dialect):
     p = "%s" if dialect == "postgres" else "?"
 
     new_cols = [
+        ("open_date",         "TEXT"),
+        ("acquisition_date",  "TEXT"),
         ("dm_name",           "TEXT"),
         ("dm_effective_date", "TEXT"),
         ("entity_name",       "TEXT"),
