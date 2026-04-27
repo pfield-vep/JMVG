@@ -873,13 +873,15 @@ with tab1:
     )
 
     # ── Daily SSS snapshot tile ───────────────────────────────────────────────
+    # Build as a single unbroken string — no blank lines, or Streamlit's
+    # markdown parser splits it into separate blocks and shows raw HTML text.
     if _daily_snap:
         _d = _daily_snap
         def _dsss_clr(v):
             return GREEN if v is not None and v >= 0 else DANGER
         def _dfmt(v):
             return f"{v:+.1f}%" if v is not None else "—"
-        _daily_html = (
+        _daily_tiles = (
             _tile("SSS",
                   _dfmt(_d["sss"]),
                   f"{_d['comp_stores']} comp stores",
@@ -892,40 +894,40 @@ with tab1:
                   f"${_d['avg_ticket']:.2f}" if _d["avg_ticket"] else "—",
                   f"thru {_d['thru_date']}")
         )
-        _daily_group = f"""
-            <div class="kpi-group">
-                <div class="kg-header" style="background:{RED};">Daily — Last 7 Days</div>
-                <div class="kg-tiles">{_daily_html}</div>
-            </div>"""
+        _daily_group = (
+            f'<div class="kpi-group">'
+            f'<div class="kg-header" style="background:{RED};">Daily \u2014 Last 7 Days</div>'
+            f'<div class="kg-tiles">{_daily_tiles}</div>'
+            f'</div>'
+        )
     else:
-        _daily_group = f"""
-            <div class="kpi-group">
-                <div class="kg-header" style="background:{RED};">Daily — Last 7 Days</div>
-                <div class="kg-tiles">
-                  <div class="kg-tile" style="grid-column:span 3;padding:12px;
-                       font-size:11px;color:{MUTED};text-align:center;">
-                    No daily data yet
-                  </div>
-                </div>
-            </div>"""
-
-    st.markdown(f"""
-        <div class="kpi-groups">
-            <div class="kpi-group">
-                <div class="kg-header">Comp Sales</div>
-                <div class="kg-tiles">{_comp_html}</div>
-            </div>
-            <div class="kpi-group">
-                <div class="kg-header">Sales</div>
-                <div class="kg-tiles">{_sales_html}</div>
-            </div>
-            <div class="kpi-group">
-                <div class="kg-header">Sales Mix</div>
-                <div class="kg-tiles">{_mix_html}</div>
-            </div>
-            {_daily_group}
-        </div>
-    """, unsafe_allow_html=True)
+        _daily_group = (
+            f'<div class="kpi-group">'
+            f'<div class="kg-header" style="background:{RED};">Daily \u2014 Last 7 Days</div>'
+            f'<div class="kg-tiles">'
+            f'<div class="kg-tile" style="grid-column:span 3;padding:12px;font-size:11px;color:{MUTED};text-align:center;">No daily data yet</div>'
+            f'</div>'
+            f'</div>'
+        )
+    # Build complete HTML as one unbroken string — no blank lines between divs
+    _kpi_groups_html = (
+        '<div class="kpi-groups">'
+        '<div class="kpi-group">'
+        '<div class="kg-header">Comp Sales</div>'
+        f'<div class="kg-tiles">{_comp_html}</div>'
+        '</div>'
+        '<div class="kpi-group">'
+        '<div class="kg-header">Sales</div>'
+        f'<div class="kg-tiles">{_sales_html}</div>'
+        '</div>'
+        '<div class="kpi-group">'
+        '<div class="kg-header">Sales Mix</div>'
+        f'<div class="kg-tiles">{_mix_html}</div>'
+        '</div>'
+        + _daily_group +
+        '</div>'
+    )
+    st.markdown(_kpi_groups_html, unsafe_allow_html=True)
 
     # ── REGIONAL DATA PREP ────────────────────────────────────────────────────
     reg_raw = week_mkt[~week_mkt['market'].str.upper().str.match(r'^CA$|^CA\s|GRAND', na=False)].copy()
