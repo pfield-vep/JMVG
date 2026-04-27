@@ -158,18 +158,40 @@ def main():
     xl_bytes = base64.b64decode(content_b64)
     print(f"  ✓ Downloaded {fname} ({len(xl_bytes):,} bytes)")
 
-    # Parse and upsert
+    # Parse and upsert — only new rows
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     from load_daily_sales import create_table, parse_excel, upsert_rows
     create_table(conn, dialect)
 
     import pandas as pd
+
+    # Find the latest date already stored so we only upsert new rows
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(sale_date) FROM daily_sales")
+        row = cur.fetchone()
+        latest_stored = pd.to_datetime(row[0]).date() if row and row[0] else None
+    except Exception:
+        latest_stored = None
+
     df = parse_excel(io.BytesIO(xl_bytes))
-    print(f"  Parsed {len(df)} rows, dates {df['Date'].min().date()} → {df['Date'].max().date()}")
+    total_rows = len(df)
+
+    if latest_stored:
+        df = df[df["Date"].dt.date > latest_stored]
+        print(f"  Latest in DB: {latest_stored}  →  {len(df)} new rows to upsert "
+              f"(skipped {total_rows - len(df):,} already-stored rows)")
+    else:
+        print(f"  No existing data — upserting all {total_rows:,} rows")
+
+    if df.empty:
+        conn.close()
+        print("✓ Done — already up to date, nothing new to upsert")
+        return 0
 
     n = upsert_rows(conn, dialect, df)
     conn.close()
-    print(f"✓ Done — {n} rows upserted into daily_sales")
+    print(f"✓ Done — {n} new rows upserted into daily_sales")
     return n
 
 if __name__ == "__main__":
