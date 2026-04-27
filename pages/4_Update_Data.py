@@ -395,7 +395,7 @@ def fetch_weather(log: StLogger):
 def process_benchmark_files(uploaded_files, log: StLogger):
     """Parse uploaded BlakeWard Summary PDFs and upsert into weekly_benchmark."""
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
-    from load_benchmark import parse_summary_pdf, upsert_records, create_table, COLS
+    from load_benchmark import parse_summary_pdf, upsert_records, upsert_detail_records, create_table, COLS
 
     conn, dialect = fresh_conn()
     create_table(conn, dialect)
@@ -419,8 +419,9 @@ def process_benchmark_files(uploaded_files, log: StLogger):
             try:
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
-                    records = parse_summary_pdf(tmp_path)
-                    upsert_records(conn, dialect, records)
+                    region_records, detail_records = parse_summary_pdf(tmp_path)
+                    upsert_records(conn, dialect, region_records)
+                    upsert_detail_records(conn, dialect, detail_records)
                 for line in buf.getvalue().splitlines():
                     if line.strip():
                         log.write(f"  {line}")
