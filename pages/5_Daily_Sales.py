@@ -129,26 +129,41 @@ def get_date_range():
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+    /* Sidebar toggle arrows — font-independent, CSP-safe */
     [data-testid="stSidebarCollapseButton"] span,
     [data-testid="stExpandSidebarButton"] span {
-        font-size: 0 !important;
-        line-height: 0 !important;
-        color: transparent !important;
+        width: 0 !important;
+        overflow: hidden !important;
         display: inline-block !important;
-        width: 20px !important;
-        height: 20px !important;
     }
-    [data-testid="stSidebarCollapseButton"] span::before {
+    [data-testid="stSidebarCollapseButton"]::after {
         content: "\25C0";
-        font-size: 16px !important;
         font-family: Arial, sans-serif !important;
+        font-size: 16px !important;
         color: #FFFFFF !important;
     }
-    [data-testid="stExpandSidebarButton"] span::before {
+    [data-testid="stExpandSidebarButton"]::after {
         content: "\25B6";
-        font-size: 16px !important;
         font-family: Arial, sans-serif !important;
+        font-size: 16px !important;
         color: #134A7C !important;
+    }
+    /* Blue sidebar — applied globally so all pages match */
+    section[data-testid="stSidebar"] {
+        background-color: #134A7C !important;
+    }
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] .stMarkdown div,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] span {
+        color: white !important;
+        font-family: Arial, sans-serif !important;
+        font-size: 14px !important;
+    }
+    section[data-testid="stSidebar"] .stSelectbox > div > div {
+        background-color: rgba(255,255,255,0.15) !important;
+        border: 1px solid rgba(255,255,255,0.35) !important;
     }
 </style>
 """, unsafe_allow_html=True)
