@@ -119,7 +119,11 @@ def find_latest_email(access_token):
             return msg["id"]
     return None
 
-def download_excel(access_token, message_id):
+def download_attachments(access_token, message_id):
+    """
+    Returns a dict of {filename: bytes} for all attachments in the email.
+    Handles both .xlsx and .zip files.
+    """
     import requests
     headers = {"Authorization": f"Bearer {access_token}"}
     r = requests.get(
@@ -127,12 +131,14 @@ def download_excel(access_token, message_id):
         headers=headers,
     )
     r.raise_for_status()
+    result = {}
     for att in r.json().get("value", []):
-        name = att.get("name","")
-        if name.lower().endswith(".xlsx") or name.lower().endswith(".xls"):
-            print(f"  Downloading attachment: {name}")
-            return att.get("contentBytes",""), name
-    return None, None
+        name = att.get("name", "")
+        ext  = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+        if ext in ("xlsx", "xls", "zip") and att.get("contentBytes"):
+            print(f"  Downloading: {name}")
+            result[name] = base64.b64decode(att["contentBytes"])
+    return result
 
 def main():
     print("=== JM Valley Daily Sales Fetch ===")
@@ -149,50 +155,77 @@ def main():
         conn.close()
         return 0
 
-    content_b64, fname = download_excel(access_token, msg_id)
-    if not content_b64:
-        print("  ✗ No Excel attachment found in email")
+    attachments = download_attachments(access_token, msg_id)
+    if not attachments:
+        print("  ✗ No recognised attachments (.xlsx / .zip) found in email")
         conn.close()
         return 0
 
-    xl_bytes = base64.b64decode(content_b64)
-    print(f"  ✓ Downloaded {fname} ({len(xl_bytes):,} bytes)")
-
-    # Parse and upsert — only new rows
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
-    from load_daily_sales import create_table, parse_excel, upsert_rows
-    create_table(conn, dialect)
-
     import pandas as pd
+    total_upserted = 0
 
-    # Find the latest date already stored so we only upsert new rows
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT MAX(sale_date) FROM daily_sales")
-        row = cur.fetchone()
-        latest_stored = pd.to_datetime(row[0]).date() if row and row[0] else None
-    except Exception:
-        latest_stored = None
+    # ── Daily sales (.xlsx) ───────────────────────────────────────────────────
+    from load_daily_sales import (create_table as ds_create,
+                                   parse_excel as ds_parse,
+                                   upsert_rows as ds_upsert)
+    ds_create(conn, dialect)
 
-    df = parse_excel(io.BytesIO(xl_bytes))
-    total_rows = len(df)
+    xlsx_files = {n: b for n, b in attachments.items()
+                  if n.lower().endswith((".xlsx", ".xls"))
+                  and "hourly" not in n.lower()}
 
-    if latest_stored:
-        df = df[df["Date"].dt.date > latest_stored]
-        print(f"  Latest in DB: {latest_stored}  →  {len(df)} new rows to upsert "
-              f"(skipped {total_rows - len(df):,} already-stored rows)")
-    else:
-        print(f"  No existing data — upserting all {total_rows:,} rows")
+    for fname, xl_bytes in xlsx_files.items():
+        print(f"\n── Daily sales: {fname} ({len(xl_bytes):,} bytes)")
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT MAX(sale_date) FROM daily_sales")
+            row = cur.fetchone()
+            latest_ds = pd.to_datetime(row[0]).date() if row and row[0] else None
+        except Exception:
+            latest_ds = None
 
-    if df.empty:
-        conn.close()
-        print("✓ Done — already up to date, nothing new to upsert")
-        return 0
+        df_ds = ds_parse(io.BytesIO(xl_bytes))
+        total_rows = len(df_ds)
+        if latest_ds:
+            df_ds = df_ds[df_ds["Date"].dt.date > latest_ds]
+            print(f"  Latest in DB: {latest_ds} → {len(df_ds):,} new rows "
+                  f"(skipped {total_rows - len(df_ds):,})")
+        else:
+            print(f"  Full load: {total_rows:,} rows")
 
-    n = upsert_rows(conn, dialect, df)
+        if not df_ds.empty:
+            n = ds_upsert(conn, dialect, df_ds)
+            total_upserted += n
+            print(f"  ✓ {n:,} daily sales rows upserted")
+        else:
+            print("  ✓ Daily sales already up to date")
+
+    # ── Hourly sales (.zip containing CSV) ───────────────────────────────────
+    from load_hourly_sales import (create_table as hr_create,
+                                    parse_file  as hr_parse,
+                                    upsert_rows as hr_upsert,
+                                    get_latest_date as hr_latest)
+    hr_create(conn, dialect)
+
+    zip_files = {n: b for n, b in attachments.items()
+                 if n.lower().endswith(".zip")}
+
+    for fname, zip_bytes in zip_files.items():
+        print(f"\n── Hourly sales: {fname} ({len(zip_bytes):,} bytes)")
+        latest_hr = hr_latest(conn)
+        df_hr = hr_parse(zip_bytes, after_date=latest_hr)
+
+        if not df_hr.empty:
+            n = hr_upsert(conn, dialect, df_hr)
+            total_upserted += n
+            print(f"  ✓ {n:,} hourly rows upserted")
+        else:
+            print("  ✓ Hourly sales already up to date")
+
     conn.close()
-    print(f"✓ Done — {n} new rows upserted into daily_sales")
-    return n
+    print(f"\n✓ Done — {total_upserted:,} total rows upserted")
+    return total_upserted
 
 if __name__ == "__main__":
     main()
