@@ -57,14 +57,29 @@ def load_stores():
 # ── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Restore Material Icons font for sidebar arrow buttons */
-    [data-testid="stExpandSidebarButton"] span,
+
+    /* Sidebar arrow: replace Material Icons text with Unicode arrow (CSP-safe) */
     [data-testid="stSidebarCollapseButton"] span,
-    .material-icons {
-        font-family: 'Material Icons' !important;
-        font-size: 24px !important;
+    [data-testid="stExpandSidebarButton"] span {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        color: transparent !important;
+        display: inline-block !important;
+        width: 20px !important; height: 20px !important;
     }
-    [data-testid="stAppViewContainer"] { background:#F5F6F8; }
+    [data-testid="stSidebarCollapseButton"] span::before {
+        content: "◀";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: #FFFFFF !important; line-height: 20px !important;
+    }
+    [data-testid="stExpandSidebarButton"] span::before {
+        content: "▶";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: #134A7C !important; line-height: 20px !important;
+    }
+[data-testid="stAppViewContainer"] { background:#F5F6F8; }
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
     header { visibility:hidden; }

@@ -74,24 +74,62 @@ DEFAULT_LEGEND = dict(
 )
 DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
-st.markdown("""
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-""", unsafe_allow_html=True)
-
 st.markdown(f"""
 <style>
-    /* Arial everywhere — but NOT on Material Icons spans */
+
+    /* Sidebar arrow: replace Material Icons text with Unicode arrow (CSP-safe) */
+    [data-testid="stSidebarCollapseButton"] span,
+    [data-testid="stExpandSidebarButton"] span {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        color: transparent !important;
+        display: inline-block !important;
+        width: 20px !important; height: 20px !important;
+    }
+    [data-testid="stSidebarCollapseButton"] span::before {
+        content: "◀";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: #FFFFFF !important; line-height: 20px !important;
+    }
+    [data-testid="stExpandSidebarButton"] span::before {
+        content: "▶";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: #134A7C !important; line-height: 20px !important;
+    }
+
+    /* Arial everywhere */
     html, body, [class*="css"] {{
         font-family: Arial, sans-serif !important;
         font-size: 15px !important;
         background-color: {WHITE};
     }}
-    /* Restore Material Icons font for sidebar arrow buttons */
-    [data-testid="stExpandSidebarButton"] span,
+    /* ── Sidebar arrow buttons: hide icon text, show Unicode arrow instead ──
+       Streamlit's Material Icons font is blocked by CSP on Streamlit Cloud,
+       so we replace the text with a CSS ::before pseudo-element arrow. */
     [data-testid="stSidebarCollapseButton"] span,
-    .material-icons {{
-        font-family: 'Material Icons' !important;
-        font-size: 24px !important;
+    [data-testid="stExpandSidebarButton"] span {{
+        font-size: 0 !important;
+        line-height: 0 !important;
+        color: transparent !important;
+        display: inline-block !important;
+        width: 20px !important;
+        height: 20px !important;
+    }}
+    [data-testid="stSidebarCollapseButton"] span::before {{
+        content: "◀";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: {WHITE} !important;
+        line-height: 20px !important;
+    }}
+    [data-testid="stExpandSidebarButton"] span::before {{
+        content: "▶";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: {BLUE} !important;
+        line-height: 20px !important;
     }}
     .stApp, .main {{ background-color: {WHITE} !important; }}
     .block-container {{ padding-top: 1rem !important; }}

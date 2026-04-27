@@ -127,20 +127,31 @@ def get_date_range():
     return date(2024, 1, 1), date.today()
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-""", unsafe_allow_html=True)
-
 st.markdown(f"""
 <style>
-    /* Restore Material Icons font for sidebar arrow buttons */
-    [data-testid="stExpandSidebarButton"] span,
+
+    /* Sidebar arrow: replace Material Icons text with Unicode arrow (CSP-safe) */
     [data-testid="stSidebarCollapseButton"] span,
-    .material-icons {
-        font-family: 'Material Icons' !important;
-        font-size: 24px !important;
+    [data-testid="stExpandSidebarButton"] span {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        color: transparent !important;
+        display: inline-block !important;
+        width: 20px !important; height: 20px !important;
     }
-  html, body, [class*="css"] {{
+    [data-testid="stSidebarCollapseButton"] span::before {
+        content: "◀";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: #FFFFFF !important; line-height: 20px !important;
+    }
+    [data-testid="stExpandSidebarButton"] span::before {
+        content: "▶";
+        font-size: 16px !important;
+        font-family: Arial, sans-serif !important;
+        color: #134A7C !important; line-height: 20px !important;
+    }
+html, body, [class*="css"] {{
     font-family: Arial, sans-serif !important;
     background-color: {WHITE};
   }}
