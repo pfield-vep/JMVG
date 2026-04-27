@@ -304,79 +304,52 @@ st.markdown(f"""
 min_date, max_date = get_date_range()
 today = max_date  # most recent data date
 
-# Default to last 7 days
-default_end   = today
-default_start = today - timedelta(days=6)
+# ── Period toggle + market filter ──────────────────────────────────────────────
+top_left, top_right = st.columns([3, 1])
 
-ctrl1, ctrl2, ctrl3, ctrl4 = st.columns([1.5, 1.2, 1.2, 1.2])
-
-with ctrl1:
-    preset = st.selectbox(
+with top_left:
+    period = st.radio(
         "Period",
-        ["Last 7 Days", "Last 14 Days", "Last 28 Days",
-         "Last Week (Mon–Sun)", "Month to Date", "Custom"],
+        ["Day of", "Week to Date", "Period to Date", "Year to Date"],
         index=0,
+        horizontal=True,
         label_visibility="collapsed",
     )
 
-# Compute dates from preset
-if preset == "Last 7 Days":
-    end_date   = today
-    start_date = today - timedelta(days=6)
-elif preset == "Last 14 Days":
-    end_date   = today
-    start_date = today - timedelta(days=13)
-elif preset == "Last 28 Days":
-    end_date   = today
-    start_date = today - timedelta(days=27)
-elif preset == "Last Week (Mon–Sun)":
-    # Last complete Mon–Sun
-    dow = today.weekday()  # 0=Mon
-    last_sun  = today - timedelta(days=dow+1)
-    last_mon  = last_sun - timedelta(days=6)
-    end_date   = last_sun
-    start_date = last_mon
-elif preset == "Month to Date":
-    end_date   = today
-    start_date = today.replace(day=1)
-else:
-    end_date   = default_end
-    start_date = default_start
-
-with ctrl2:
-    if preset == "Custom":
-        start_date = st.date_input("From", value=default_start,
-                                   min_value=min_date, max_value=max_date)
-    else:
-        st.markdown(f"<div style='padding-top:6px;font-size:13px;color:{MUTED};'>"
-                    f"<b>From:</b> {start_date.strftime('%b %d, %Y')}</div>",
-                    unsafe_allow_html=True)
-
-with ctrl3:
-    if preset == "Custom":
-        end_date = st.date_input("To", value=default_end,
-                                 min_value=min_date, max_value=max_date)
-    else:
-        st.markdown(f"<div style='padding-top:6px;font-size:13px;color:{MUTED};'>"
-                    f"<b>To:</b> {end_date.strftime('%b %d, %Y')}</div>",
-                    unsafe_allow_html=True)
-
-with ctrl4:
+with top_right:
     mkt_filter = st.selectbox(
         "Market", ["All Markets", "LA / SoCal", "San Diego"],
         label_visibility="collapsed",
     )
 
-# Prior period = same date range 364 days back (preserves day of week)
-# Correct: subtract 364 from BOTH endpoints so the window aligns exactly
-prior_start  = start_date - timedelta(days=364)
-prior_end    = end_date   - timedelta(days=364)
+# ── Compute date window from toggle ───────────────────────────────────────────
+end_date = today
+if period == "Day of":
+    start_date = today                          # single day
+elif period == "Week to Date":
+    dow = today.weekday()                       # 0=Monday
+    start_date = today - timedelta(days=dow)    # back to Monday
+elif period == "Period to Date":
+    start_date = today.replace(day=1)           # start of calendar month
+else:  # Year to Date
+    start_date = today.replace(month=1, day=1)
 
+# Prior period: same window 364 days earlier (preserves day of week)
+prior_start = start_date - timedelta(days=364)
+prior_end   = end_date   - timedelta(days=364)
+
+# ── Date range label + last updated tag ───────────────────────────────────────
+period_label = start_date.strftime('%b %d') if start_date != end_date \
+               else start_date.strftime('%b %d, %Y')
 st.markdown(
-    f"<div style='font-size:11px;color:{MUTED};margin-bottom:8px;'>"
-    f"Comparing <b>{start_date.strftime('%b %d')} – {end_date.strftime('%b %d, %Y')}</b>"
+    f"<div style='font-size:11px;color:{MUTED};margin-bottom:8px;"
+    f"display:flex;justify-content:space-between;'>"
+    f"<span>Comparing <b>{period_label}"
+    f"{' – ' + end_date.strftime('%b %d, %Y') if start_date != end_date else ''}</b>"
     f" vs prior year <b>{prior_start.strftime('%b %d')} – {prior_end.strftime('%b %d, %Y')}</b>"
-    f"&nbsp;(364 days back, same day of week)"
+    f"&nbsp;(364 days back)</span>"
+    f"<span style='color:{MUTED};'>🕐 Last updated: "
+    f"<b>{max_date.strftime('%B %d, %Y')}</b></span>"
     f"</div>",
     unsafe_allow_html=True,
 )
@@ -820,10 +793,12 @@ with tab2:
       .neg-val {{ color: {DANGER}; font-weight: 700; }}
       .na-val  {{ color: {MUTED}; }}
       details > summary {{ display: block; }}
-      details[open] .mkt-summary .tree-row span:first-child::before {{ content: "▼ "; }}
-      details:not([open]) .mkt-summary .tree-row span:first-child::before {{ content: "▶ "; }}
-      details[open] .dm-summary .tree-row span:first-child::before {{ content: "▼ "; }}
-      details:not([open]) .dm-summary .tree-row span:first-child::before {{ content: "▶ "; }}
+      /* Use > (direct child) so ::before only hits the name column,
+         not the nested spans inside the SSS/SST percentage cells */
+      details[open] .mkt-summary .tree-row > span:first-child::before {{ content: "▼ "; }}
+      details:not([open]) .mkt-summary .tree-row > span:first-child::before {{ content: "▶ "; }}
+      details[open] .dm-summary .tree-row > span:first-child::before {{ content: "▼ "; }}
+      details:not([open]) .dm-summary .tree-row > span:first-child::before {{ content: "▶ "; }}
     </style>
     """, unsafe_allow_html=True)
 
