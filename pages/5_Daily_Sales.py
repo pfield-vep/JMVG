@@ -768,13 +768,23 @@ with tab2:
         grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
         padding: 8px 12px; align-items: center;
       }}
-      /* Market rows */
+      /* Market rows — light blue */
       .mkt-summary .tree-row {{
-        background: #1e3a5f; color: white;
+        background: #d0e4f7; color: {TEXT};
         font-weight: 700; font-size: 13px;
         border-radius: 4px; margin: 3px 0;
       }}
-      .mkt-summary:hover .tree-row {{ background: #245080; }}
+      .mkt-summary:hover .tree-row {{ background: #bcd6ef; }}
+      /* Total row — dark blue */
+      .total-row {{
+        display: grid;
+        grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
+        padding: 8px 12px; align-items: center;
+        background: {BLUE}; color: white;
+        font-weight: 700; font-size: 13px;
+        border-radius: 0 0 6px 6px; margin-top: 3px;
+      }}
+      .total-row span:not(:first-child) {{ text-align: right; }}
       /* DM rows */
       .dm-summary .tree-row {{
         background: {LIGHT}; color: {TEXT};
@@ -923,7 +933,7 @@ with tab2:
 
                 # DM details block (collapsed by default — expand to see stores)
                 mkt_html.append('<details><summary class="dm-summary">')
-                mkt_html.append(_row(f"{market} - {dm_name_short}",
+                mkt_html.append(_row(dm_name_short,  # first name only
                                      len(dm_store_ids), dm_ns, dm_txn,
                                      dm_sss, dm_sst, len(dm_sss_mg)))
                 mkt_html.append('</summary>')
@@ -943,6 +953,46 @@ with tab2:
 
             mkt_html.append('</details>')  # close market details
             html_parts.extend(mkt_html)
+
+        # ── Grand Total row (dark blue) ───────────────────────────────────────
+        all_c = curr_df[~curr_df["store_id"].isin(["20026"])]
+        all_p = prior_df[~prior_df["store_id"].isin(["20026"])]
+        if mkt_filter != "All Markets":
+            market_store_ids = set(dm_map["store_id"].tolist())
+            all_c = curr_df[curr_df["store_id"].isin(market_store_ids)]
+            all_p = prior_df[prior_df["store_id"].isin(market_store_ids)]
+
+        tot_c_agg = all_c[all_c["store_id"].isin(comp_eligible)].groupby("store_id").agg(
+            cs=("net_sales","sum"), ct=("total_transactions","sum")).reset_index()
+        tot_p_agg = all_p[all_p["store_id"].isin(comp_eligible)].groupby("store_id").agg(
+            ps=("net_sales","sum"), pt=("total_transactions","sum")).reset_index()
+        tot_mg = tot_c_agg.merge(tot_p_agg, on="store_id", how="inner")
+        tot_sss_mg = tot_mg[tot_mg["ps"] > 0]
+        tot_sss = (tot_sss_mg["cs"].sum() - tot_sss_mg["ps"].sum()) / tot_sss_mg["ps"].sum() * 100 \
+                  if tot_sss_mg["ps"].sum() > 0 else None
+        tot_sst_mg = tot_mg[tot_mg["pt"] > 0]
+        tot_sst = (tot_sst_mg["ct"].sum() - tot_sst_mg["pt"].sum()) / tot_sst_mg["pt"].sum() * 100 \
+                  if tot_sst_mg["pt"].sum() > 0 else None
+        tot_ns  = all_c["net_sales"].sum()
+        tot_txn = int(all_c["total_transactions"].sum())
+        tot_stores = all_c["store_id"].nunique()
+
+        def _pct_white(v):
+            if v is None: return '<span style="opacity:.6">—</span>'
+            sign = "+" if v >= 0 else ""
+            return f'<span>{sign}{v:.1f}%</span>'
+
+        html_parts.append(
+            f'<div class="total-row">'
+            f'<span>TOTAL</span>'
+            f'<span>{tot_stores}</span>'
+            f'<span>{fmt_dollar(tot_ns)}</span>'
+            f'<span>{tot_txn:,}</span>'
+            f'<span>{_pct_white(tot_sss)}</span>'
+            f'<span>{_pct_white(tot_sst)}</span>'
+            f'<span>{len(tot_sss_mg)}</span>'
+            f'</div>'
+        )
 
         html_parts.append('</div>')  # close dm-tree
         st.markdown('\n'.join(html_parts), unsafe_allow_html=True)
