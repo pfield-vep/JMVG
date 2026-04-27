@@ -461,34 +461,49 @@ stores_df, sales_df, bread_df, loyalty_df, mkt_df, bread_totals_df = load_data()
 
 @st.cache_data(ttl=300)
 def load_daily_snapshot():
-    """Last 7 days SSS%, SST%, avg ticket vs. same 7 days 364 days prior."""
+    """Last 7 days SSS%, SST%, avg ticket vs. same 7 days 364 days prior.
+    Comp store rule: open_date must be >= 364 days before the start of the
+    current window (applies to both organic opens and acquired stores)."""
     try:
         conn, _ = get_db_connection()
         df = pd.read_sql("""
-            SELECT store_id, sale_date, net_sales, total_transactions
-            FROM daily_sales
-            WHERE net_sales IS NOT NULL AND net_sales > 0
-            ORDER BY sale_date DESC
+            SELECT ds.store_id, ds.sale_date, ds.net_sales, ds.total_transactions,
+                   s.open_date
+            FROM daily_sales ds
+            LEFT JOIN stores s ON ds.store_id = s.store_id
+            WHERE ds.net_sales IS NOT NULL AND ds.net_sales > 0
+            ORDER BY ds.sale_date DESC
             LIMIT 5000
         """, conn)
         conn.close()
         if df.empty:
             return None
         df["sale_date"] = pd.to_datetime(df["sale_date"])
-        max_d  = df["sale_date"].max()
+        df["open_date"]  = pd.to_datetime(df["open_date"], errors="coerce")
+
+        max_d     = df["sale_date"].max()
         win_start = max_d - pd.Timedelta(days=6)
-        curr = df[df["sale_date"] >= win_start]
+
+        # Comp eligibility: open_date + 364 days <= win_start
+        comp_cutoff = win_start - pd.Timedelta(days=364)
+        comp_stores = df[df["open_date"].notna() & (df["open_date"] <= comp_cutoff)]["store_id"].unique()
+
+        curr  = df[df["sale_date"] >= win_start]
         prior_end   = win_start - pd.Timedelta(days=364)
         prior_start = prior_end - pd.Timedelta(days=6)
         prior = df[(df["sale_date"] >= prior_start) & (df["sale_date"] <= prior_end)]
-        # Comp stores only
+
+        # Restrict to comp-eligible stores only
+        curr  = curr[curr["store_id"].isin(comp_stores)]
+        prior = prior[prior["store_id"].isin(comp_stores)]
+
         c_agg = curr.groupby("store_id").agg(cs=("net_sales","sum"), ct=("total_transactions","sum")).reset_index()
         p_agg = prior.groupby("store_id").agg(ps=("net_sales","sum"), pt=("total_transactions","sum")).reset_index()
         mg = c_agg.merge(p_agg, on="store_id").query("ps > 0")
         if mg.empty:
             return None
         sss = (mg["cs"].sum() - mg["ps"].sum()) / mg["ps"].sum() * 100
-        sst = (mg["ct"].sum() - mg["pt"].sum()) / mg["pt"].sum() * 100 if mg["pt"].sum() > 0 else None
+        sst = (mg["ct"].sum() - mg["pt"].sum()) / mg["ct"].sum() * 100 if mg["ct"].sum() > 0 else None
         total_txn  = curr["total_transactions"].sum()
         avg_ticket = curr["net_sales"].sum() / total_txn if total_txn else None
         return {

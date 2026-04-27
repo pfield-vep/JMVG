@@ -70,20 +70,28 @@ def get_conn():
 
 # ── Load data ──────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
+def load_comp_eligible_stores(period_start_str: str) -> set:
+    """Return store_ids eligible as comps: open_date + 364 days <= period_start."""
+    conn, dialect = get_conn()
+    p = "%s" if dialect == "postgres" else "?"
+    try:
+        stores = pd.read_sql_query(
+            f"SELECT store_id, open_date FROM stores WHERE open_date IS NOT NULL",
+            conn
+        )
+        conn.close()
+        stores["open_date"] = pd.to_datetime(stores["open_date"], errors="coerce")
+        cutoff = pd.to_datetime(period_start_str) - pd.Timedelta(days=364)
+        return set(stores[stores["open_date"] <= cutoff]["store_id"].tolist())
+    except Exception:
+        conn.close()
+        return set()
+
+@st.cache_data(ttl=300)
 def load_sales(start_str: str, end_str: str, prior_start_str: str, prior_end_str: str):
     """Load current + prior period daily_sales rows."""
     conn, dialect = get_conn()
     p = "%s" if dialect == "postgres" else "?"
-    q = f"""
-        SELECT store_id, sale_date,
-               net_sales, total_transactions,
-               walkin_sales, online_sales, third_party_sales,
-               lunch_sales, dinner_sales, morning_sales
-        FROM daily_sales
-        WHERE sale_date >= {p} AND sale_date <= {p}
-        ORDER BY sale_date
-    """
-    # Fetch both windows in one hit by using a wider range
     overall_start = min(start_str, prior_start_str)
     overall_end   = max(end_str,   prior_end_str)
     df = pd.read_sql_query(
@@ -358,6 +366,9 @@ if all_df.empty:
     st.warning("No daily sales data found. Run the backfill script to load data.")
     st.stop()
 
+# Load comp-eligible stores: open_date + 364 days <= start_date
+comp_eligible = load_comp_eligible_stores(str(start_date))
+
 curr_df  = all_df[all_df["sale_date"].dt.date.between(start_date, end_date)].copy()
 prior_df = all_df[all_df["sale_date"].dt.date.between(prior_start, prior_end)].copy()
 
@@ -371,19 +382,26 @@ def comp_metrics(curr: pd.DataFrame, prior: pd.DataFrame):
     """
     Returns dict with: net_sales, total_transactions, sss_pct, sst_pct,
     comp_store_count, avg_ticket, walkin_pct, online_pct, thirdparty_pct,
-    lunch_pct, dinner_pct, morning_pct, prior_net_sales
+    lunch_pct, dinner_pct, morning_pct, prior_net_sales.
+
+    Comp eligibility: restricted to comp_eligible set (open_date + 364 days
+    before period start). SSS/SST calculated on comp stores only; channel/
+    daypart mix calculated on all stores in the filtered dataframe.
     """
-    # Aggregate by store for each period
-    c_agg = curr.groupby("store_id").agg(
+    # Restrict to comp-eligible stores for SSS/SST
+    curr_comp = curr[curr["store_id"].isin(comp_eligible)] if comp_eligible else curr
+    prior_comp = prior[prior["store_id"].isin(comp_eligible)] if comp_eligible else prior
+
+    c_agg = curr_comp.groupby("store_id").agg(
         net_sales=("net_sales","sum"),
         txn=("total_transactions","sum"),
     ).reset_index()
-    p_agg = prior.groupby("store_id").agg(
+    p_agg = prior_comp.groupby("store_id").agg(
         net_sales_prior=("net_sales","sum"),
         txn_prior=("total_transactions","sum"),
     ).reset_index()
 
-    # Comp stores = in both periods with non-zero prior sales
+    # Comp stores = eligible + in both periods with non-zero prior sales
     merged = c_agg.merge(p_agg, on="store_id", how="inner")
     merged = merged[merged["net_sales_prior"] > 0]
 
@@ -396,7 +414,7 @@ def comp_metrics(curr: pd.DataFrame, prior: pd.DataFrame):
     sss = (curr_sales - prior_sales) / prior_sales * 100 if prior_sales else None
     sst = (curr_txn  - prior_txn)  / prior_txn  * 100 if prior_txn  else None
 
-    # Totals from curr_df (all stores, for channel/daypart mix)
+    # Totals from full curr (all stores) for channel/daypart mix
     total_sales = curr["net_sales"].sum()
     total_txn   = curr["total_transactions"].sum()
     avg_ticket  = total_sales / total_txn if total_txn else None
