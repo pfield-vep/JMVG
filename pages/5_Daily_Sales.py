@@ -70,6 +70,38 @@ def get_conn():
 
 # ── Load data ──────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
+def load_dm_store_map():
+    """Load store → DM name + market from stores table."""
+    conn, _ = get_conn()
+    try:
+        df = pd.read_sql_query(
+            "SELECT store_id, dm_name, broad_geography "
+            "FROM stores WHERE dm_name IS NOT NULL",
+            conn
+        )
+        conn.close()
+        df["store_id"] = df["store_id"].astype(str).str.strip()
+
+        def _market(geo):
+            g = str(geo or "").strip()
+            if "San Diego" in g:                 return "San Diego"
+            if "Santa Barbara" in g or "San Luis" in g: return "Santa Barbara"
+            return "LA / SoCal"
+
+        def _first(name):
+            return str(name or "").strip().split()[0]
+
+        df["display_market"] = df["broad_geography"].apply(_market)
+        df["dm_first"]       = df["dm_name"].apply(_first)
+        df["dm_group"]       = df["display_market"] + " - " + df["dm_first"]
+        # Exclude Tampa store — not a CA market
+        df = df[df["store_id"] != "20026"]
+        return df
+    except Exception:
+        conn.close()
+        return None
+
+@st.cache_data(ttl=300)
 def load_comp_eligible_stores(period_start_str: str) -> set:
     """Return store_ids eligible as comps: open_date + 364 days <= period_start."""
     conn, dialect = get_conn()
@@ -731,6 +763,89 @@ with st.expander("Store Detail", expanded=False):
       <tbody>{store_rows}</tbody>
     </table>
     """, unsafe_allow_html=True)
+
+# ── By District Manager ───────────────────────────────────────────────────────
+st.markdown('<div class="section-title">By District Manager</div>', unsafe_allow_html=True)
+
+dm_map = load_dm_store_map()
+if dm_map is not None and not dm_map.empty:
+    # Respect the market filter
+    if mkt_filter != "All Markets":
+        dm_map = dm_map[dm_map["display_market"] == mkt_filter]
+
+    MARKET_ORDER = {"LA / SoCal": 0, "San Diego": 1, "Santa Barbara": 2}
+    dm_rows = []
+
+    for dm_group, grp in dm_map.groupby("dm_group"):
+        store_ids   = set(grp["store_id"].tolist())
+        market_name = grp["display_market"].iloc[0]
+
+        # Current and prior period rows for this DM's stores
+        c = curr_df[curr_df["store_id"].isin(store_ids)]
+        p = prior_df[prior_df["store_id"].isin(store_ids)]
+
+        # Comp stores: must be comp-eligible AND have prior-year data
+        c_comp = c[c["store_id"].isin(comp_eligible)]
+        p_comp = p[p["store_id"].isin(comp_eligible)]
+
+        c_agg = c_comp.groupby("store_id").agg(
+            cs=("net_sales", "sum"), ct=("total_transactions", "sum")
+        ).reset_index()
+        p_agg = p_comp.groupby("store_id").agg(
+            ps=("net_sales", "sum"), pt=("total_transactions", "sum")
+        ).reset_index()
+        mg = c_agg.merge(p_agg, on="store_id").query("ps > 0 and pt > 0")
+
+        sss = (mg["cs"].sum() - mg["ps"].sum()) / mg["ps"].sum() * 100 \
+              if len(mg) > 0 and mg["ps"].sum() > 0 else None
+        sst = (mg["ct"].sum() - mg["pt"].sum()) / mg["pt"].sum() * 100 \
+              if len(mg) > 0 and mg["pt"].sum() > 0 else None
+
+        dm_rows.append({
+            "dm_group":   dm_group,
+            "market":     market_name,
+            "net_sales":  c["net_sales"].sum(),
+            "txn":        int(c["total_transactions"].sum()),
+            "sss_pct":    sss,
+            "sst_pct":    sst,
+            "comp_count": len(mg),
+            "store_count": len(store_ids),
+        })
+
+    dm_rows.sort(key=lambda r: (MARKET_ORDER.get(r["market"], 9), r["dm_group"]))
+
+    def _dm_row(r):
+        sc  = pct_class(r["sss_pct"])
+        tc  = pct_class(r["sst_pct"])
+        return (
+            f"<tr>"
+            f"<td>{r['dm_group']}</td>"
+            f"<td style='text-align:center'>{r['store_count']}</td>"
+            f"<td>{fmt_dollar(r['net_sales'])}</td>"
+            f"<td>{r['txn']:,}</td>"
+            f"<td class='{sc}'>{fmt_pct(r['sss_pct'])}</td>"
+            f"<td class='{tc}'>{fmt_pct(r['sst_pct'])}</td>"
+            f"<td style='text-align:center'>{r['comp_count']}</td>"
+            f"</tr>"
+        )
+
+    dm_html = "".join(_dm_row(r) for r in dm_rows)
+    st.markdown(f"""
+    <table class="mkt-table">
+      <thead><tr>
+        <th style="text-align:left">DM Group</th>
+        <th style="text-align:center">Stores</th>
+        <th>Net Sales</th>
+        <th>Transactions</th>
+        <th>SSS%</th>
+        <th>SST%</th>
+        <th style="text-align:center">Comp Stores</th>
+      </tr></thead>
+      <tbody>{dm_html}</tbody>
+    </table>
+    """, unsafe_allow_html=True)
+else:
+    st.info("DM data not yet loaded — run `py scripts/update_stores.py` to populate.")
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
