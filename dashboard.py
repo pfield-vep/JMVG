@@ -75,37 +75,7 @@ DEFAULT_LEGEND = dict(
 DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
 st.markdown(f"""
-<style>/* Arial everywhere */
-    body {{
-        font-family: Arial, sans-serif;
-    }}
-
-    /* ── Sidebar arrow buttons: hide icon text, show Unicode arrow instead ──
-       Streamlit's Material Icons font is blocked by CSP on Streamlit Cloud,
-       so we replace the text with a CSS ::before pseudo-element arrow. */
-    [data-testid="stSidebarCollapseButton"] span,
-    [data-testid="stExpandSidebarButton"] span {{
-        font-size: 0 !important;
-        line-height: 0 !important;
-        color: transparent !important;
-        display: inline-block !important;
-        width: 20px !important;
-        height: 20px !important;
-    }}
-    [data-testid="stSidebarCollapseButton"] span::before {{
-        content: "◀";
-        font-size: 16px !important;
-        font-family: Arial, sans-serif !important;
-        color: {WHITE} !important;
-        line-height: 20px !important;
-    }}
-    [data-testid="stExpandSidebarButton"] span::before {{
-        content: "▶";
-        font-size: 16px !important;
-        font-family: Arial, sans-serif !important;
-        color: {BLUE} !important;
-        line-height: 20px !important;
-    }}
+<style>
     .stApp, .main {{ background-color: {WHITE} !important; }}
     .block-container {{ padding-top: 1rem !important; }}
 
