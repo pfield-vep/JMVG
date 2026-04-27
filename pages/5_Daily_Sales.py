@@ -426,18 +426,22 @@ def comp_metrics(curr: pd.DataFrame, prior: pd.DataFrame):
         txn_prior=("total_transactions","sum"),
     ).reset_index()
 
-    # Comp stores = eligible + in both periods with non-zero prior sales
+    # Merge comp store data for both periods
     merged = c_agg.merge(p_agg, on="store_id", how="inner")
-    merged = merged[merged["net_sales_prior"] > 0]
 
-    comp_count     = len(merged)
-    curr_sales     = merged["net_sales"].sum()
-    prior_sales    = merged["net_sales_prior"].sum()
-    curr_txn       = merged["txn"].sum()
-    prior_txn      = merged["txn_prior"].sum()
+    # SSS uses net_sales only — comp set = stores with prior net_sales > 0
+    sss_mg     = merged[merged["net_sales_prior"] > 0]
+    curr_sales = sss_mg["net_sales"].sum()
+    prior_sales= sss_mg["net_sales_prior"].sum()
+    sss        = (curr_sales - prior_sales) / prior_sales * 100 if prior_sales > 0 else None
 
-    sss = (curr_sales - prior_sales) / prior_sales * 100 if prior_sales else None
-    sst = (curr_txn  - prior_txn)  / prior_txn  * 100 if prior_txn  else None
+    # SST uses total_transactions only — comp set = stores with prior txn > 0
+    sst_mg    = merged[merged["txn_prior"] > 0]
+    curr_txn  = sst_mg["txn"].sum()
+    prior_txn = sst_mg["txn_prior"].sum()
+    sst       = (curr_txn - prior_txn) / prior_txn * 100 if prior_txn > 0 else None
+
+    comp_count = len(sss_mg)   # report SSS comp store count
 
     # Totals from full curr (all stores) for channel/daypart mix
     total_sales = curr["net_sales"].sum()
@@ -794,21 +798,30 @@ if dm_map is not None and not dm_map.empty:
         p_agg = p_comp.groupby("store_id").agg(
             ps=("net_sales", "sum"), pt=("total_transactions", "sum")
         ).reset_index()
-        mg = c_agg.merge(p_agg, on="store_id").query("ps > 0 and pt > 0")
+        mg = c_agg.merge(p_agg, on="store_id", how="inner")
 
-        sss = (mg["cs"].sum() - mg["ps"].sum()) / mg["ps"].sum() * 100 \
-              if len(mg) > 0 and mg["ps"].sum() > 0 else None
-        sst = (mg["ct"].sum() - mg["pt"].sum()) / mg["pt"].sum() * 100 \
-              if len(mg) > 0 and mg["pt"].sum() > 0 else None
+        # SSS: net_sales only — comp = prior net_sales > 0
+        sss_mg      = mg[mg["ps"] > 0]
+        prior_sales = sss_mg["ps"].sum()
+        curr_sales  = sss_mg["cs"].sum()
+        sss = (curr_sales - prior_sales) / prior_sales * 100 \
+              if prior_sales > 0 else None
+
+        # SST: total_transactions only — comp = prior txn > 0
+        sst_mg    = mg[mg["pt"] > 0]
+        prior_txn = sst_mg["pt"].sum()
+        curr_txn  = sst_mg["ct"].sum()
+        sst = (curr_txn - prior_txn) / prior_txn * 100 \
+              if prior_txn > 0 else None
 
         dm_rows.append({
-            "dm_group":   dm_group,
-            "market":     market_name,
-            "net_sales":  c["net_sales"].sum(),
-            "txn":        int(c["total_transactions"].sum()),
-            "sss_pct":    sss,
-            "sst_pct":    sst,
-            "comp_count": len(mg),
+            "dm_group":    dm_group,
+            "market":      market_name,
+            "net_sales":   c["net_sales"].sum(),
+            "txn":         int(c["total_transactions"].sum()),
+            "sss_pct":     sss,
+            "sst_pct":     sst,
+            "comp_count":  len(sss_mg),
             "store_count": len(store_ids),
         })
 

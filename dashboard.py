@@ -474,11 +474,17 @@ def load_daily_snapshot():
 
         c_agg = curr.groupby("store_id").agg(cs=("net_sales","sum"), ct=("total_transactions","sum")).reset_index()
         p_agg = prior.groupby("store_id").agg(ps=("net_sales","sum"), pt=("total_transactions","sum")).reset_index()
-        mg = c_agg.merge(p_agg, on="store_id").query("ps > 0")
+        mg = c_agg.merge(p_agg, on="store_id", how="inner")
         if mg.empty:
             return None
-        sss = (mg["cs"].sum() - mg["ps"].sum()) / mg["ps"].sum() * 100
-        sst = (mg["ct"].sum() - mg["pt"].sum()) / mg["ct"].sum() * 100 if mg["ct"].sum() > 0 else None
+        # SSS: net_sales only — comp = prior net_sales > 0
+        sss_mg = mg[mg["ps"] > 0]
+        sss = (sss_mg["cs"].sum() - sss_mg["ps"].sum()) / sss_mg["ps"].sum() * 100 \
+              if sss_mg["ps"].sum() > 0 else None
+        # SST: total_transactions only — comp = prior txn > 0
+        sst_mg = mg[mg["pt"] > 0]
+        sst = (sst_mg["ct"].sum() - sst_mg["pt"].sum()) / sst_mg["pt"].sum() * 100 \
+              if sst_mg["pt"].sum() > 0 else None
         total_txn  = curr["total_transactions"].sum()
         avg_ticket = curr["net_sales"].sum() / total_txn if total_txn else None
         return {
