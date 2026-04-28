@@ -796,6 +796,10 @@ with tab1:
         name="SSS% vs. 1yr ago",
         marker_color=[GREEN if v >= 0 else DANGER for v in _trend["sss_1yr"]],
         opacity=0.7,
+        text=[f"{v:+.1f}%" for v in _trend["sss_1yr"]],
+        textposition="outside",
+        textfont=dict(size=11, family="Arial, sans-serif",
+                      color=[GREEN if v >= 0 else DANGER for v in _trend["sss_1yr"]]),
     ))
     fig_sss.add_trace(go.Scatter(
         x=_trend["sale_date"], y=_trend["sss_2yr"],
