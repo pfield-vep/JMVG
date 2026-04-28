@@ -94,8 +94,8 @@ def load_dm_store_map():
         df["display_market"] = df["broad_geography"].apply(_market)
         df["dm_first"]       = df["dm_name"].apply(_first)
         df["dm_group"]       = df["display_market"] + " - " + df["dm_first"]
-        # Exclude Tampa store — not a CA market
-        df = df[df["store_id"] != "20026"]
+        # Note: store 20026 is named "Tampa" but is located in Los Angeles (Northridge)
+        # — include it in Josiah's LA/SoCal group
         return df
     except Exception:
         conn.close()
@@ -954,9 +954,9 @@ with tab2:
             mkt_html.append('</details>')  # close market details
             html_parts.extend(mkt_html)
 
-        # ── Grand Total row (dark blue) ───────────────────────────────────────
-        all_c = curr_df[~curr_df["store_id"].isin(["20026"])]
-        all_p = prior_df[~prior_df["store_id"].isin(["20026"])]
+        # ── Grand Total row (dark blue) — includes all stores inc. Tampa (LA) ─
+        all_c = curr_df.copy()
+        all_p = prior_df.copy()
         if mkt_filter != "All Markets":
             market_store_ids = set(dm_map["store_id"].tolist())
             all_c = curr_df[curr_df["store_id"].isin(market_store_ids)]
