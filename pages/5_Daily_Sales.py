@@ -748,30 +748,40 @@ with tab1:
     # Always last 7 days regardless of the period toggle
     _chart_end   = today
     _chart_start = today - timedelta(days=6)
-    _1yr_start   = _chart_start - timedelta(days=364)
-    _2yr_start   = _chart_start - timedelta(days=728)
+    _2yr_ago     = _chart_start - timedelta(days=728)
 
     # Load enough history to cover the 2yr lookback (cached, fast)
     _chart_all = load_sales(
-        str(_2yr_start), str(_chart_end),
-        str(_2yr_start), str(_chart_end),
+        str(_2yr_ago), str(_chart_end),
+        str(_2yr_ago), str(_chart_end),
     )
 
-    # Aggregate daily net_sales for each window
-    def _day_sales(df, d_start, d_end):
-        sub = df[df["sale_date"].dt.date.between(d_start, d_end)]
+    # Use comp_eligible stores fixed to the chart window start (not period toggle)
+    _chart_comp = load_comp_eligible_stores(str(_chart_start))
+
+    # Filter to comp stores only — same methodology as comp_metrics()
+    _comp_data = _chart_all[_chart_all["store_id"].isin(_chart_comp)]
+
+    def _comp_day_sales(d_start, d_end):
+        """Sum net_sales for comp stores only between d_start and d_end."""
+        sub = _comp_data[_comp_data["sale_date"].dt.date.between(d_start, d_end)]
         return sub.groupby("sale_date")["net_sales"].sum().reset_index()
 
-    _curr = _day_sales(_chart_all, _chart_start, _chart_end)
+    # Current 7 days
+    _curr = _comp_day_sales(_chart_start, _chart_end)
     _curr.columns = ["sale_date", "curr"]
 
-    _1yr  = _day_sales(_chart_all, _1yr_start, _1yr_start + timedelta(days=6))
+    # 1yr prior: same 7-day window 364 days back, shifted forward to align
+    _1yr_s = _chart_start - timedelta(days=364)
+    _1yr   = _comp_day_sales(_1yr_s, _1yr_s + timedelta(days=6))
     _1yr["sale_date"] = _1yr["sale_date"] + pd.Timedelta(days=364)
-    _1yr.columns      = ["sale_date", "s1yr"]
+    _1yr.columns = ["sale_date", "s1yr"]
 
-    _2yr  = _day_sales(_chart_all, _2yr_start, _2yr_start + timedelta(days=6))
+    # 2yr prior: same 7-day window 728 days back, shifted forward to align
+    _2yr_s = _chart_start - timedelta(days=728)
+    _2yr   = _comp_day_sales(_2yr_s, _2yr_s + timedelta(days=6))
     _2yr["sale_date"] = _2yr["sale_date"] + pd.Timedelta(days=728)
-    _2yr.columns      = ["sale_date", "s2yr"]
+    _2yr.columns = ["sale_date", "s2yr"]
 
     _trend = _curr.merge(_1yr, on="sale_date", how="left") \
                   .merge(_2yr, on="sale_date", how="left")
