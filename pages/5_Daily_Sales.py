@@ -32,7 +32,8 @@ DANGER = "#dc2626"
 AMBER  = "#d97706"
 
 # ── Market definitions ─────────────────────────────────────────────────────────
-SAN_DIEGO_IDS = ['20071','20091','20171','20177','20291','20292','20300']
+SAN_DIEGO_IDS      = ['20071','20091','20171','20177','20291','20292','20300']
+SANTA_BARBARA_IDS  = ['20075','20335','20360','20013']
 
 STORE_NAMES = {
     '20156':'North Hollywood','20218':'Mission Hills','20267':'Balboa',
@@ -48,9 +49,9 @@ STORE_NAMES = {
 }
 
 def get_market(store_id):
-    if store_id in SAN_DIEGO_IDS:
-        return "San Diego"
-    return "LA / SoCal"
+    if store_id in SAN_DIEGO_IDS:     return "San Diego"
+    if store_id in SANTA_BARBARA_IDS: return "Santa Barbara"
+    return "Los Angeles"
 
 # ── DB connection ──────────────────────────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jerseymikes.db")
@@ -86,7 +87,7 @@ def load_dm_store_map():
             g = str(geo or "").strip()
             if "San Diego" in g:                 return "San Diego"
             if "Santa Barbara" in g or "San Luis" in g: return "Santa Barbara"
-            return "LA / SoCal"
+            return "Los Angeles"
 
         def _first(name):
             return str(name or "").strip().split()[0]
@@ -954,7 +955,7 @@ with tab2:
                 f'</div>'
             )
 
-        MARKET_ORDER = {"LA / SoCal": 0, "San Diego": 1, "Santa Barbara": 2}
+        MARKET_ORDER = {"Los Angeles": 0, "San Diego": 1, "Santa Barbara": 2}
         html_parts = [
             '<div class="dm-scroll"><div class="dm-tree">',
             '<div class="tree-header">'
@@ -973,7 +974,7 @@ with tab2:
 
             # Market-level aggregation
             mkt_c = curr_df[curr_df["market"] == market]  if market != "Santa Barbara" \
-                    else curr_df[~curr_df["market"].isin(["LA / SoCal","San Diego"])]
+                    else curr_df[~curr_df["market"].isin(["Los Angeles","San Diego"])]
             # Override: use DM store_ids to define market scope accurately
             mkt_store_ids = set(mkt_dm["store_id"].tolist())
             mkt_c = curr_df[curr_df["store_id"].isin(mkt_store_ids)]
