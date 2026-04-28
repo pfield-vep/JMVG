@@ -415,8 +415,6 @@ st.markdown(f"""
 min_date, max_date = get_date_range()
 today = max_date  # most recent data date
 
-tab1, tab2 = st.tabs(["Overview", "By District Manager"])
-
 # ── Period toggle ──────────────────────────────────────────────────────────────
 mkt_filter = "All Markets"   # no market filter — DM tab shows all markets
 
@@ -587,6 +585,7 @@ def kpi_delta_html(v):
     arrow = "▲" if v >= 0 else "▼"
     return f'<span class="{cls}">{arrow} {fmt_pct(v)}</span> vs prior year'
 
+tab1, tab2 = st.tabs(["Overview", "By District Manager"])
 with tab1:
     # ── Compute metrics for selected period and YTD ───────────────────────────
     T  = comp_metrics(curr_df, prior_df)      # current period
