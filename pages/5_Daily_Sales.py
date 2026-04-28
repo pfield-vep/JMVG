@@ -731,7 +731,7 @@ with tab1:
     </div>
     """, unsafe_allow_html=True)
     
-    # ── SSS Trend Chart ────────────────────────────────────────────────────────────
+    # ── Daily SSS Trend (always last 7 days, independent of period toggle) ────────
     PLOTLY_LAYOUT = dict(
         plot_bgcolor=WHITE, paper_bgcolor=WHITE,
         font=dict(family="Arial, sans-serif", size=12, color=TEXT),
@@ -740,39 +740,64 @@ with tab1:
                     font=dict(size=11), orientation="h",
                     yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
     )
-    st.markdown('<div class="section-title">SSS% Trend (Rolling 7-Day)</div>', unsafe_allow_html=True)
-    
-    # Build daily SSS: for each day in curr period, compare to same day 364 days back
-    curr_daily = curr_df.groupby("sale_date")["net_sales"].sum().reset_index()
-    curr_daily.columns = ["sale_date","curr_sales"]
-    curr_daily["prior_date"] = curr_daily["sale_date"] - pd.Timedelta(days=364)
-    
-    prior_daily = prior_df.groupby("sale_date")["net_sales"].sum().reset_index()
-    prior_daily.columns = ["prior_date","prior_sales"]
-    
-    sss_trend = curr_daily.merge(prior_daily, on="prior_date", how="left")
-    sss_trend = sss_trend[sss_trend["prior_sales"] > 0].copy()
-    sss_trend["sss_pct"] = (sss_trend["curr_sales"] - sss_trend["prior_sales"]) / sss_trend["prior_sales"] * 100
-    sss_trend["sss_7d"]  = sss_trend["sss_pct"].rolling(7, min_periods=1).mean()
-    
+    st.markdown('<div class="section-title">Daily SSS Trend</div>', unsafe_allow_html=True)
+
+    # Always last 7 days regardless of the period toggle
+    _chart_end   = today
+    _chart_start = today - timedelta(days=6)
+    _1yr_start   = _chart_start - timedelta(days=364)
+    _2yr_start   = _chart_start - timedelta(days=728)
+
+    # Load enough history to cover the 2yr lookback (cached, fast)
+    _chart_all = load_sales(
+        str(_2yr_start), str(_chart_end),
+        str(_2yr_start), str(_chart_end),
+    )
+
+    # Aggregate daily net_sales for each window
+    def _day_sales(df, d_start, d_end):
+        sub = df[df["sale_date"].dt.date.between(d_start, d_end)]
+        return sub.groupby("sale_date")["net_sales"].sum().reset_index()
+
+    _curr = _day_sales(_chart_all, _chart_start, _chart_end)
+    _curr.columns = ["sale_date", "curr"]
+
+    _1yr  = _day_sales(_chart_all, _1yr_start, _1yr_start + timedelta(days=6))
+    _1yr["sale_date"] = _1yr["sale_date"] + pd.Timedelta(days=364)
+    _1yr.columns      = ["sale_date", "s1yr"]
+
+    _2yr  = _day_sales(_chart_all, _2yr_start, _2yr_start + timedelta(days=6))
+    _2yr["sale_date"] = _2yr["sale_date"] + pd.Timedelta(days=728)
+    _2yr.columns      = ["sale_date", "s2yr"]
+
+    _trend = _curr.merge(_1yr, on="sale_date", how="left") \
+                  .merge(_2yr, on="sale_date", how="left")
+
+    _trend["sss_1yr"] = (_trend["curr"] - _trend["s1yr"]) / _trend["s1yr"] * 100
+    _trend["sss_2yr"] = (_trend["curr"] - _trend["s2yr"]) / _trend["s2yr"] * 100
+    _trend = _trend[_trend["s1yr"] > 0].copy()
+
     fig_sss = go.Figure()
     fig_sss.add_trace(go.Bar(
-        x=sss_trend["sale_date"], y=sss_trend["sss_pct"],
-        name="Daily SSS%",
-        marker_color=[GREEN if v >= 0 else DANGER for v in sss_trend["sss_pct"]],
-        opacity=0.5,
+        x=_trend["sale_date"], y=_trend["sss_1yr"],
+        name="SSS% vs. 1yr ago",
+        marker_color=[GREEN if v >= 0 else DANGER for v in _trend["sss_1yr"]],
+        opacity=0.7,
     ))
     fig_sss.add_trace(go.Scatter(
-        x=sss_trend["sale_date"], y=sss_trend["sss_7d"],
-        name="7-Day Avg", line=dict(color=BLUE, width=2),
+        x=_trend["sale_date"], y=_trend["sss_2yr"],
+        name="SSS% vs. 2yr ago",
+        line=dict(color=GOLD, width=2.5),
+        mode="lines+markers",
+        marker=dict(size=6, color=GOLD),
     ))
     fig_sss.add_hline(y=0, line_color=MUTED, line_width=1)
     fig_sss.update_layout(
         **PLOTLY_LAYOUT,
-        title=dict(text="Same Store Sales % vs. Prior Year", font=dict(size=13, color=BLUE), x=0),
-        xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
+        title=dict(text="Daily SSS% — Last 7 Days", font=dict(size=13, color=BLUE), x=0),
+        xaxis=dict(tickformat="%a %b %d", gridcolor="#E5E7EB"),
         yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB"),
-        height=280,
+        height=300,
     )
     st.plotly_chart(fig_sss, use_container_width=True)
     
