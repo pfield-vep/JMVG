@@ -163,7 +163,7 @@ def get_date_range():
 st.markdown(f"""
 <style>
   /* No horizontal page scroll on mobile */
-  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
+  html, body, .stApp {{ overflow-x: clip !important; max-width: 100vw !important; }}
   body {{
         font-family: Arial, sans-serif;
     }}
