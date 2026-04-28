@@ -175,6 +175,35 @@ st.markdown(f"""
   [data-testid="stSidebarCollapseButton"] * {{ visibility: visible !important; }}
   header {{ visibility: hidden; }}
 
+  /* ── Period toggle: style radio as pill buttons ── */
+  [data-testid="stRadio"] > div {{
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+  }}
+  [data-testid="stRadio"] label {{
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 5px 14px !important;
+    border: 2px solid {BLUE} !important;
+    border-radius: 20px !important;
+    cursor: pointer !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: {BLUE} !important;
+    background: white !important;
+    white-space: nowrap !important;
+    margin: 0 !important;
+    transition: background 0.15s, color 0.15s;
+  }}
+  [data-testid="stRadio"] label:has(input:checked) {{
+    background: {BLUE} !important;
+    color: white !important;
+  }}
+  [data-testid="stRadio"] label > div:first-child {{
+    display: none !important;
+  }}
+
   /* KPI cards */
   .kpi-card {{
     background: {WHITE};
@@ -304,34 +333,27 @@ st.markdown(f"""
 min_date, max_date = get_date_range()
 today = max_date  # most recent data date
 
-# ── Period toggle + market filter ──────────────────────────────────────────────
-top_left, top_right = st.columns([3, 1])
+# ── Period toggle ──────────────────────────────────────────────────────────────
+mkt_filter = "All Markets"   # no market filter — DM tab shows all markets
 
-with top_left:
-    period = st.radio(
-        "Period",
-        ["Day of", "Week to Date", "Period to Date", "Year to Date"],
-        index=0,
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-
-with top_right:
-    mkt_filter = st.selectbox(
-        "Market", ["All Markets", "LA / SoCal", "San Diego"],
-        label_visibility="collapsed",
-    )
+period = st.radio(
+    "Period",
+    ["Day", "WTD", "PTD", "YTD"],
+    index=0,
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
 # ── Compute date window from toggle ───────────────────────────────────────────
 end_date = today
-if period == "Day of":
+if period == "Day":
     start_date = today                          # single day
-elif period == "Week to Date":
+elif period == "WTD":
     dow = today.weekday()                       # 0=Monday
     start_date = today - timedelta(days=dow)    # back to Monday
-elif period == "Period to Date":
+elif period == "PTD":
     start_date = today.replace(day=1)           # start of calendar month
-else:  # Year to Date
+else:  # YTD
     start_date = today.replace(month=1, day=1)
 
 # Prior period: same window 364 days earlier (preserves day of week)
@@ -818,15 +840,6 @@ with tab2:
       details:not([open]) .dm-summary .tree-row > span:first-child::before {{ content: "▶ "; }}
     </style>
     """, unsafe_allow_html=True)
-
-    st.markdown(
-        f"<div style='font-size:11px;color:{MUTED};margin-bottom:8px;'>"
-        "Markets expanded by default · Click a DM row to expand individual stores · "
-        "<b>Note:</b> Column sorting is not available in this tree view — "
-        "use the Store Detail section in the Overview tab for a sortable flat table."
-        "</div>",
-        unsafe_allow_html=True
-    )
 
     dm_map = load_dm_store_map()
 
