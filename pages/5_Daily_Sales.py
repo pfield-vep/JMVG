@@ -791,7 +791,7 @@ with tab2:
       .tree-row,
       .total-row {{
         display: grid;
-        grid-template-columns: minmax(150px,1fr) 65px 90px 115px 75px 75px 65px;
+        grid-template-columns: minmax(150px,1fr) 75px 75px 90px 110px 60px 70px;
         align-items: center;
         padding: 8px 12px;
       }}
@@ -882,11 +882,11 @@ with tab2:
             return (
                 f'<div class="tree-row">'
                 f'<span>{name}</span>'
-                f'<span style="text-align:right">{stores}</span>'
-                f'<span style="text-align:right">{fmt_dollar(ns)}</span>'
-                f'<span style="text-align:right">{txn:,}</span>'
                 f'<span style="text-align:right">{_pct_span(sss)}</span>'
                 f'<span style="text-align:right">{_pct_span(sst)}</span>'
+                f'<span style="text-align:right">{fmt_dollar(ns)}</span>'
+                f'<span style="text-align:right">{txn:,}</span>'
+                f'<span style="text-align:right">{stores}</span>'
                 f'<span style="text-align:right">{comps}</span>'
                 f'</div>'
             )
@@ -895,9 +895,10 @@ with tab2:
         html_parts = [
             '<div class="dm-scroll"><div class="dm-tree">',
             '<div class="tree-header">'
-            '<span>Group / Store</span><span>Stores</span>'
+            '<span>Group / Store</span>'
+            '<span>SSS%</span><span>SST%</span>'
             '<span>Net Sales</span><span>Transactions</span>'
-            '<span>SSS%</span><span>SST%</span><span>Comps</span>'
+            '<span>Stores</span><span>Comps</span>'
             '</div>',
         ]
 
@@ -1016,11 +1017,11 @@ with tab2:
         html_parts.append(
             f'<div class="total-row">'
             f'<span>TOTAL</span>'
-            f'<span>{tot_stores}</span>'
-            f'<span>{fmt_dollar(tot_ns)}</span>'
-            f'<span>{tot_txn:,}</span>'
             f'<span>{_pct_white(tot_sss)}</span>'
             f'<span>{_pct_white(tot_sst)}</span>'
+            f'<span>{fmt_dollar(tot_ns)}</span>'
+            f'<span>{tot_txn:,}</span>'
+            f'<span>{tot_stores}</span>'
             f'<span>{len(tot_sss_mg)}</span>'
             f'</div>'
         )
