@@ -828,7 +828,106 @@ with tab1:
         height=300,
     )
     st.plotly_chart(fig_sss, use_container_width=True)
-    
+
+    # ── Weather strip (last 7 days, Los Angeles market) ───────────────────────
+    @st.cache_data(ttl=300)
+    def load_weather_strip(start_str, end_str, prior_start_str, prior_end_str):
+        conn, dialect = get_conn()
+        p = "%s" if dialect == "postgres" else "?"
+        overall_s = min(start_str, prior_start_str)
+        overall_e = max(end_str, prior_end_str)
+        try:
+            df = pd.read_sql_query(
+                f"SELECT date, market, temp_max_f, precip_in, is_rainy "
+                f"FROM daily_weather WHERE date >= {p} AND date <= {p} "
+                f"AND market = 'Los Angeles' ORDER BY date",
+                conn, params=(overall_s, overall_e)
+            )
+            conn.close()
+            df["date"] = pd.to_datetime(df["date"])
+            return df
+        except Exception:
+            conn.close()
+            return pd.DataFrame()
+
+    _wx_prior_s = (_chart_start - timedelta(days=364)).strftime('%Y-%m-%d')
+    _wx_prior_e = (_chart_end   - timedelta(days=364)).strftime('%Y-%m-%d')
+    _wx_df = load_weather_strip(
+        str(_chart_start), str(_chart_end), _wx_prior_s, _wx_prior_e
+    )
+
+    if not _wx_df.empty:
+        _wx_curr  = _wx_df[_wx_df["date"].dt.date.between(_chart_start, _chart_end)].copy()
+        _wx_prior = _wx_df[_wx_df["date"].dt.date.between(
+            _chart_start - timedelta(days=364), _chart_end - timedelta(days=364)
+        )].copy()
+        _wx_prior["date"] = _wx_prior["date"] + pd.Timedelta(days=364)
+        _wx = _wx_curr.merge(
+            _wx_prior[["date","temp_max_f","precip_in"]].rename(columns={
+                "temp_max_f":"prior_temp","precip_in":"prior_precip"
+            }), on="date", how="left"
+        ).sort_values("date")
+
+        def _wx_emoji(row):
+            if pd.isna(row.get("temp_max_f")): return "❓"
+            if row.get("is_rainy") == 1:       return "🌧️"
+            t = row["temp_max_f"]
+            if t >= 80: return "☀️"
+            if t >= 68: return "🌤️"
+            if t >= 55: return "⛅"
+            return "☁️"
+
+        def _tdelta(v):
+            if pd.isna(v): return ("—", MUTED)
+            sign = "+" if v > 0 else ""
+            clr = "#ea580c" if v > 1 else ("#3b82f6" if v < -1 else MUTED)
+            return (f"{sign}{v:.0f}°", clr)
+
+        def _pdelta(v):
+            if pd.isna(v): return ("—", MUTED)
+            sign = "+" if v > 0 else ""
+            clr = "#3b82f6" if v > 0.05 else (MUTED if abs(v) < 0.05 else "#d97706")
+            return (f'{sign}{v:.2f}"', clr)
+
+        cols_html = ""
+        for _, wr in _wx.iterrows():
+            emoji  = _wx_emoji(wr)
+            hi     = f"{wr['temp_max_f']:.0f}°F" if pd.notna(wr.get("temp_max_f")) else "—"
+            td_v, td_c = _tdelta(wr["temp_max_f"] - wr["prior_temp"] if pd.notna(wr.get("prior_temp")) else float("nan"))
+            pr     = f'{wr["precip_in"]:.2f}"' if pd.notna(wr.get("precip_in")) else "—"
+            pd_v, pd_c = _pdelta(wr["precip_in"] - wr["prior_precip"] if pd.notna(wr.get("prior_precip")) else float("nan"))
+            day_label = wr["date"].strftime("%a")
+            date_label = wr["date"].strftime("%b %d")
+            cols_html += f"""
+            <div style="flex:1;text-align:center;padding:6px 4px;
+                        border-right:1px solid {BORDER};">
+              <div style="font-size:10px;font-weight:700;color:{MUTED};
+                          text-transform:uppercase;letter-spacing:0.5px;">
+                {day_label}</div>
+              <div style="font-size:10px;color:{MUTED};">{date_label}</div>
+              <div style="font-size:22px;margin:4px 0;">{emoji}</div>
+              <div style="font-size:13px;font-weight:700;color:{TEXT};">{hi}</div>
+              <div style="font-size:11px;font-weight:600;color:{td_c};">{td_v}</div>
+              <div style="font-size:12px;color:{TEXT};margin-top:4px;">{pr}</div>
+              <div style="font-size:11px;font-weight:600;color:{pd_c};">{pd_v}</div>
+            </div>"""
+
+        st.markdown(f"""
+        <div style="background:{WHITE};border:1px solid {BORDER};border-radius:8px;
+                    overflow:hidden;margin-top:4px;">
+          <div style="background:{LIGHT};padding:5px 12px;border-bottom:1px solid {BORDER};
+                      display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:10px;font-weight:700;letter-spacing:1px;
+                         text-transform:uppercase;color:{BLUE};">🌡️ Weather — Los Angeles</span>
+            <span style="font-size:10px;color:{MUTED};">
+              High temp · vs prior year · Precipitation · vs prior year</span>
+          </div>
+          <div style="display:flex;align-items:stretch;">
+            {cols_html}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
 
 with tab2:
     # ── CSS for nested tree table ──────────────────────────────────────────────
