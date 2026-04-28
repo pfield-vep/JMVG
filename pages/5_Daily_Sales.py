@@ -747,27 +747,37 @@ with tab2:
     # ── CSS for nested tree table ──────────────────────────────────────────────
     st.markdown(f"""
     <style>
+      /* Scroll wrapper — horizontal scroll on mobile */
       .dm-scroll {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
-      .dm-tree {{ font-family: Arial, sans-serif; font-size: 13px; min-width: 620px; width: 100%; }}
+      .dm-tree {{ font-family: Arial, sans-serif; font-size: 13px; min-width: 660px; width: 100%; }}
       .dm-tree summary {{ list-style: none; cursor: pointer; }}
       .dm-tree summary::-webkit-details-marker {{ display: none; }}
-      .tree-header {{
+
+      /* Shared grid — same column positions for header, every row, and total */
+      .tree-header,
+      .tree-row,
+      .total-row {{
         display: grid;
-        grid-template-columns: 180px 52px 90px 100px 72px 72px 60px;
+        grid-template-columns: minmax(150px,1fr) 65px 90px 115px 75px 75px 65px;
+        align-items: center;
+        padding: 8px 12px;
+      }}
+      /* Prevent header text from ever wrapping */
+      .tree-header span {{ white-space: nowrap; }}
+      /* Right-align all columns except the first */
+      .tree-header span:not(:first-child),
+      .tree-row   span:not(:first-child),
+      .total-row  span:not(:first-child) {{ text-align: right; padding: 0 4px; }}
+      .tree-header span:first-child,
+      .tree-row   span:first-child,
+      .total-row  span:first-child {{ padding: 0 4px; }}
+
+      /* Header */
+      .tree-header {{
         background: {BLUE}; color: white;
         font-size: 11px; font-weight: 700; letter-spacing: 1px;
         text-transform: uppercase;
-        padding: 8px 12px; border-radius: 6px 6px 0 0;
-        margin-bottom: 2px;
-      }}
-      .tree-header span, .tree-row span {{ padding: 0 4px; }}
-      .tree-header span:not(:first-child), .tree-row span:not(:first-child) {{
-        text-align: right;
-      }}
-      .tree-row {{
-        display: grid;
-        grid-template-columns: 180px 52px 90px 100px 72px 72px 60px;
-        padding: 8px 12px; align-items: center;
+        border-radius: 6px 6px 0 0; margin-bottom: 2px;
       }}
       /* Market rows — light blue */
       .mkt-summary .tree-row {{
@@ -776,30 +786,26 @@ with tab2:
         border-radius: 4px; margin: 3px 0;
       }}
       .mkt-summary:hover .tree-row {{ background: #bcd6ef; }}
+      /* DM rows — indent NAME column only via first-child padding */
+      .dm-summary .tree-row {{
+        background: {LIGHT}; color: {TEXT};
+        font-weight: 600; border-bottom: 1px solid {BORDER};
+      }}
+      .dm-summary .tree-row > span:first-child {{ padding-left: 24px !important; }}
+      .dm-summary:hover .tree-row {{ background: #e4eaf4; }}
+      /* Store rows — indent NAME column only */
+      .store-row .tree-row {{
+        background: white; color: {TEXT};
+        border-bottom: 1px solid {BORDER}; font-size: 12px;
+      }}
+      .store-row .tree-row > span:first-child {{ padding-left: 44px !important; }}
+      .store-row:last-child .tree-row {{ border-bottom: none; }}
       /* Total row — dark blue */
       .total-row {{
-        display: grid;
-        grid-template-columns: 180px 52px 90px 100px 72px 72px 60px;
-        padding: 8px 12px; align-items: center;
         background: {BLUE}; color: white;
         font-weight: 700; font-size: 13px;
         border-radius: 0 0 6px 6px; margin-top: 3px;
       }}
-      .total-row span:not(:first-child) {{ text-align: right; }}
-      /* DM rows */
-      .dm-summary .tree-row {{
-        background: {LIGHT}; color: {TEXT};
-        font-weight: 600; border-bottom: 1px solid {BORDER};
-        padding-left: 28px;
-      }}
-      .dm-summary:hover .tree-row {{ background: #e4eaf4; }}
-      /* Store rows */
-      .store-row .tree-row {{
-        background: white; color: {TEXT};
-        border-bottom: 1px solid {BORDER};
-        padding-left: 52px; font-size: 12px;
-      }}
-      .store-row:last-child .tree-row {{ border-bottom: none; }}
       .pos-val {{ color: {GREEN}; font-weight: 700; }}
       .neg-val {{ color: {DANGER}; font-weight: 700; }}
       .na-val  {{ color: {MUTED}; }}
