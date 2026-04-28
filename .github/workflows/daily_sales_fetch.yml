@@ -1,0 +1,46 @@
+name: JM Valley — Daily Sales Fetch
+
+# Runs at 11:15 AM CT (16:15 UTC) every day
+# Also triggerable manually from the GitHub Actions tab
+on:
+  schedule:
+    - cron: '15 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch-daily-sales:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            psycopg2-binary \
+            pandas \
+            openpyxl \
+            requests
+
+      - name: Fetch daily sales from email
+        env:
+          SUPABASE_HOST:     ${{ secrets.SUPABASE_HOST }}
+          SUPABASE_PORT:     ${{ secrets.SUPABASE_PORT }}
+          SUPABASE_DBNAME:   ${{ secrets.SUPABASE_DBNAME }}
+          SUPABASE_USER:     ${{ secrets.SUPABASE_USER }}
+          SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+        run: python scripts/fetch_daily_email.py
+
+      - name: Report result
+        if: always()
+        run: |
+          echo "Workflow finished with status: ${{ job.status }}"
+          echo "Run at: $(date -u)"

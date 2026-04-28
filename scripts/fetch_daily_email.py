@@ -18,6 +18,26 @@ SENDER     = "vpnotifications@vp-analytics.com"
 SUBJECT_KW = "JM Valley Daily Export"
 
 def get_conn():
+    import psycopg2
+
+    # 1. Try environment variables first (GitHub Actions / CI)
+    env_host = os.environ.get("SUPABASE_HOST")
+    if env_host:
+        try:
+            conn = psycopg2.connect(
+                host=env_host,
+                port=int(os.environ.get("SUPABASE_PORT", "5432")),
+                dbname=os.environ.get("SUPABASE_DBNAME", "postgres"),
+                user=os.environ.get("SUPABASE_USER"),
+                password=os.environ.get("SUPABASE_PASSWORD"),
+                sslmode="require",
+            )
+            print("Connected to Supabase via environment variables")
+            return conn, "postgres"
+        except Exception as e:
+            print(f"⚠️  Supabase (env) failed: {e}")
+
+    # 2. Try .streamlit/secrets.toml (local / Streamlit Cloud)
     secrets_path = os.path.join(ROOT, ".streamlit", "secrets.toml")
     if os.path.exists(secrets_path):
         try:
@@ -28,16 +48,18 @@ def get_conn():
             cfg = tomllib.load(f)
         if "supabase" in cfg:
             try:
-                import psycopg2
                 s = cfg["supabase"]
                 conn = psycopg2.connect(
                     host=s["host"], port=int(s["port"]),
                     dbname=s["dbname"], user=s["user"],
                     password=s["password"], sslmode="require"
                 )
+                print("Connected to Supabase via secrets.toml")
                 return conn, "postgres"
             except Exception as e:
-                print(f"⚠️  Supabase failed: {e}")
+                print(f"⚠️  Supabase (secrets.toml) failed: {e}")
+
+    # 3. Fallback to SQLite
     import sqlite3
     return sqlite3.connect(os.path.join(ROOT, "jerseymikes.db")), "sqlite"
 
