@@ -176,15 +176,21 @@ st.markdown(f"""
   header {{ visibility: hidden; }}
 
   /* ── Period toggle: style radio as pill buttons ── */
-  [data-testid="stRadio"] > div {{
+  /* Hide the "Period" group label entirely */
+  [data-testid="stRadio"] > label,
+  [data-testid="stRadio"] > div > label:not([data-baseweb]) {{
+    display: none !important;
+  }}
+  [data-testid="stRadio"] div[role="radiogroup"] {{
     display: flex !important;
     flex-wrap: nowrap !important;
     gap: 6px !important;
   }}
-  [data-testid="stRadio"] label {{
+  [data-testid="stRadio"] div[role="radiogroup"] label {{
     display: inline-flex !important;
     align-items: center !important;
-    padding: 5px 14px !important;
+    justify-content: center !important;
+    padding: 5px 16px !important;
     border: 2px solid {BLUE} !important;
     border-radius: 20px !important;
     cursor: pointer !important;
@@ -194,13 +200,18 @@ st.markdown(f"""
     background: white !important;
     white-space: nowrap !important;
     margin: 0 !important;
-    transition: background 0.15s, color 0.15s;
+    text-align: center !important;
   }}
-  [data-testid="stRadio"] label:has(input:checked) {{
+  [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {{
     background: {BLUE} !important;
     color: white !important;
   }}
-  [data-testid="stRadio"] label > div:first-child {{
+  [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p,
+  [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) span {{
+    color: white !important;
+  }}
+  /* Hide the radio circle dot */
+  [data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {{
     display: none !important;
   }}
 
