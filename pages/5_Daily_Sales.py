@@ -245,6 +245,61 @@ st.markdown(f"""
   .kpi-pos {{ color: {GREEN} !important; }}
   .kpi-neg {{ color: {DANGER} !important; }}
 
+  /* ── Landing cards (Comp Sales / Sales / Sales Mix) ── */
+  .dl-groups {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }}
+  .dl-group {{
+    border: 1.5px solid {BORDER};
+    border-radius: 8px;
+    overflow: hidden;
+  }}
+  .dl-header {{
+    background: {BLUE}; color: white;
+    font-family: Arial, sans-serif;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    padding: 8px 10px; text-align: center;
+  }}
+  .dl-tiles {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: {WHITE};
+    padding: 10px 6px 10px;
+  }}
+  .dl-tile {{
+    padding: 4px 8px;
+    display: flex; flex-direction: column;
+  }}
+  .dl-tile + .dl-tile {{ border-left: 1px solid {BORDER}; }}
+  .dl-lbl {{
+    font-family: Arial, sans-serif;
+    font-size: 9px; letter-spacing: 1.1px;
+    text-transform: uppercase; color: {MUTED};
+    font-weight: 700;
+    border-bottom: 1.5px solid {BORDER};
+    padding-bottom: 4px; margin-bottom: 5px;
+    white-space: nowrap;
+  }}
+  .dl-val {{
+    font-family: Arial, sans-serif;
+    font-size: 22px; font-weight: 700;
+    line-height: 1.1; color: {TEXT};
+  }}
+  .dl-val.pos {{ color: {GREEN}; }}
+  .dl-val.neg {{ color: {DANGER}; }}
+  .dl-sub {{
+    font-family: Arial, sans-serif;
+    font-size: 10px; color: {MUTED};
+    margin-top: 3px; min-height: 13px;
+  }}
+  @media (max-width: 768px) {{
+    .dl-groups {{ grid-template-columns: 1fr; }}
+  }}
+
   /* Section headers */
   .section-title {{
     font-size: 13px; font-weight: 800; letter-spacing: 1.5px;
@@ -408,6 +463,16 @@ if mkt_filter != "All Markets":
     curr_df  = curr_df[curr_df["market"] == mkt_filter]
     prior_df = prior_df[prior_df["market"] == mkt_filter]
 
+# ── YTD data for sub-labels (always Jan 1 → today vs prior year) ──────────────
+_ytd_start  = today.replace(month=1, day=1)
+_ytd_ps     = _ytd_start - timedelta(days=364)
+_ytd_pe     = today      - timedelta(days=364)
+_ytd_all    = load_sales(str(_ytd_ps), str(today), str(_ytd_ps), str(_ytd_pe))
+ytd_curr_df  = _ytd_all[_ytd_all["sale_date"].dt.date.between(_ytd_start, today)].copy()
+ytd_prior_df = _ytd_all[_ytd_all["sale_date"].dt.date.between(_ytd_ps, _ytd_pe)].copy()
+ytd_curr_df["market"]  = ytd_curr_df["store_id"].apply(get_market)
+ytd_prior_df["market"] = ytd_prior_df["store_id"].apply(get_market)
+
 # ── Helper: compute SSS/SST for a grouped dataframe ───────────────────────────
 def comp_metrics(curr: pd.DataFrame, prior: pd.DataFrame):
     """
@@ -506,6 +571,100 @@ def kpi_delta_html(v):
 
 tab1, tab2 = st.tabs(["Overview", "By District Manager"])
 with tab1:
+    # ── Compute metrics for selected period and YTD ───────────────────────────
+    T  = comp_metrics(curr_df, prior_df)      # current period
+    TY = comp_metrics(ytd_curr_df, ytd_prior_df)  # YTD
+
+    # CHECK% = ticket change = (1+SSS)/(1+SST) - 1
+    def _check(sss, sst):
+        if sss is None or sst is None: return None
+        return ((1 + sss/100) / (1 + sst/100) - 1) * 100
+
+    check_pct    = _check(T["sss_pct"],  T["sst_pct"])
+    check_pct_yt = _check(TY["sss_pct"], TY["sst_pct"])
+
+    # AUV = annualized net sales per store (run-rate)
+    days = max((end_date - start_date).days + 1, 1)
+    ytd_days = max((today - _ytd_start).days + 1, 1)
+    stores = max(curr_df["store_id"].nunique(), 1)
+    ytd_stores = max(ytd_curr_df["store_id"].nunique(), 1)
+    auv    = (T["net_sales"]  / days    * 365) / stores      if T["net_sales"]  else None
+    auv_yt = (TY["net_sales"] / ytd_days * 365) / ytd_stores if TY["net_sales"] else None
+
+    period_lbl = {"Day": "Day", "WTD": "WTD", "PTD": "MTD", "YTD": "YTD"}[period]
+
+    def _pv(v, pct=True, dollar=False):
+        """Format a metric value with color class."""
+        if v is None: return ("—", "")
+        if pct:
+            cls = "pos" if v >= 0 else "neg"
+            sign = "+" if v >= 0 else ""
+            return (f"{sign}{v:.1f}%", cls)
+        if dollar:
+            return (fmt_dollar(v), "")
+        return (f"{v:.1f}%", "")
+
+    def _sub(v, pct=True, dollar=False, label="YTD"):
+        if v is None: return ""
+        if pct:
+            sign = "+" if v >= 0 else ""
+            return f"{label} {sign}{v:.1f}%"
+        if dollar:
+            return f"{label} {fmt_dollar(v)}"
+        return f"{label} {v:.1f}%"
+
+    def _tile(lbl, val, cls, sub):
+        return (
+            f'<div class="dl-tile">'
+            f'<div class="dl-lbl">{lbl}</div>'
+            f'<div class="dl-val {cls}">{val}</div>'
+            f'<div class="dl-sub">{sub}</div>'
+            f'</div>'
+        )
+
+    sss_v, sss_c   = _pv(T["sss_pct"])
+    sst_v, sst_c   = _pv(T["sst_pct"])
+    chk_v, chk_c   = _pv(check_pct)
+    ns_v,  _       = _pv(T["net_sales"],  pct=False, dollar=True)
+    auv_v, _       = _pv(auv,             pct=False, dollar=True)
+    wi_v,  _       = _pv(T["walkin_pct"], pct=False)
+    on_v,  _       = _pv(T["online_pct"], pct=False)
+    tp_v,  _       = _pv(T["thirdp_pct"], pct=False)
+
+    comp_tiles = (
+        _tile("SSS",  sss_v, sss_c, _sub(TY["sss_pct"])) +
+        _tile("SST",  sst_v, sst_c, _sub(TY["sst_pct"])) +
+        _tile("CHECK", chk_v, chk_c, _sub(check_pct_yt))
+    )
+    sales_tiles = (
+        _tile("AUV",      auv_v, "", _sub(auv_yt,            pct=False, dollar=True)) +
+        _tile("Net Sales", ns_v, "", _sub(TY["net_sales"],    pct=False, dollar=True)) +
+        _tile("Loyalty %", "—",  "", "")
+    )
+    mix_tiles = (
+        _tile("In-Store", wi_v, "", _sub(TY["walkin_pct"], pct=False)) +
+        _tile("Online",   on_v, "", _sub(TY["online_pct"], pct=False)) +
+        _tile("3PD",      tp_v, "", _sub(TY["thirdp_pct"], pct=False))
+    )
+
+    st.markdown(f"""
+    <div class="dl-groups">
+      <div class="dl-group">
+        <div class="dl-header">Comp Sales</div>
+        <div class="dl-tiles">{comp_tiles}</div>
+      </div>
+      <div class="dl-group">
+        <div class="dl-header">Sales</div>
+        <div class="dl-tiles">{sales_tiles}</div>
+      </div>
+      <div class="dl-group">
+        <div class="dl-header">Sales Mix</div>
+        <div class="dl-tiles">{mix_tiles}</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Consolidated KPIs (existing) ──────────────────────────────────────────
     st.markdown('<div class="section-title">Consolidated Performance</div>', unsafe_allow_html=True)
     
     k1, k2, k3, k4, k5, k6 = st.columns(6)
