@@ -28,6 +28,8 @@ GREEN  = "#16a34a"
 MUTED  = "#6B7280"
 
 st.markdown(f"""<style>
+  /* No horizontal page scroll on mobile */
+  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
   [data-testid="stAppViewContainer"] {{ background:{LIGHT}; }}
   #MainMenu {{ visibility: hidden; }}
   footer {{ visibility: hidden; }}

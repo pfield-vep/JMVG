@@ -56,7 +56,9 @@ def load_stores():
 
 # ── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown("""
-<style>[data-testid="stAppViewContainer"] { background:#F5F6F8; }
+<style>[  /* No horizontal page scroll on mobile */
+  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
+data-testid="stAppViewContainer"] { background:#F5F6F8; }
     footer { visibility:hidden; }
     #MainMenu { visibility:hidden; }
     header { visibility:hidden; }

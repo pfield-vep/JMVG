@@ -62,7 +62,10 @@ def get_db_connection():
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown(f"""
-<style>html, body, [class*="css"] {{ font-family: Arial, sans-serif !important; }}
+<style>
+  /* No horizontal page scroll on mobile */
+  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
+  html, body, [class*="css"] {{ font-family: Arial, sans-serif !important; }}
     #MainMenu {{ visibility: hidden; }}
     footer {{ visibility: hidden; }}
     header {{ visibility: hidden; }}

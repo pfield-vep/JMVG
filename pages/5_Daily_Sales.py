@@ -160,7 +160,10 @@ def get_date_range():
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
-<style>body {{
+<style>
+  /* No horizontal page scroll on mobile */
+  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
+  body {{
         font-family: Arial, sans-serif;
     }}
 
@@ -728,6 +731,14 @@ with tab1:
     """, unsafe_allow_html=True)
     
     # ── SSS Trend Chart ────────────────────────────────────────────────────────────
+    PLOTLY_LAYOUT = dict(
+        plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+        font=dict(family="Arial, sans-serif", size=12, color=TEXT),
+        margin=dict(l=20, r=20, t=40, b=20),
+        legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
+                    font=dict(size=11), orientation="h",
+                    yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
+    )
     st.markdown('<div class="section-title">SSS% Trend (Rolling 7-Day)</div>', unsafe_allow_html=True)
     
     # Build daily SSS: for each day in curr period, compare to same day 364 days back

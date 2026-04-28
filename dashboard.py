@@ -76,6 +76,8 @@ DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
 
 st.markdown(f"""
 <style>
+  /* No horizontal page scroll on mobile */
+  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
     .stApp, .main {{ background-color: {WHITE} !important; }}
     .block-container {{ padding-top: 1rem !important; }}
 

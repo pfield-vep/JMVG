@@ -59,7 +59,10 @@ def get_conn():
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
-<style>body {{
+<style>
+  /* No horizontal page scroll on mobile */
+  html, body, .stApp {{ overflow-x: hidden !important; max-width: 100vw !important; }}
+  body {{
         font-family: Arial, sans-serif;
     }}
 
