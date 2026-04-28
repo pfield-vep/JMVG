@@ -60,19 +60,20 @@ PLOTLY_THEME = dict(
     font=dict(color=TEXT, family="Arial, sans-serif", size=13),
     xaxis=dict(gridcolor=GRID_COLOR, linecolor=BORDER, tickfont=dict(size=12, color=MUTED)),
     yaxis=dict(gridcolor=GRID_COLOR, linecolor=BORDER, tickfont=dict(size=12, color=MUTED)),
-    dragmode='pan',
-    modebar=dict(remove=['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d',
-                         'autoScale2d', 'resetScale2d', 'zoom2d',
-                         'pan2d', 'toImage', 'sendDataToCloud']),
+    dragmode=False,   # disable click/drag/tap zoom and pan
+    modebar=dict(remove=['select2d', 'lasso2d', 'zoom2d', 'pan2d',
+                         'autoScale2d', 'resetScale2d',
+                         'toImage', 'sendDataToCloud']),
+    # zoomIn2d and zoomOut2d are kept (+ and - buttons)
 )
 # Shared legend and margin — pass explicitly, never inside PLOTLY_THEME
 DEFAULT_LEGEND = dict(
     bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
     font=dict(size=11, family='Arial'),
-    orientation='h',          # horizontal legend — takes less vertical space
-    yanchor='bottom', y=1.02, xanchor='right', x=1
+    orientation='h',
+    yanchor='top', y=-0.18, xanchor='center', x=0.5
 )
-DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=80)
+DEFAULT_MARGIN = dict(l=40, r=20, t=55, b=90)
 
 st.markdown(f"""
 <style>

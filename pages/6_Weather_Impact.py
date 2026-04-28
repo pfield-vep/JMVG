@@ -349,9 +349,15 @@ st.markdown('<div class="section-title">Correlation Scatter</div>', unsafe_allow
 PLOTLY_BASE = dict(
     plot_bgcolor=WHITE, paper_bgcolor=WHITE,
     font=dict(family="Arial, sans-serif", size=12, color=TEXT),
-    margin=dict(l=50, r=20, t=40, b=50),
+    dragmode=False,
+    modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
+                          "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
+    margin=dict(l=50, r=20, t=40, b=90),
     xaxis=dict(gridcolor="#E5E7EB", zerolinecolor=BORDER),
     yaxis=dict(gridcolor="#E5E7EB", zerolinecolor=BORDER, ticksuffix="%"),
+    legend=dict(bgcolor=WHITE, bordercolor="#E5E7EB", borderwidth=1,
+                font=dict(size=10), orientation="h",
+                yanchor="top", y=-0.2, xanchor="center", x=0.5),
 )
 
 sc1, sc2 = st.columns(2)

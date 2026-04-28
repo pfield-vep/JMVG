@@ -735,10 +735,13 @@ with tab1:
     PLOTLY_LAYOUT = dict(
         plot_bgcolor=WHITE, paper_bgcolor=WHITE,
         font=dict(family="Arial, sans-serif", size=12, color=TEXT),
-        margin=dict(l=20, r=20, t=40, b=20),
+        dragmode=False,
+        modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
+                              "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
+        margin=dict(l=20, r=20, t=40, b=80),
         legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
                     font=dict(size=11), orientation="h",
-                    yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
+                    yanchor="top", y=-0.25, xanchor="center", x=0.5),
     )
     st.markdown('<div class="section-title">Daily SSS Trend</div>', unsafe_allow_html=True)
 
