@@ -189,6 +189,17 @@ st.markdown(f"""
     display: flex !important;
     flex-wrap: nowrap !important;
     gap: 6px !important;
+    justify-content: center !important;
+  }}
+  /* Sticky period toggle on mobile so it stays visible while scrolling */
+  @media (max-width: 768px) {{
+    [data-testid="stRadio"] {{
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 999 !important;
+      background: white !important;
+      padding: 8px 0 6px !important;
+    }}
   }}
   [data-testid="stRadio"] div[role="radiogroup"] label {{
     display: inline-flex !important;
@@ -404,6 +415,8 @@ st.markdown(f"""
 min_date, max_date = get_date_range()
 today = max_date  # most recent data date
 
+tab1, tab2 = st.tabs(["Overview", "By District Manager"])
+
 # ── Period toggle ──────────────────────────────────────────────────────────────
 mkt_filter = "All Markets"   # no market filter — DM tab shows all markets
 
@@ -574,7 +587,6 @@ def kpi_delta_html(v):
     arrow = "▲" if v >= 0 else "▼"
     return f'<span class="{cls}">{arrow} {fmt_pct(v)}</span> vs prior year'
 
-tab1, tab2 = st.tabs(["Overview", "By District Manager"])
 with tab1:
     # ── Compute metrics for selected period and YTD ───────────────────────────
     T  = comp_metrics(curr_df, prior_df)      # current period
@@ -817,69 +829,6 @@ with tab1:
         height=300,
     )
     st.plotly_chart(fig_sss, use_container_width=True)
-    
-    # ── Store Detail Table ─────────────────────────────────────────────────────────
-    with st.expander("Store Detail", expanded=False):
-        store_curr = curr_df.groupby(["store_id","store_name","market"]).agg(
-            net_sales=("net_sales","sum"),
-            transactions=("total_transactions","sum"),
-            walkin=("walkin_sales","sum"),
-            online=("online_sales","sum"),
-            thirdp=("third_party_sales","sum"),
-            lunch=("lunch_sales","sum"),
-            dinner=("dinner_sales","sum"),
-            morning=("morning_sales","sum"),
-        ).reset_index()
-    
-        store_prior = prior_df.groupby("store_id").agg(
-            net_sales_prior=("net_sales","sum"),
-            txn_prior=("total_transactions","sum"),
-        ).reset_index()
-    
-        store_all = store_curr.merge(store_prior, on="store_id", how="left")
-        store_all["sss_pct"] = (
-            (store_all["net_sales"] - store_all["net_sales_prior"])
-            / store_all["net_sales_prior"] * 100
-        ).where(store_all["net_sales_prior"] > 0)
-        store_all["sst_pct"] = (
-            (store_all["transactions"] - store_all["txn_prior"])
-            / store_all["txn_prior"] * 100
-        ).where(store_all["txn_prior"] > 0)
-        store_all["avg_ticket"] = store_all["net_sales"] / store_all["transactions"].replace(0, float("nan"))
-        store_all["online_pct"] = store_all["online"] / store_all["net_sales"].replace(0, float("nan")) * 100
-    
-        store_all = store_all.sort_values(["market","net_sales"], ascending=[True,False])
-    
-        def store_row(r):
-            sss_c = pct_class(r["sss_pct"])
-            sst_c = pct_class(r["sst_pct"])
-            sss   = fmt_pct(r["sss_pct"]) if pd.notna(r.get("sss_pct")) else "—"
-            sst   = fmt_pct(r["sst_pct"]) if pd.notna(r.get("sst_pct")) else "—"
-            tkt   = f"${r['avg_ticket']:.2f}" if pd.notna(r.get("avg_ticket")) else "—"
-            onl   = f"{r['online_pct']:.1f}%" if pd.notna(r.get("online_pct")) else "—"
-            return (
-                f"<tr>"
-                f"<td>{r['store_name']}</td>"
-                f"<td>{r['market']}</td>"
-                f"<td>{fmt_dollar(r['net_sales'])}</td>"
-                f"<td class='{sss_c}'>{sss}</td>"
-                f"<td class='{sst_c}'>{sst}</td>"
-                f"<td>{tkt}</td>"
-                f"<td>{onl}</td>"
-                f"</tr>"
-            )
-    
-        store_rows = "".join(store_row(r) for _, r in store_all.iterrows())
-        st.markdown(f"""
-        <table class="store-table">
-          <thead><tr>
-            <th>Store</th><th>Market</th>
-            <th>Net Sales</th><th>SSS%</th><th>SST%</th>
-            <th>Avg Ticket</th><th>Online%</th>
-          </tr></thead>
-          <tbody>{store_rows}</tbody>
-        </table>
-        """, unsafe_allow_html=True)
     
 
 with tab2:
