@@ -308,8 +308,9 @@ st.markdown(f"""
     padding-bottom: 6px; margin: 18px 0 12px;
   }}
 
-  /* Market table */
-  .mkt-table {{ width:100%; border-collapse: collapse; font-size:13px; }}
+  /* Market table — horizontal scroll container (mobile only scrolls inside) */
+  .mkt-scroll {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+  .mkt-table {{ min-width: 500px; width:100%; border-collapse: collapse; font-size:13px; }}
   .mkt-table th {{
     background: {BLUE}; color: white; padding: 8px 12px;
     font-size: 11px; font-weight: 700; letter-spacing: 1px;
@@ -637,9 +638,11 @@ with tab1:
         _tile("CHECK", chk_v, chk_c, _sub(check_pct_yt))
     )
     sales_tiles = (
-        _tile("AUV",      auv_v, "", _sub(auv_yt,            pct=False, dollar=True)) +
-        _tile("Net Sales", ns_v, "", _sub(TY["net_sales"],    pct=False, dollar=True)) +
-        _tile("Loyalty %", "—",  "", "")
+        _tile("AUV",         auv_v, "", _sub(auv_yt,            pct=False, dollar=True)) +
+        _tile("Net Sales",   ns_v,  "", _sub(TY["net_sales"],    pct=False, dollar=True)) +
+        _tile("Avg Check",
+              f"${T['avg_ticket']:.2f}"  if T["avg_ticket"]  else "—", "",
+              f"YTD ${TY['avg_ticket']:.2f}" if TY["avg_ticket"] else "")
     )
     mix_tiles = (
         _tile("In-Store", wi_v, "", _sub(TY["walkin_pct"], pct=False)) +
@@ -664,37 +667,6 @@ with tab1:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Consolidated KPIs (existing) ──────────────────────────────────────────
-    st.markdown('<div class="section-title">Consolidated Performance</div>', unsafe_allow_html=True)
-    
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    
-    cards = [
-        (k1, "Net Sales", fmt_dollar(totals["net_sales"]),
-         kpi_delta_html((totals["net_sales"]-totals["prior_sales"])/totals["prior_sales"]*100
-                        if totals["prior_sales"] else None), "kpi-card"),
-        (k2, "Same Store Sales", fmt_pct(totals["sss_pct"]),
-         f'<span style="font-size:11px;color:{MUTED};">{totals["comp_count"]} comp stores</span>',
-         "kpi-card kpi-card-blue"),
-        (k3, "Same Store Txns", fmt_pct(totals["sst_pct"]),
-         f'<span style="font-size:11px;color:{MUTED};">{totals["comp_count"]} comp stores</span>',
-         "kpi-card kpi-card-blue"),
-        (k4, "Avg Ticket", f"${totals['avg_ticket']:.2f}" if totals["avg_ticket"] else "—",
-         f'{int(totals["transactions"]):,} transactions', "kpi-card kpi-card-green"),
-        (k5, "Online Mix", f"{totals['online_pct']:.1f}%" if totals["online_pct"] else "—",
-         f'3P: {totals["thirdp_pct"]:.1f}%' if totals["thirdp_pct"] else "", "kpi-card kpi-card-gold"),
-        (k6, "Lunch Mix", f"{totals['lunch_pct']:.1f}%" if totals["lunch_pct"] else "—",
-         f'Dinner: {totals["dinner_pct"]:.1f}%' if totals["dinner_pct"] else "", "kpi-card"),
-    ]
-    
-    for col, label, val, delta, cls in cards:
-        col.markdown(f"""
-        <div class="{cls}">
-          <div class="kpi-label">{label}</div>
-          <div class="kpi-value">{val}</div>
-          <div class="kpi-delta">{delta}</div>
-        </div>""", unsafe_allow_html=True)
-    
     # ── By-Market Table ────────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">By Market</div>', unsafe_allow_html=True)
     
@@ -742,6 +714,7 @@ with tab1:
     
     rows_html = "".join(_row_html(r, r["market"] == "TOTAL") for r in mkt_rows)
     st.markdown(f"""
+    <div class="mkt-scroll">
     <table class="mkt-table">
       <thead><tr>
         <th>Market</th><th style="text-align:center">Stores</th>
@@ -751,88 +724,8 @@ with tab1:
       </tr></thead>
       <tbody>{rows_html}</tbody>
     </table>
+    </div>
     """, unsafe_allow_html=True)
-    
-    # ── Charts row ─────────────────────────────────────────────────────────────────
-    st.markdown('<div class="section-title">Sales Mix</div>', unsafe_allow_html=True)
-    
-    ch1, ch2 = st.columns(2)
-    
-    PLOTLY_LAYOUT = dict(
-        plot_bgcolor=WHITE, paper_bgcolor=WHITE,
-        font=dict(family="Arial, sans-serif", size=12, color=TEXT),
-        margin=dict(l=20, r=20, t=40, b=20),
-        legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
-                    font=dict(size=11), orientation="h",
-                    yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
-    )
-    
-    # Daypart mix
-    with ch1:
-        dp_labels  = ["Morning", "Lunch", "Dinner"]
-        dp_values  = [
-            totals["morning_sales"] or 0,
-            totals["lunch_sales"]   or 0,
-            totals["dinner_sales"]  or 0,
-        ]
-        dp_colors  = [GOLD, RED, BLUE]
-    
-        # Daily trend by daypart
-        daily_dp = curr_df.groupby("sale_date").agg(
-            morning=("morning_sales","sum"),
-            lunch=("lunch_sales","sum"),
-            dinner=("dinner_sales","sum"),
-        ).reset_index().sort_values("sale_date")
-    
-        fig_dp = go.Figure()
-        for col, color, label in [
-            ("morning", GOLD, "Morning"),
-            ("lunch",   RED,  "Lunch"),
-            ("dinner",  BLUE, "Dinner"),
-        ]:
-            fig_dp.add_trace(go.Bar(
-                x=daily_dp["sale_date"],
-                y=daily_dp[col],
-                name=label,
-                marker_color=color,
-            ))
-        fig_dp.update_layout(
-            **PLOTLY_LAYOUT,
-            barmode="stack",
-            title=dict(text="Daily Sales by Daypart", font=dict(size=13, color=BLUE), x=0),
-            xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
-            yaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor="#E5E7EB"),
-        )
-        st.plotly_chart(fig_dp, use_container_width=True)
-    
-    # Channel mix
-    with ch2:
-        daily_ch = curr_df.groupby("sale_date").agg(
-            walkin=("walkin_sales","sum"),
-            online=("online_sales","sum"),
-            thirdp=("third_party_sales","sum"),
-        ).reset_index().sort_values("sale_date")
-    
-        fig_ch = go.Figure()
-        for col, color, label in [
-            ("walkin", BLUE,  "Walk-In"),
-            ("online", RED,   "Online"),
-            ("thirdp", GOLD,  "3rd Party"),
-        ]:
-            fig_ch.add_trace(go.Bar(
-                x=daily_ch["sale_date"],
-                y=daily_ch[col],
-                name=label,
-                marker_color=color,
-            ))
-        fig_ch.update_layout(
-            **PLOTLY_LAYOUT,
-            barmode="stack",
-            title=dict(text="Daily Sales by Channel", font=dict(size=13, color=BLUE), x=0),
-            xaxis=dict(tickformat="%b %d", gridcolor="#E5E7EB"),
-            yaxis=dict(tickprefix="$", tickformat=",.0f", gridcolor="#E5E7EB"),
-        )
-        st.plotly_chart(fig_ch, use_container_width=True)
     
     # ── SSS Trend Chart ────────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">SSS% Trend (Rolling 7-Day)</div>', unsafe_allow_html=True)
