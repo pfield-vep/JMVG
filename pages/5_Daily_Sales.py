@@ -898,19 +898,17 @@ with tab1:
             pd_v, pd_c = _pdelta(wr["precip_in"] - wr["prior_precip"] if pd.notna(wr.get("prior_precip")) else float("nan"))
             day_label = wr["date"].strftime("%a")
             date_label = wr["date"].strftime("%b %d")
-            cols_html += f"""
-            <div style="flex:1;text-align:center;padding:6px 4px;
-                        border-right:1px solid {BORDER};">
-              <div style="font-size:10px;font-weight:700;color:{MUTED};
-                          text-transform:uppercase;letter-spacing:0.5px;">
-                {day_label}</div>
-              <div style="font-size:10px;color:{MUTED};">{date_label}</div>
-              <div style="font-size:22px;margin:4px 0;">{emoji}</div>
-              <div style="font-size:13px;font-weight:700;color:{TEXT};">{hi}</div>
-              <div style="font-size:11px;font-weight:600;color:{td_c};">{td_v}</div>
-              <div style="font-size:12px;color:{TEXT};margin-top:4px;">{pr}</div>
-              <div style="font-size:11px;font-weight:600;color:{pd_c};">{pd_v}</div>
-            </div>"""
+            cols_html += (
+                f'<div style="flex:1;text-align:center;padding:6px 4px;border-right:1px solid {BORDER};">'
+                f'<div style="font-size:10px;font-weight:700;color:{MUTED};text-transform:uppercase;letter-spacing:0.5px;">{day_label}</div>'
+                f'<div style="font-size:10px;color:{MUTED};">{date_label}</div>'
+                f'<div style="font-size:22px;margin:4px 0;">{emoji}</div>'
+                f'<div style="font-size:13px;font-weight:700;color:{TEXT};">{hi}</div>'
+                f'<div style="font-size:11px;font-weight:600;color:{td_c};">{td_v}</div>'
+                f'<div style="font-size:12px;color:{TEXT};margin-top:4px;">{pr}</div>'
+                f'<div style="font-size:11px;font-weight:600;color:{pd_c};">{pd_v}</div>'
+                f'</div>'
+            )
 
         st.markdown(f"""
         <div style="background:{WHITE};border:1px solid {BORDER};border-radius:8px;
