@@ -1,12 +1,15 @@
 name: JM Valley — Weekly JM Store Report
 
-# Runs every Monday at 7:30 AM CT (12:30 UTC)
-# Note: GitHub cron uses UTC. 12:30 UTC = 7:30 AM CDT (summer).
-# In winter (CST, UTC-6) this fires at 6:30 AM CT — adjust cron
-# to '30 13 * * 1' if you prefer 7:30 AM year-round in CST.
+# Runs every Monday at 7:30 AM CT year-round.
+# Two cron lines handle daylight saving automatically:
+#   12:30 UTC = 7:30 AM CDT (Mar–Nov, UTC-5)
+#   13:30 UTC = 7:30 AM CST (Nov–Mar, UTC-6)
+# During the two DST transition Mondays per year both fire — harmless,
+# the second run skips files already processed.
 on:
   schedule:
     - cron: '30 12 * * 1'
+    - cron: '30 13 * * 1'
   workflow_dispatch:
 
 jobs:
