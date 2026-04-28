@@ -747,12 +747,13 @@ with tab2:
     # ── CSS for nested tree table ──────────────────────────────────────────────
     st.markdown(f"""
     <style>
-      .dm-tree {{ font-family: Arial, sans-serif; font-size: 13px; width: 100%; }}
+      .dm-scroll {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+      .dm-tree {{ font-family: Arial, sans-serif; font-size: 13px; min-width: 620px; width: 100%; }}
       .dm-tree summary {{ list-style: none; cursor: pointer; }}
       .dm-tree summary::-webkit-details-marker {{ display: none; }}
       .tree-header {{
         display: grid;
-        grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
+        grid-template-columns: 180px 52px 90px 100px 72px 72px 60px;
         background: {BLUE}; color: white;
         font-size: 11px; font-weight: 700; letter-spacing: 1px;
         text-transform: uppercase;
@@ -765,7 +766,7 @@ with tab2:
       }}
       .tree-row {{
         display: grid;
-        grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
+        grid-template-columns: 180px 52px 90px 100px 72px 72px 60px;
         padding: 8px 12px; align-items: center;
       }}
       /* Market rows — light blue */
@@ -778,7 +779,7 @@ with tab2:
       /* Total row — dark blue */
       .total-row {{
         display: grid;
-        grid-template-columns: 1fr 60px 100px 110px 80px 80px 80px;
+        grid-template-columns: 180px 52px 90px 100px 72px 72px 60px;
         padding: 8px 12px; align-items: center;
         background: {BLUE}; color: white;
         font-weight: 700; font-size: 13px;
@@ -862,7 +863,7 @@ with tab2:
 
         MARKET_ORDER = {"LA / SoCal": 0, "San Diego": 1, "Santa Barbara": 2}
         html_parts = [
-            '<div class="dm-tree">',
+            '<div class="dm-scroll"><div class="dm-tree">',
             '<div class="tree-header">'
             '<span>Group / Store</span><span>Stores</span>'
             '<span>Net Sales</span><span>Transactions</span>'
@@ -994,7 +995,7 @@ with tab2:
             f'</div>'
         )
 
-        html_parts.append('</div>')  # close dm-tree
+        html_parts.append('</div></div>')  # close dm-tree and scroll wrapper
         st.markdown('\n'.join(html_parts), unsafe_allow_html=True)
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
