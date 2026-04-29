@@ -443,57 +443,8 @@ with sc2:
     )
     st.plotly_chart(fig_p, use_container_width=True)
 
-# ── Charts row 1b: Lunch & Dinner rain change correlations ────────────────────
-st.markdown('<div class="section-title">Daypart Rain Impact</div>', unsafe_allow_html=True)
-dc1, dc2 = st.columns(2)
-
-def _rain_change_scatter(col, change_col, title, has_data):
-    sub = df_clean[df_clean[change_col].notna() & (df_clean[change_col] != 0)].copy()
-    fig = go.Figure()
-    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
-        m = sub[sub["market"] == mkt]
-        if m.empty: continue
-        fig.add_trace(go.Scatter(
-            x=m[change_col], y=m["sss_pct"],
-            mode="markers", name=mkt,
-            marker=dict(color=mcolor, size=5, opacity=0.5),
-        ))
-    if not sub.empty and len(sub) > 5:
-        xs = sub[change_col].values
-        ys = sub["sss_pct"].values
-        mask = np.isfinite(xs) & np.isfinite(ys)
-        if mask.sum() > 5:
-            coefs = np.polyfit(xs[mask], ys[mask], 1)
-            r = np.corrcoef(xs[mask], ys[mask])[0,1]
-            x_line = np.linspace(xs[mask].min(), xs[mask].max(), 50)
-            fig.add_trace(go.Scatter(
-                x=x_line, y=np.polyval(coefs, x_line),
-                mode="lines", name=f"Trend (R={r:+.2f})",
-                line=dict(color=DANGER, width=2, dash="dash"),
-            ))
-    fig.add_hline(y=0, line_color=MUTED, line_width=1)
-    fig.add_vline(x=0, line_color=MUTED, line_width=1)
-    fig.update_layout(**PLOTLY_BASE)
-    fig.update_layout(title=dict(text=title, font=dict(size=13, color=BLUE), x=0))
-    fig.update_xaxes(tickvals=[-1,0,1],
-                     ticktext=["Lost rain","No change","Gained rain"],
-                     gridcolor="#E5E7EB",
-                     title_text="Rain change vs. prior year")
-    fig.update_yaxes(ticksuffix="%", gridcolor="#E5E7EB", range=[-50, 60])
-    col.plotly_chart(fig, use_container_width=True)
-
-if "lunch_rain_change" in df_clean.columns:
-    _rain_change_scatter(dc1, "lunch_rain_change",
-                         "Lunch Rain Change (11am–2pm) vs SSS%", True)
-    _rain_change_scatter(dc2, "dinner_rain_change",
-                         "Dinner Rain Change (5pm–8pm) vs SSS%", True)
-else:
-    dc1.info("Lunch/dinner rain data not yet available.")
-
-# ── Charts row 2: bucket bar chart + time series ───────────────────────────────
+# ── Charts row 2: bucket bar chart + time series (full width, stacked) ────────
 st.markdown('<div class="section-title">SSS% by Weather Condition</div>', unsafe_allow_html=True)
-
-b1, b2 = st.columns([1, 1.6])
 
 BUCKET_ORDER = ["Warmer (+5°F+)", "Similar temp", "Cooler (-5°F+)",
                 "Dry (was rain)", "Rain (was dry)", "Rain both years"]
@@ -506,76 +457,75 @@ BUCKET_COLORS = {
     "Rain both years":"#9CA3AF",
 }
 
-with b1:
-    bkt = (df_clean.groupby("weather_bucket")["sss_pct"]
-           .agg(avg_sss="mean", count="count").reset_index())
-    bkt = bkt[bkt["weather_bucket"].isin(BUCKET_ORDER)].copy()
-    bkt["order"] = bkt["weather_bucket"].map({b:i for i,b in enumerate(BUCKET_ORDER)})
-    bkt = bkt.sort_values("order")
+bkt = (df_clean.groupby("weather_bucket")["sss_pct"]
+       .agg(avg_sss="mean", count="count").reset_index())
+bkt = bkt[bkt["weather_bucket"].isin(BUCKET_ORDER)].copy()
+bkt["order"] = bkt["weather_bucket"].map({b:i for i,b in enumerate(BUCKET_ORDER)})
+bkt = bkt.sort_values("order")
 
-    fig_b = go.Figure(go.Bar(
-        y=bkt["weather_bucket"],
-        x=bkt["avg_sss"],
-        orientation="h",
-        marker_color=[BUCKET_COLORS.get(b, MUTED) for b in bkt["weather_bucket"]],
-        text=[f"{v:+.1f}% ({n:,}d)" for v,n in zip(bkt["avg_sss"], bkt["count"])],
-        textposition="outside",
-        textfont=dict(size=11),
-    ))
-    fig_b.add_vline(x=0, line_color=MUTED, line_width=1)
-    fig_b.update_layout(
-        plot_bgcolor=WHITE, paper_bgcolor=WHITE,
-        font=dict(family="Arial, sans-serif", size=12),
-        margin=dict(l=140, r=90, t=40, b=30),
-        xaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", zerolinecolor=BORDER),
-        yaxis=dict(gridcolor="rgba(0,0,0,0)", automargin=True),
-        title=dict(text="Avg SSS% by Weather Bucket", font=dict(size=13, color=BLUE), x=0),
-        showlegend=False,
-        height=320,
-    )
-    st.plotly_chart(fig_b, use_container_width=True)
+fig_b = go.Figure(go.Bar(
+    y=bkt["weather_bucket"],
+    x=bkt["avg_sss"],
+    orientation="h",
+    marker_color=[BUCKET_COLORS.get(b, MUTED) for b in bkt["weather_bucket"]],
+    text=[f"{v:+.1f}% ({n:,}d)" for v,n in zip(bkt["avg_sss"], bkt["count"])],
+    textposition="outside",
+    textfont=dict(size=11),
+))
+fig_b.add_vline(x=0, line_color=MUTED, line_width=1)
+fig_b.update_layout(
+    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+    font=dict(family="Arial, sans-serif", size=12),
+    margin=dict(l=140, r=90, t=40, b=30),
+    xaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", zerolinecolor=BORDER),
+    yaxis=dict(gridcolor="rgba(0,0,0,0)", automargin=True),
+    title=dict(text="Avg SSS% by Weather Bucket", font=dict(size=13, color=BLUE), x=0),
+    showlegend=False,
+    height=320,
+)
+st.plotly_chart(fig_b, use_container_width=True)
 
-# Time series: SSS% trend with rain overlay
-with b2:
-    ts = (df_clean.groupby("sale_date")
-          .agg(sss_pct=("sss_pct","mean"), rainy=("curr_rainy","mean"))
-          .reset_index().sort_values("sale_date"))
-    ts["sss_7d"] = ts["sss_pct"].rolling(7, min_periods=3).mean()
-    rain_days = ts[ts["rainy"] >= 0.5]
+# Time series: SSS% trend with rain overlay (full width)
+ts = (df_clean.groupby("sale_date")
+      .agg(sss_pct=("sss_pct","mean"), rainy=("curr_rainy","mean"))
+      .reset_index().sort_values("sale_date"))
+ts["sss_7d"] = ts["sss_pct"].rolling(7, min_periods=3).mean()
+rain_days = ts[ts["rainy"] >= 0.5]
 
-    fig_ts = go.Figure()
-    # Rain day markers (background shading via scatter with big markers)
-    fig_ts.add_trace(go.Bar(
-        x=rain_days["sale_date"],
-        y=[999]*len(rain_days),
-        base=[-999]*len(rain_days),
-        name="Rainy day",
-        marker=dict(color="rgba(100,150,255,0.15)", line_width=0),
-        hoverinfo="skip",
-    ))
-    fig_ts.add_trace(go.Scatter(
-        x=ts["sale_date"], y=ts["sss_pct"],
-        mode="markers", name="Daily SSS%",
-        marker=dict(size=4, opacity=0.35,
-                    color=[GREEN if v >= 0 else DANGER for v in ts["sss_pct"]]),
-    ))
-    fig_ts.add_trace(go.Scatter(
-        x=ts["sale_date"], y=ts["sss_7d"],
-        mode="lines", name="7-Day Avg SSS%",
-        line=dict(color=BLUE, width=2),
-    ))
-    fig_ts.add_hline(y=0, line_color=MUTED, line_width=1)
-    fig_ts.update_layout(
-        plot_bgcolor=WHITE, paper_bgcolor=WHITE,
-        font=dict(family="Arial, sans-serif", size=12, color=TEXT),
-        margin=dict(l=40, r=20, t=40, b=50),
-        xaxis=dict(tickformat="%b '%y", gridcolor="#E5E7EB"),
-        yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB",
-                   range=[-50, 60]),   # clamp extremes — per-store outliers skew axis
-        title=dict(text="SSS% Over Time (blue bands = rainy days)", font=dict(size=13, color=BLUE), x=0),
-        height=320,
-    )
-    st.plotly_chart(fig_ts, use_container_width=True)
+fig_ts = go.Figure()
+fig_ts.add_trace(go.Bar(
+    x=rain_days["sale_date"],
+    y=[999]*len(rain_days),
+    base=[-999]*len(rain_days),
+    name="Rainy day",
+    marker=dict(color="rgba(100,150,255,0.15)", line_width=0),
+    hoverinfo="skip",
+))
+fig_ts.add_trace(go.Scatter(
+    x=ts["sale_date"], y=ts["sss_pct"],
+    mode="markers", name="Daily SSS%",
+    marker=dict(size=4, opacity=0.35,
+                color=[GREEN if v >= 0 else DANGER for v in ts["sss_pct"]]),
+))
+fig_ts.add_trace(go.Scatter(
+    x=ts["sale_date"], y=ts["sss_7d"],
+    mode="lines", name="7-Day Avg SSS%",
+    line=dict(color=BLUE, width=2),
+))
+fig_ts.add_hline(y=0, line_color=MUTED, line_width=1)
+fig_ts.update_layout(
+    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+    font=dict(family="Arial, sans-serif", size=12, color=TEXT),
+    margin=dict(l=40, r=20, t=40, b=50),
+    xaxis=dict(tickformat="%b '%y", gridcolor="#E5E7EB"),
+    yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", range=[-50, 60]),
+    legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
+                font=dict(size=11), orientation="h",
+                yanchor="top", y=-0.12, xanchor="center", x=0.5),
+    title=dict(text="SSS% Over Time (blue bands = rainy days)", font=dict(size=13, color=BLUE), x=0),
+    height=320,
+)
+st.plotly_chart(fig_ts, use_container_width=True)
 
 # ── By-market bucket table ─────────────────────────────────────────────────────
 st.markdown('<div class="section-title">SSS% by Market & Weather Condition</div>',
@@ -599,9 +549,11 @@ col_headers = "".join(f"<th>{m}</th>" for m in [*markets_avail, "All"])
 rows_html = ""
 for bkt_name in BUCKET_ORDER:
     if bkt_name not in pivot.index: continue
-    cells = "".join(_cell(pivot.loc[bkt_name, m])
-                    if m in pivot.columns else "<td>—</td>"
-                    for m in [*markets_avail, "All"])
+    cells = "".join(
+        f"<td>{_cell(pivot.loc[bkt_name, m])}</td>" if m in pivot.columns
+        else "<td>—</td>"
+        for m in [*markets_avail, "All"]
+    )
     rows_html += f"<tr><td>{bkt_name}</td>{cells}</tr>"
 
 st.markdown(f"""
