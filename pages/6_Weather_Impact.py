@@ -352,7 +352,34 @@ if r_temp is not None and rainy_sss is not None and dry_sss is not None:
                 unsafe_allow_html=True)
 
 # ── Charts row 1: scatter plots ────────────────────────────────────────────────
-st.markdown('<div class="section-title">Correlation Scatter</div>', unsafe_allow_html=True)
+# Sub-region definitions (shared with the table below)
+SUBREGION_MAP = {
+    '20026':'Valley', '20267':'Valley', '20116':'Valley', '20363':'Valley',
+    '20156':'Valley', '20424':'Valley', '20366':'Valley', '20294':'Valley',
+    '20352':'Valley', '20218':'Valley', '20381':'Valley', '20311':'Valley',
+    '20011':'Conejo Valley', '20048':'Conejo Valley',
+    '20245':'Conejo Valley', '20255':'Conejo Valley',
+    '20273':'Mountains', '20388':'Mountains',
+    '20075':'Santa Barbara', '20335':'Santa Barbara',
+    '20360':'Santa Barbara', '20013':'Santa Barbara',
+    '20171':'Inland Riverside', '20177':'Inland Riverside',
+    '20291':'Inland Riverside', '20091':'Inland Riverside',
+    '20071':'Inland SD', '20300':'Inland SD', '20292':'Inland SD',
+}
+SUBREGION_ORDER  = ['Valley','Conejo Valley','Mountains','Santa Barbara',
+                    'Inland Riverside','Inland SD']
+SUBREGION_COLORS = {
+    'Valley':           '#1d4ed8',
+    'Conejo Valley':    '#7c3aed',
+    'Mountains':        '#0891b2',
+    'Santa Barbara':    '#059669',
+    'Inland Riverside': '#d97706',
+    'Inland SD':        '#dc2626',
+}
+
+df_clean["subregion"] = df_clean["store_id"].map(SUBREGION_MAP)
+
+st.markdown('<div class="section-title">Correlation Scatter — by Sub-Region</div>', unsafe_allow_html=True)
 
 PLOTLY_BASE = dict(
     plot_bgcolor=WHITE, paper_bgcolor=WHITE,
@@ -370,77 +397,48 @@ PLOTLY_BASE = dict(
 
 sc1, sc2 = st.columns(2)
 
-# Scatter: temp delta vs SSS%
-with sc1:
-    scatter_df = df_clean.dropna(subset=["temp_delta","sss_pct"])
-    colors = scatter_df["market"].map(
-        {"Los Angeles": BLUE, "San Diego": RED, "Tampa": GOLD}
-    ).fillna(MUTED)
-
-    fig_t = go.Figure()
-    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
-        sub = scatter_df[scatter_df["market"] == mkt]
+def _scatter_by_region(df_s, x_col, title, x_label):
+    fig = go.Figure()
+    for reg in SUBREGION_ORDER:
+        sub = df_s[df_s["subregion"] == reg].dropna(subset=[x_col,"sss_pct"])
         if sub.empty: continue
-        fig_t.add_trace(go.Scatter(
-            x=sub["temp_delta"], y=sub["sss_pct"],
-            mode="markers", name=mkt,
-            marker=dict(color=mcolor, size=5, opacity=0.5),
+        color = SUBREGION_COLORS.get(reg, MUTED)
+        fig.add_trace(go.Scatter(
+            x=sub[x_col], y=sub["sss_pct"],
+            mode="markers", name=reg,
+            marker=dict(color=color, size=5, opacity=0.55),
         ))
-    # Trend line
-    if len(scatter_df) > 10:
-        xs = scatter_df["temp_delta"].values
-        ys = scatter_df["sss_pct"].values
+        xs, ys = sub[x_col].values, sub["sss_pct"].values
         mask = np.isfinite(xs) & np.isfinite(ys)
         if mask.sum() > 5:
             coefs = np.polyfit(xs[mask], ys[mask], 1)
-            x_line = np.linspace(xs[mask].min(), xs[mask].max(), 50)
-            y_line = np.polyval(coefs, x_line)
-            fig_t.add_trace(go.Scatter(
-                x=x_line, y=y_line, mode="lines",
-                name=f"Trend (R={r_temp:+.2f})",
-                line=dict(color=DANGER, width=2, dash="dash"),
+            r = np.corrcoef(xs[mask], ys[mask])[0,1]
+            xl = np.linspace(xs[mask].min(), xs[mask].max(), 40)
+            fig.add_trace(go.Scatter(
+                x=xl, y=np.polyval(coefs, xl),
+                mode="lines", showlegend=False,
+                line=dict(color=color, width=1.5, dash="dot"),
             ))
-    fig_t.add_hline(y=0, line_color=MUTED, line_width=1)
-    fig_t.add_vline(x=0, line_color=MUTED, line_width=1)
-    fig_t.update_layout(**PLOTLY_BASE,
-        title=dict(text="Temp Delta (°F YoY) vs SSS%", font=dict(size=13, color=BLUE), x=0),
-        xaxis_title="Temperature Change vs. Prior Year (°F)",
-    )
+    fig.add_hline(y=0, line_color=MUTED, line_width=1)
+    fig.add_vline(x=0, line_color=MUTED, line_width=1)
+    fig.update_layout(**PLOTLY_BASE,
+        title=dict(text=title, font=dict(size=13, color=BLUE), x=0))
+    fig.update_xaxes(title_text=x_label, gridcolor="#E5E7EB")
+    fig.update_yaxes(ticksuffix="%", gridcolor="#E5E7EB")
+    return fig
+
+with sc1:
+    scatter_df = df_clean[df_clean["subregion"].notna()].dropna(subset=["temp_delta","sss_pct"])
+    fig_t = _scatter_by_region(scatter_df, "temp_delta",
+                               "Temp Delta (°F YoY) vs SSS% — by Sub-Region",
+                               "Temperature Change vs. Prior Year (°F)")
     st.plotly_chart(fig_t, use_container_width=True)
 
-# Scatter: precip delta vs SSS%
 with sc2:
-    # Use df_precip_scatter: excludes days where precip delta < 0.05"
-    # (zero/near-zero deltas cluster at x=0 and dilute the correlation)
-    scatter_p = df_precip_scatter.dropna(subset=["precip_delta","sss_pct"])
-    fig_p = go.Figure()
-    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
-        sub = scatter_p[scatter_p["market"] == mkt]
-        if sub.empty: continue
-        fig_p.add_trace(go.Scatter(
-            x=sub["precip_delta"], y=sub["sss_pct"],
-            mode="markers", name=mkt,
-            marker=dict(color=mcolor, size=5, opacity=0.5),
-        ))
-    if len(scatter_p) > 10:
-        xs2 = scatter_p["precip_delta"].values
-        ys2 = scatter_p["sss_pct"].values
-        mask2 = np.isfinite(xs2) & np.isfinite(ys2)
-        if mask2.sum() > 5:
-            coefs2 = np.polyfit(xs2[mask2], ys2[mask2], 1)
-            x2_line = np.linspace(xs2[mask2].min(), xs2[mask2].max(), 50)
-            y2_line = np.polyval(coefs2, x2_line)
-            fig_p.add_trace(go.Scatter(
-                x=x2_line, y=y2_line, mode="lines",
-                name=f"Trend (R={r_rain:+.2f})",
-                line=dict(color=DANGER, width=2, dash="dash"),
-            ))
-    fig_p.add_hline(y=0, line_color=MUTED, line_width=1)
-    fig_p.add_vline(x=0, line_color=MUTED, line_width=1)
-    fig_p.update_layout(**PLOTLY_BASE,
-        title=dict(text="Precip Delta (inches YoY) vs SSS% — excludes days with <0.05\" change", font=dict(size=13, color=BLUE), x=0),
-        xaxis_title="Precipitation Change vs. Prior Year (inches) — meaningful changes only",
-    )
+    scatter_p = df_precip_scatter[df_precip_scatter["subregion"].notna()].dropna(subset=["precip_delta","sss_pct"])
+    fig_p = _scatter_by_region(scatter_p, "precip_delta",
+                               "Precip Delta (in YoY) vs SSS% — by Sub-Region (|Δ|≥0.05\" only)",
+                               "Precipitation Change vs. Prior Year (inches)")
     st.plotly_chart(fig_p, use_container_width=True)
 
 # ── Charts row 2: bucket bar chart + time series (full width, stacked) ────────
@@ -485,8 +483,12 @@ fig_b.update_layout(
 )
 st.plotly_chart(fig_b, use_container_width=True)
 
-# Time series: SSS% trend with rain overlay (full width)
-ts = (df_clean.groupby("sale_date")
+# Time series: SSS% trend with rain overlay — filter by sub-region
+_ts_regions = ["All"] + [r for r in SUBREGION_ORDER if r in df_clean["subregion"].unique()]
+_ts_sel = st.selectbox("Sub-region", _ts_regions, label_visibility="collapsed", key="ts_region")
+_ts_df = df_clean if _ts_sel == "All" else df_clean[df_clean["subregion"] == _ts_sel]
+
+ts = (_ts_df.groupby("sale_date")
       .agg(sss_pct=("sss_pct","mean"), rainy=("curr_rainy","mean"))
       .reset_index().sort_values("sale_date"))
 ts["sss_7d"] = ts["sss_pct"].rolling(7, min_periods=3).mean()
@@ -531,31 +533,7 @@ st.plotly_chart(fig_ts, use_container_width=True)
 st.markdown('<div class="section-title">SSS% by Sub-Region & Weather Condition</div>',
             unsafe_allow_html=True)
 
-# Geographic sub-regions based on store lat/lon clusters
-SUBREGION_MAP = {
-    # San Fernando Valley — inland, hot (20026=Tampa store in Northridge)
-    '20026':'Valley', '20267':'Valley', '20116':'Valley', '20363':'Valley',
-    '20156':'Valley', '20424':'Valley', '20366':'Valley', '20294':'Valley',
-    '20352':'Valley', '20218':'Valley', '20381':'Valley', '20311':'Valley',
-    # Conejo Valley / West LA — transition zone, marine-influenced
-    '20011':'Conejo Valley', '20048':'Conejo Valley',
-    '20245':'Conejo Valley', '20255':'Conejo Valley',
-    # Mountains — alpine climate (Big Bear + Lake Arrowhead)
-    '20273':'Mountains', '20388':'Mountains',
-    # Santa Barbara County — coastal & inland valley
-    '20075':'Santa Barbara', '20335':'Santa Barbara',
-    '20360':'Santa Barbara', '20013':'Santa Barbara',
-    # Inland Riverside/SD — hot summers, inland valleys
-    '20171':'Inland Riverside', '20177':'Inland Riverside',
-    '20291':'Inland Riverside', '20091':'Inland Riverside',
-    '20071':'Inland SD',  '20300':'Inland SD', '20292':'Inland SD',
-}
-SUBREGION_ORDER = ['Valley','Conejo Valley','Mountains','Santa Barbara',
-                   'Inland Riverside','Inland SD']
-
-df_sub = df_clean.copy()
-df_sub["subregion"] = df_sub["store_id"].map(SUBREGION_MAP)
-df_sub = df_sub[df_sub["subregion"].notna()]
+df_sub = df_clean[df_clean["subregion"].notna()].copy()
 
 pivot = (df_sub[df_sub["weather_bucket"].isin(BUCKET_ORDER)]
          .groupby(["weather_bucket","subregion"])["sss_pct"]
@@ -587,6 +565,100 @@ st.markdown(f"""
   <tbody>{rows_html}</tbody>
 </table>
 """, unsafe_allow_html=True)
+
+# ── Store location map with sub-region outlines ───────────────────────────────
+st.markdown('<div class="section-title">Store Locations by Sub-Region</div>',
+            unsafe_allow_html=True)
+
+# Known store coordinates
+STORE_COORDS = {
+    '20013':(34.6140,-120.1921),'20335':(34.4401,-119.8278),
+    '20360':(34.4348,-119.7805),'20075':(34.4279,-119.8608),
+    '20381':(34.3001,-118.3987),'20352':(34.2836,-118.4359),
+    '20311':(34.2797,-118.5558),'20218':(34.2598,-118.4714),
+    '20388':(34.2503,-117.1856),'20273':(34.2436,-116.9114),
+    '20026':(34.2390,-118.5321),'20267':(34.2244,-118.5000),
+    '20255':(34.2145,-118.9101),'20366':(34.2006,-118.3345),
+    '20245':(34.1797,-118.9303),'20048':(34.1791,-118.8748),
+    '20294':(34.1784,-118.3345),'20011':(34.1705,-118.8312),
+    '20363':(34.1684,-118.5987),'20116':(34.1567,-118.4987),
+    '20156':(34.1558,-118.3780),'20424':(34.1478,-118.3823),
+    '20177':(33.5636,-117.1490),'20291':(33.5363,-117.1308),
+    '20171':(33.5174,-117.1543),'20091':(33.4785,-117.0827),
+    '20071':(33.1367,-117.0700),'20300':(33.1285,-117.0456),
+    '20292':(33.0422,-116.8734),
+}
+STORE_NAMES_MAP = {
+    '20156':'North Hollywood','20218':'Mission Hills','20267':'Balboa',
+    '20294':'Toluca','20026':'Tampa (Northridge)','20311':'Porter Ranch',
+    '20352':'San Fernando','20363':'Warner Center','20273':'Big Bear',
+    '20366':'Burbank North','20011':'Westlake','20255':'Arboles',
+    '20048':'Janss','20245':'Newbury Park','20381':'Sylmar',
+    '20116':'Encino','20388':'Lake Arrowhead','20075':'Isla Vista',
+    '20335':'Goleta','20360':'Santa Barbara','20424':'Studio City',
+    '20177':'Murrieta','20171':'Temecula Ynez','20091':'Temecula Pkwy',
+    '20071':'Escondido Ctr','20300':'Escondido E','20292':'Ramona',
+    '20291':'Temecula Ranch','20013':'Buellton',
+}
+
+fig_map = go.Figure()
+
+for reg in SUBREGION_ORDER:
+    color = SUBREGION_COLORS[reg]
+    store_ids = [s for s,r in SUBREGION_MAP.items() if r == reg]
+    lats = [STORE_COORDS[s][0] for s in store_ids if s in STORE_COORDS]
+    lons = [STORE_COORDS[s][1] for s in store_ids if s in STORE_COORDS]
+    names = [STORE_NAMES_MAP.get(s, s) for s in store_ids if s in STORE_COORDS]
+
+    # Draw convex hull outline around each region's stores
+    if len(lats) >= 3:
+        try:
+            from scipy.spatial import ConvexHull
+            import numpy as _np
+            pts = _np.array(list(zip(lats, lons)))
+            hull = ConvexHull(pts)
+            hull_lats = list(pts[hull.vertices, 0]) + [pts[hull.vertices[0], 0]]
+            hull_lons = list(pts[hull.vertices, 1]) + [pts[hull.vertices[0], 1]]
+            # Add a small buffer
+            clat = sum(hull_lats)/len(hull_lats)
+            clon = sum(hull_lons)/len(hull_lons)
+            hull_lats = [clat + (lat-clat)*1.3 for lat in hull_lats]
+            hull_lons = [clon + (lon-clon)*1.3 for lon in hull_lons]
+            fig_map.add_trace(go.Scattermapbox(
+                lat=hull_lats, lon=hull_lons, mode="lines",
+                line=dict(color=color, width=2),
+                fill="toself", fillcolor=color.replace("#","rgba(").rstrip(")") if False else color,
+                opacity=0.12, showlegend=False, hoverinfo="skip",
+                name=f"{reg} boundary",
+            ))
+        except Exception:
+            pass
+
+    # Store dots
+    fig_map.add_trace(go.Scattermapbox(
+        lat=lats, lon=lons, mode="markers+text",
+        marker=dict(size=12, color=color),
+        text=names,
+        textposition="top right",
+        textfont=dict(size=9, color=TEXT),
+        name=reg,
+        hovertemplate="<b>%{text}</b><br>" + reg + "<extra></extra>",
+    ))
+
+center_lat = sum(c[0] for c in STORE_COORDS.values()) / len(STORE_COORDS)
+center_lon = sum(c[1] for c in STORE_COORDS.values()) / len(STORE_COORDS)
+
+fig_map.update_layout(
+    mapbox=dict(style="open-street-map", zoom=7.5,
+                center=dict(lat=center_lat, lon=center_lon)),
+    margin=dict(l=0, r=0, t=10, b=0),
+    height=550,
+    legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
+                font=dict(size=11), orientation="v",
+                yanchor="top", y=0.99, xanchor="left", x=0.01),
+    dragmode=False,
+)
+st.plotly_chart(fig_map, use_container_width=True)
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
