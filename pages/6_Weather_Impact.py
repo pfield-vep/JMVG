@@ -265,8 +265,11 @@ df = df.merge(wx_prior[wx_prior_cols], on=["prior_date","store_id"], how="left")
 df["temp_delta"]         = df["curr_max"]      - df["prior_max"]
 df["precip_delta"]       = df["curr_precip"]   - df["prior_precip"]
 df["rain_change"]        = df["curr_rainy"].fillna(0)       - df["prior_rainy"].fillna(0)
-df["lunch_rain_change"]  = df.get("curr_lunch_rain",  pd.Series(0, index=df.index)).fillna(0)                          - df.get("prior_lunch_rain", pd.Series(0, index=df.index)).fillna(0)
-df["dinner_rain_change"] = df.get("curr_dinner_rain",  pd.Series(0, index=df.index)).fillna(0)                          - df.get("prior_dinner_rain", pd.Series(0, index=df.index)).fillna(0)
+df["lunch_rain_change"]  = df.get("curr_lunch_rain",  pd.Series(0, index=df.index)).fillna(0) \
+                         - df.get("prior_lunch_rain", pd.Series(0, index=df.index)).fillna(0)
+df["dinner_rain_change"] = df.get("curr_dinner_rain",  pd.Series(0, index=df.index)).fillna(0) \
+                         - df.get("prior_dinner_rain", pd.Series(0, index=df.index)).fillna(0)
+
 # Categorise weather change
 def weather_bucket(row):
     if pd.isna(row.get("curr_rainy")) or pd.isna(row.get("curr_max")):
@@ -297,62 +300,9 @@ df_clean = df[(df["sss_pct"] >= q_lo) & (df["sss_pct"] <= q_hi) &
               df["temp_delta"].notna()].copy()
 
 # For the precip scatter: exclude days where precip didn't meaningfully change
-# (delta near zero adds noise and pulls the correlation line toward zero)
 df_precip_scatter = df_clean[df_clean["precip_delta"].abs() >= 0.05].copy()
 
-# ── Summary KPIs ───────────────────────────────────────────────────────────────
-# Correlation: temp_delta vs sss_pct
-from numpy.polynomial.polynomial import polyfit as nppolyfit
-r_temp = df_clean[["temp_delta","sss_pct"]].dropna().corr().iloc[0,1] if len(df_clean) > 5 else None
-r_rain = df_clean[["rain_change","sss_pct"]].dropna().corr().iloc[0,1] if len(df_clean) > 5 else None
-
-rainy_days    = df_clean[df_clean["curr_rainy"] == 1]
-dry_days      = df_clean[df_clean["curr_rainy"] == 0]
-rainy_sss     = rainy_days["sss_pct"].mean() if len(rainy_days) else None
-dry_sss       = dry_days["sss_pct"].mean()   if len(dry_days)   else None
-new_rain_sss  = df_clean[df_clean["weather_bucket"]=="Rain (was dry)"]["sss_pct"].mean()
-dry_from_rain = df_clean[df_clean["weather_bucket"]=="Dry (was rain)"]["sss_pct"].mean()
-
-st.markdown('<div class="section-title">Key Findings</div>', unsafe_allow_html=True)
-
-k1, k2, k3, k4, k5 = st.columns(5)
-def _kpi(col, label, val, sub, cls="kpi-card"):
-    col.markdown(f"""<div class="{cls}">
-      <div class="kpi-label">{label}</div>
-      <div class="kpi-value">{val}</div>
-      <div class="kpi-sub">{sub}</div>
-    </div>""", unsafe_allow_html=True)
-
-_kpi(k1, "Temp vs SSS Correlation",
-     f"{r_temp:+.2f}" if r_temp is not None else "—",
-     "R (higher = stronger link)", "kpi-card kpi-card-blue")
-_kpi(k2, "Rain vs SSS Correlation",
-     f"{r_rain:+.2f}" if r_rain is not None else "—",
-     "R (negative = rain hurts sales)", "kpi-card kpi-card-blue")
-_kpi(k3, "Rainy Day Avg SSS%",
-     f"{rainy_sss:+.1f}%" if rainy_sss is not None else "—",
-     f"{len(rainy_days):,} rainy days", "kpi-card")
-_kpi(k4, "Dry Day Avg SSS%",
-     f"{dry_sss:+.1f}%" if dry_sss is not None else "—",
-     f"{len(dry_days):,} dry days", "kpi-card kpi-card-green")
-_kpi(k5, "Days Analysed",
-     f"{len(df_clean):,}",
-     f"{df_clean['market'].nunique()} market(s) · {lookback}", "kpi-card kpi-card-gold")
-
-# ── Insight box ────────────────────────────────────────────────────────────────
-if r_temp is not None and rainy_sss is not None and dry_sss is not None:
-    rain_diff  = dry_sss - rainy_sss
-    temp_dir   = "warmer" if r_temp > 0 else "cooler"
-    temp_str   = f"When it's <b>{temp_dir}</b> than the same day last year, SSS tends to be {'higher' if r_temp > 0 else 'lower'} (R = {r_temp:+.2f})."
-    rain_str   = (f"Rainy days average <b>{rainy_sss:+.1f}% SSS</b> vs "
-                  f"<b>{dry_sss:+.1f}% SSS</b> on dry days — a <b>{rain_diff:.1f}pp gap</b>.")
-    new_rain   = (f" Days that are rainy this year but were dry last year average "
-                  f"<b>{new_rain_sss:+.1f}% SSS</b>." if new_rain_sss is not None else "")
-    st.markdown(f'<div class="insight-box">📊 {temp_str} {rain_str}{new_rain}</div>',
-                unsafe_allow_html=True)
-
-# ── Charts row 1: scatter plots ────────────────────────────────────────────────
-# Sub-region definitions (shared with the table below)
+# ── Sub-region definitions ─────────────────────────────────────────────────────
 SUBREGION_MAP = {
     '20026':'Valley', '20267':'Valley', '20116':'Valley', '20363':'Valley',
     '20156':'Valley', '20424':'Valley', '20366':'Valley', '20294':'Valley',
@@ -377,72 +327,74 @@ SUBREGION_COLORS = {
     'Inland SD':        '#dc2626',
 }
 
-df_clean["subregion"]        = df_clean["store_id"].map(SUBREGION_MAP)
+df_clean["subregion"]          = df_clean["store_id"].map(SUBREGION_MAP)
 df_precip_scatter["subregion"] = df_precip_scatter["store_id"].map(SUBREGION_MAP)
 
-st.markdown('<div class="section-title">Correlation Scatter — by Sub-Region</div>', unsafe_allow_html=True)
+# ── Key Findings ───────────────────────────────────────────────────────────────
+from numpy.polynomial.polynomial import polyfit as nppolyfit
 
-PLOTLY_BASE = dict(
-    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
-    font=dict(family="Arial, sans-serif", size=12, color=TEXT),
-    dragmode=False,
-    modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
-                          "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
-    margin=dict(l=50, r=20, t=40, b=90),
-    xaxis=dict(gridcolor="#E5E7EB", zerolinecolor=BORDER),
-    yaxis=dict(gridcolor="#E5E7EB", zerolinecolor=BORDER, ticksuffix="%"),
-    legend=dict(bgcolor=WHITE, bordercolor="#E5E7EB", borderwidth=1,
-                font=dict(size=10), orientation="h",
-                yanchor="top", y=-0.2, xanchor="center", x=0.5),
-)
+_kf_header_col, _kf_filter_col = st.columns([3, 1])
+with _kf_header_col:
+    st.markdown('<div class="section-title">Key Findings</div>', unsafe_allow_html=True)
+with _kf_filter_col:
+    _kf_regions = ["All Sub-Regions"] + [r for r in SUBREGION_ORDER
+                                          if r in df_clean["subregion"].dropna().unique()]
+    _kf_sel = st.selectbox("Sub-region filter", _kf_regions,
+                           label_visibility="collapsed", key="kf_region")
 
-sc1, sc2 = st.columns(2)
+# Filter df_clean for KPI calculations
+df_kf = df_clean if _kf_sel == "All Sub-Regions" else df_clean[df_clean["subregion"] == _kf_sel]
 
-def _scatter_by_region(df_s, x_col, title, x_label):
-    fig = go.Figure()
-    for reg in SUBREGION_ORDER:
-        sub = df_s[df_s["subregion"] == reg].dropna(subset=[x_col,"sss_pct"])
-        if sub.empty: continue
-        color = SUBREGION_COLORS.get(reg, MUTED)
-        fig.add_trace(go.Scatter(
-            x=sub[x_col], y=sub["sss_pct"],
-            mode="markers", name=reg,
-            marker=dict(color=color, size=5, opacity=0.55),
-        ))
-        xs, ys = sub[x_col].values, sub["sss_pct"].values
-        mask = np.isfinite(xs) & np.isfinite(ys)
-        if mask.sum() > 5:
-            coefs = np.polyfit(xs[mask], ys[mask], 1)
-            r = np.corrcoef(xs[mask], ys[mask])[0,1]
-            xl = np.linspace(xs[mask].min(), xs[mask].max(), 40)
-            fig.add_trace(go.Scatter(
-                x=xl, y=np.polyval(coefs, xl),
-                mode="lines", showlegend=False,
-                line=dict(color=color, width=1.5, dash="dot"),
-            ))
-    fig.add_hline(y=0, line_color=MUTED, line_width=1)
-    fig.add_vline(x=0, line_color=MUTED, line_width=1)
-    fig.update_layout(**PLOTLY_BASE,
-        title=dict(text=title, font=dict(size=13, color=BLUE), x=0))
-    fig.update_xaxes(title_text=x_label, gridcolor="#E5E7EB")
-    fig.update_yaxes(ticksuffix="%", gridcolor="#E5E7EB")
-    return fig
+r_temp = df_kf[["temp_delta","sss_pct"]].dropna().corr().iloc[0,1] if len(df_kf) > 5 else None
+r_rain = df_kf[["rain_change","sss_pct"]].dropna().corr().iloc[0,1] if len(df_kf) > 5 else None
 
-with sc1:
-    scatter_df = df_clean[df_clean["subregion"].notna()].dropna(subset=["temp_delta","sss_pct"])
-    fig_t = _scatter_by_region(scatter_df, "temp_delta",
-                               "Temp Delta (°F YoY) vs SSS% — by Sub-Region",
-                               "Temperature Change vs. Prior Year (°F)")
-    st.plotly_chart(fig_t, use_container_width=True)
+rainy_days    = df_kf[df_kf["curr_rainy"] == 1]
+dry_days      = df_kf[df_kf["curr_rainy"] == 0]
+rainy_sss     = rainy_days["sss_pct"].mean() if len(rainy_days) else None
+dry_sss       = dry_days["sss_pct"].mean()   if len(dry_days)   else None
+new_rain_sss  = df_kf[df_kf["weather_bucket"]=="Rain (was dry)"]["sss_pct"].mean()
+dry_from_rain = df_kf[df_kf["weather_bucket"]=="Dry (was rain)"]["sss_pct"].mean()
 
-with sc2:
-    scatter_p = df_precip_scatter[df_precip_scatter["subregion"].notna()].dropna(subset=["precip_delta","sss_pct"])
-    fig_p = _scatter_by_region(scatter_p, "precip_delta",
-                               "Precip Delta (in YoY) vs SSS% — by Sub-Region (|Δ|≥0.05\" only)",
-                               "Precipitation Change vs. Prior Year (inches)")
-    st.plotly_chart(fig_p, use_container_width=True)
+k1, k2, k3, k4, k5 = st.columns(5)
+def _kpi(col, label, val, sub, cls="kpi-card"):
+    col.markdown(f"""<div class="{cls}">
+      <div class="kpi-label">{label}</div>
+      <div class="kpi-value">{val}</div>
+      <div class="kpi-sub">{sub}</div>
+    </div>""", unsafe_allow_html=True)
 
-# ── Charts row 2: bucket bar chart + time series (full width, stacked) ────────
+_kpi(k1, "Temp vs SSS Correlation",
+     f"{r_temp:+.2f}" if r_temp is not None else "—",
+     "R (higher = stronger link)", "kpi-card kpi-card-blue")
+_kpi(k2, "Rain vs SSS Correlation",
+     f"{r_rain:+.2f}" if r_rain is not None else "—",
+     "R (negative = rain hurts sales)", "kpi-card kpi-card-blue")
+_kpi(k3, "Rainy Day Avg SSS%",
+     f"{rainy_sss:+.1f}%" if rainy_sss is not None else "—",
+     f"{len(rainy_days):,} rainy days", "kpi-card")
+_kpi(k4, "Dry Day Avg SSS%",
+     f"{dry_sss:+.1f}%" if dry_sss is not None else "—",
+     f"{len(dry_days):,} dry days", "kpi-card kpi-card-green")
+
+_kf_sub_label = _kf_sel if _kf_sel != "All Sub-Regions" else f"{df_kf['market'].nunique()} market(s)"
+_kpi(k5, "Days Analysed",
+     f"{len(df_kf):,}",
+     f"{_kf_sub_label} · {lookback}", "kpi-card kpi-card-gold")
+
+# ── Insight box ────────────────────────────────────────────────────────────────
+if r_temp is not None and rainy_sss is not None and dry_sss is not None:
+    rain_diff  = dry_sss - rainy_sss
+    temp_dir   = "warmer" if r_temp > 0 else "cooler"
+    temp_str   = f"When it's <b>{temp_dir}</b> than the same day last year, SSS tends to be {'higher' if r_temp > 0 else 'lower'} (R = {r_temp:+.2f})."
+    rain_str   = (f"Rainy days average <b>{rainy_sss:+.1f}% SSS</b> vs "
+                  f"<b>{dry_sss:+.1f}% SSS</b> on dry days — a <b>{rain_diff:.1f}pp gap</b>.")
+    new_rain   = (f" Days that are rainy this year but were dry last year average "
+                  f"<b>{new_rain_sss:+.1f}% SSS</b>." if new_rain_sss is not None else "")
+    region_note = f" <i>({_kf_sel})</i>" if _kf_sel != "All Sub-Regions" else ""
+    st.markdown(f'<div class="insight-box">📊{region_note} {temp_str} {rain_str}{new_rain}</div>',
+                unsafe_allow_html=True)
+
+# ── SSS% by Weather Condition ──────────────────────────────────────────────────
 st.markdown('<div class="section-title">SSS% by Weather Condition</div>', unsafe_allow_html=True)
 
 BUCKET_ORDER = ["Warmer (+5°F+)", "Similar temp", "Cooler (-5°F+)",
@@ -481,6 +433,9 @@ fig_b.update_layout(
     title=dict(text="Avg SSS% by Weather Bucket", font=dict(size=13, color=BLUE), x=0),
     showlegend=False,
     height=320,
+    dragmode=False,
+    modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
+                         "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
 )
 st.plotly_chart(fig_b, use_container_width=True)
 
@@ -527,6 +482,9 @@ fig_ts.update_layout(
                 yanchor="top", y=-0.12, xanchor="center", x=0.5),
     title=dict(text="SSS% Over Time (blue bands = rainy days)", font=dict(size=13, color=BLUE), x=0),
     height=320,
+    dragmode=False,
+    modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
+                         "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
 )
 st.plotly_chart(fig_ts, use_container_width=True)
 
@@ -561,11 +519,77 @@ for bkt_name in BUCKET_ORDER:
     rows_html += f"<tr><td>{bkt_name}</td>{cells}</tr>"
 
 st.markdown(f"""
+<div style="overflow-x:auto;">
 <table class="bucket-table">
   <thead><tr><th>Weather Condition</th>{col_headers}</tr></thead>
   <tbody>{rows_html}</tbody>
 </table>
+</div>
 """, unsafe_allow_html=True)
+
+# ── Correlation Scatter — by Sub-Region ───────────────────────────────────────
+st.markdown('<div class="section-title">Correlation Scatter — by Sub-Region</div>',
+            unsafe_allow_html=True)
+
+PLOTLY_BASE = dict(
+    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+    font=dict(family="Arial, sans-serif", size=12, color=TEXT),
+    dragmode=False,
+    modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
+                          "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
+    margin=dict(l=50, r=20, t=40, b=90),
+    xaxis=dict(gridcolor="#E5E7EB", zerolinecolor=BORDER),
+    yaxis=dict(gridcolor="#E5E7EB", zerolinecolor=BORDER, ticksuffix="%"),
+    legend=dict(bgcolor=WHITE, bordercolor="#E5E7EB", borderwidth=1,
+                font=dict(size=10), orientation="h",
+                yanchor="top", y=-0.2, xanchor="center", x=0.5),
+)
+
+def _scatter_by_region(df_s, x_col, title, x_label):
+    fig = go.Figure()
+    for reg in SUBREGION_ORDER:
+        sub = df_s[df_s["subregion"] == reg].dropna(subset=[x_col,"sss_pct"])
+        if sub.empty: continue
+        color = SUBREGION_COLORS.get(reg, MUTED)
+        fig.add_trace(go.Scatter(
+            x=sub[x_col], y=sub["sss_pct"],
+            mode="markers", name=reg,
+            marker=dict(color=color, size=5, opacity=0.55),
+        ))
+        xs, ys = sub[x_col].values, sub["sss_pct"].values
+        mask = np.isfinite(xs) & np.isfinite(ys)
+        if mask.sum() > 5:
+            coefs = np.polyfit(xs[mask], ys[mask], 1)
+            r = np.corrcoef(xs[mask], ys[mask])[0,1]
+            xl = np.linspace(xs[mask].min(), xs[mask].max(), 40)
+            fig.add_trace(go.Scatter(
+                x=xl, y=np.polyval(coefs, xl),
+                mode="lines", showlegend=False,
+                line=dict(color=color, width=1.5, dash="dot"),
+            ))
+    fig.add_hline(y=0, line_color=MUTED, line_width=1)
+    fig.add_vline(x=0, line_color=MUTED, line_width=1)
+    fig.update_layout(**PLOTLY_BASE,
+        title=dict(text=title, font=dict(size=13, color=BLUE), x=0))
+    fig.update_xaxes(title_text=x_label, gridcolor="#E5E7EB")
+    fig.update_yaxes(ticksuffix="%", gridcolor="#E5E7EB")
+    return fig
+
+sc1, sc2 = st.columns(2)
+
+with sc1:
+    scatter_df = df_clean[df_clean["subregion"].notna()].dropna(subset=["temp_delta","sss_pct"])
+    fig_t = _scatter_by_region(scatter_df, "temp_delta",
+                               "Temp Delta (°F YoY) vs SSS% — by Sub-Region",
+                               "Temperature Change vs. Prior Year (°F)")
+    st.plotly_chart(fig_t, use_container_width=True)
+
+with sc2:
+    scatter_p = df_precip_scatter[df_precip_scatter["subregion"].notna()].dropna(subset=["precip_delta","sss_pct"])
+    fig_p = _scatter_by_region(scatter_p, "precip_delta",
+                               "Precip Delta (in YoY) vs SSS% — by Sub-Region (|Δ|≥0.05\" only)",
+                               "Precipitation Change vs. Prior Year (inches)")
+    st.plotly_chart(fig_p, use_container_width=True)
 
 # ── Store location map with sub-region outlines ───────────────────────────────
 st.markdown('<div class="section-title">Store Locations by Sub-Region</div>',
