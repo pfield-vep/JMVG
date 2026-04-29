@@ -704,10 +704,45 @@ def upsert_store_weather(cur, dialect, rows):
 
 
 def get_store_locations(conn, dialect):
-    """Return list of (store_id, lat, lon) from the stores table."""
-    cur = conn.cursor()
-    cur.execute("SELECT store_id, lat, lon FROM stores WHERE lat IS NOT NULL AND lon IS NOT NULL")
-    return [(str(r[0]), float(r[1]), float(r[2])) for r in cur.fetchall()]
+    """Return list of (store_id, lat, lon).
+    Tries the stores table first; falls back to hardcoded coordinates if
+    the lat/lon columns don't exist in Supabase yet."""
+
+    # Known store coordinates (from original store setup)
+    KNOWN_COORDS = {
+        "20013": (34.6140, -120.1921), "20335": (34.4401, -119.8278),
+        "20360": (34.4348, -119.7805), "20075": (34.4279, -119.8608),
+        "20381": (34.3001, -118.3987), "20352": (34.2836, -118.4359),
+        "20311": (34.2797, -118.5558), "20218": (34.2598, -118.4714),
+        "20388": (34.2503, -117.1856), "20273": (34.2436, -116.9114),
+        "20026": (34.2390, -118.5321), "20267": (34.2244, -118.5000),
+        "20255": (34.2145, -118.9101), "20366": (34.2006, -118.3345),
+        "20245": (34.1797, -118.9303), "20048": (34.1791, -118.8748),
+        "20294": (34.1784, -118.3345), "20011": (34.1705, -118.8312),
+        "20363": (34.1684, -118.5987), "20116": (34.1567, -118.4987),
+        "20156": (34.1558, -118.3780), "20424": (34.1478, -118.3823),
+        "20177": (33.5636, -117.1490), "20291": (33.5363, -117.1308),
+        "20171": (33.5174, -117.1543), "20091": (33.4785, -117.0827),
+        "20071": (33.1367, -117.0700), "20300": (33.1285, -117.0456),
+        "20292": (33.0422, -116.8734),
+    }
+
+    # Try database first (lat/lon may have been added via update_stores.py)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT store_id, lat, lon FROM stores "
+            "WHERE lat IS NOT NULL AND lon IS NOT NULL"
+        )
+        rows = cur.fetchall()
+        if rows:
+            return [(str(r[0]), float(r[1]), float(r[2])) for r in rows]
+    except Exception:
+        pass  # columns don't exist yet — use fallback
+
+    # Fallback: use hardcoded coordinates
+    print("  ℹ️  Using hardcoded store coordinates (lat/lon not in DB)")
+    return [(sid, lat, lon) for sid, (lat, lon) in KNOWN_COORDS.items()]
 
 
 def backfill_store_weather():
