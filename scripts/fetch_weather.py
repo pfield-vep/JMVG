@@ -756,13 +756,23 @@ def backfill_store_weather():
     cur = conn.cursor()
 
     stores = get_store_locations(conn, dialect)
-    start  = "2024-01-01"
     end    = date.today().isoformat()
     total  = 0
 
-    print(f"Backfilling store weather: {len(stores)} stores, {start} → {end}")
+    # Load already-covered dates per store to skip re-fetching
+    cur.execute("SELECT store_id, MAX(date) FROM store_daily_weather GROUP BY store_id")
+    covered = {str(r[0]): str(r[1]) for r in cur.fetchall()}
+
+    print(f"Backfilling store weather: {len(stores)} stores → {end}")
     for store_id, lat, lon in stores:
-        print(f"  {store_id} ({lat:.4f}, {lon:.4f})…")
+        latest = covered.get(store_id)
+        if latest and latest >= (date.today() - timedelta(days=2)).isoformat():
+            print(f"  {store_id} — already current ({latest}), skipping")
+            continue
+        # Fetch from a week before latest stored date (gap buffer), or full history
+        start = (date.fromisoformat(latest) - timedelta(days=7)).isoformat() \
+                if latest else "2024-01-01"
+        print(f"  {store_id} ({lat:.4f}, {lon:.4f})  {start} → {end}…")
         try:
             data = fetch_open_meteo_hourly(lat, lon, start, end)
             rows = process_store_hourly(data, store_id)
