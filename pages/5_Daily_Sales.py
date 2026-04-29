@@ -832,15 +832,27 @@ with tab1:
     # ── Weather strip (last 7 days, Los Angeles market) ───────────────────────
     @st.cache_data(ttl=300)
     def load_weather_strip(start_str, end_str, prior_start_str, prior_end_str):
+        """Load per-store weather from store_daily_weather, averaged across all comp stores."""
         conn, dialect = get_conn()
         p = "%s" if dialect == "postgres" else "?"
         overall_s = min(start_str, prior_start_str)
         overall_e = max(end_str, prior_end_str)
         try:
             df = pd.read_sql_query(
-                f"SELECT date, market, temp_max_f, precip_in, is_rainy "
-                f"FROM daily_weather WHERE date >= {p} AND date <= {p} "
-                f"AND market = 'Los Angeles' ORDER BY date",
+                f"SELECT w.date, AVG(w.temp_max_f) AS temp_max_f, "
+                f"SUM(w.precip_in) / COUNT(*) AS precip_in, "
+                f"MAX(w.is_rainy) AS is_rainy, "
+                f"AVG(w.lunch_temp_f) AS lunch_temp_f, "
+                f"SUM(w.lunch_precip_in) / COUNT(*) AS lunch_precip_in, "
+                f"MAX(w.lunch_is_rainy) AS lunch_is_rainy, "
+                f"AVG(w.dinner_temp_f) AS dinner_temp_f, "
+                f"SUM(w.dinner_precip_in) / COUNT(*) AS dinner_precip_in, "
+                f"MAX(w.dinner_is_rainy) AS dinner_is_rainy "
+                f"FROM store_daily_weather w "
+                f"JOIN stores s ON w.store_id = CAST(s.store_id AS TEXT) "
+                f"WHERE w.date >= {p} AND w.date <= {p} "
+                f"AND s.broad_geography LIKE '%Los Angeles%' "
+                f"GROUP BY w.date ORDER BY w.date",
                 conn, params=(overall_s, overall_e)
             )
             conn.close()
@@ -863,8 +875,11 @@ with tab1:
         )].copy()
         _wx_prior["date"] = _wx_prior["date"] + pd.Timedelta(days=364)
         _wx = _wx_curr.merge(
-            _wx_prior[["date","temp_max_f","precip_in"]].rename(columns={
-                "temp_max_f":"prior_temp","precip_in":"prior_precip"
+            _wx_prior[["date","temp_max_f","precip_in","lunch_temp_f",
+                        "lunch_precip_in","dinner_temp_f","dinner_precip_in"]].rename(columns={
+                "temp_max_f":"prior_temp","precip_in":"prior_precip",
+                "lunch_temp_f":"prior_lunch_t","lunch_precip_in":"prior_lunch_p",
+                "dinner_temp_f":"prior_dinner_t","dinner_precip_in":"prior_dinner_p",
             }), on="date", how="left"
         ).sort_values("date")
 

@@ -555,11 +555,241 @@ def update_to_today():
     conn.close()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PER-STORE WEATHER  (Option A — exact lat/lon per store, hourly daypart data)
+# ══════════════════════════════════════════════════════════════════════════════
+
+CREATE_STORE_WEATHER_PG = """
+CREATE TABLE IF NOT EXISTS store_daily_weather (
+    id               SERIAL  PRIMARY KEY,
+    date             DATE    NOT NULL,
+    store_id         TEXT    NOT NULL,
+    -- Daily aggregates
+    temp_max_f       REAL,
+    temp_min_f       REAL,
+    avg_temp_f       REAL,
+    precip_in        REAL,
+    is_rainy         INTEGER,          -- 1 if precip_in >= 0.10
+    is_cold          INTEGER,          -- 1 if temp_max_f < 60
+    temp_spread_f    REAL,             -- max-min (fog proxy: spread < 12 = likely overcast)
+    -- Lunch window  11 AM – 2 PM local
+    lunch_temp_f     REAL,
+    lunch_precip_in  REAL,
+    lunch_is_rainy   INTEGER,          -- 1 if lunch_precip_in >= 0.05
+    -- Dinner window 5 PM – 8 PM local
+    dinner_temp_f    REAL,
+    dinner_precip_in REAL,
+    dinner_is_rainy  INTEGER,          -- 1 if dinner_precip_in >= 0.05
+    UNIQUE (date, store_id)
+)"""
+
+CREATE_STORE_WEATHER_SQLITE = CREATE_STORE_WEATHER_PG.replace(
+    "SERIAL  PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT"
+)
+
+
+def create_store_weather_table(conn, dialect):
+    cur = conn.cursor()
+    cur.execute(CREATE_STORE_WEATHER_PG if dialect == "postgres"
+                else CREATE_STORE_WEATHER_SQLITE)
+    conn.commit()
+    print("store_daily_weather table ready")
+
+
+def fetch_open_meteo_hourly(lat, lon, start_date: str, end_date: str) -> dict:
+    """Fetch hourly temperature + precipitation from Open-Meteo archive (free)."""
+    params = urlencode({
+        "latitude":           lat,
+        "longitude":          lon,
+        "start_date":         start_date,
+        "end_date":           end_date,
+        "hourly":             "temperature_2m,precipitation",
+        "temperature_unit":   "fahrenheit",
+        "precipitation_unit": "inch",
+        "timezone":           "America/Los_Angeles",
+    })
+    url = f"https://archive-api.open-meteo.com/v1/archive?{params}"
+    with urlopen(url, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
+def process_store_hourly(data: dict, store_id: str) -> list:
+    """
+    Convert Open-Meteo hourly response into store_daily_weather rows.
+    Computes daily aggregates and lunch (11am–2pm) / dinner (5pm–8pm) metrics.
+    """
+    from collections import defaultdict
+    from datetime import datetime as dt
+
+    times  = data["hourly"]["time"]
+    temps  = data["hourly"]["temperature_2m"]
+    precips = data["hourly"]["precipitation"]
+
+    daily = defaultdict(lambda: {
+        "t": [], "p": [],
+        "lt": [], "lp": [],   # lunch
+        "dt_": [], "dp": [],  # dinner
+    })
+
+    for t_str, temp, precip in zip(times, temps, precips):
+        d = dt.strptime(t_str, "%Y-%m-%dT%H:%M")
+        day  = d.strftime("%Y-%m-%d")
+        hour = d.hour
+
+        if temp   is not None: daily[day]["t"].append(temp)
+        if precip is not None: daily[day]["p"].append(precip)
+
+        if hour in (11, 12, 13):                      # 11 AM – 2 PM
+            if temp   is not None: daily[day]["lt"].append(temp)
+            if precip is not None: daily[day]["lp"].append(precip)
+
+        if hour in (17, 18, 19):                      # 5 PM – 8 PM
+            if temp   is not None: daily[day]["dt_"].append(temp)
+            if precip is not None: daily[day]["dp"].append(precip)
+
+    rows = []
+    for day, d in sorted(daily.items()):
+        t_max = max(d["t"]) if d["t"] else None
+        t_min = min(d["t"]) if d["t"] else None
+        t_avg = sum(d["t"]) / len(d["t"]) if d["t"] else None
+        prec  = sum(d["p"]) if d["p"] else 0.0
+        spread = round(t_max - t_min, 1) if t_max and t_min else None
+
+        l_t = max(d["lt"]) if d["lt"] else None
+        l_p = round(sum(d["lp"]), 3) if d["lp"] else 0.0
+        dn_t = max(d["dt_"]) if d["dt_"] else None
+        dn_p = round(sum(d["dp"]), 3) if d["dp"] else 0.0
+
+        rows.append({
+            "date":             day,
+            "store_id":         store_id,
+            "temp_max_f":       round(t_max, 1) if t_max else None,
+            "temp_min_f":       round(t_min, 1) if t_min else None,
+            "avg_temp_f":       round(t_avg, 1) if t_avg else None,
+            "precip_in":        round(prec, 3),
+            "is_rainy":         1 if prec  >= 0.10 else 0,
+            "is_cold":          1 if t_max and t_max < 60 else 0,
+            "temp_spread_f":    spread,
+            "lunch_temp_f":     round(l_t, 1) if l_t else None,
+            "lunch_precip_in":  l_p,
+            "lunch_is_rainy":   1 if l_p  >= 0.05 else 0,
+            "dinner_temp_f":    round(dn_t, 1) if dn_t else None,
+            "dinner_precip_in": dn_p,
+            "dinner_is_rainy":  1 if dn_p >= 0.05 else 0,
+        })
+    return rows
+
+
+def upsert_store_weather(cur, dialect, rows):
+    if not rows:
+        return 0
+    p = "%s" if dialect == "postgres" else "?"
+    COLS = [
+        "date","store_id","temp_max_f","temp_min_f","avg_temp_f",
+        "precip_in","is_rainy","is_cold","temp_spread_f",
+        "lunch_temp_f","lunch_precip_in","lunch_is_rainy",
+        "dinner_temp_f","dinner_precip_in","dinner_is_rainy",
+    ]
+    ph = ",".join([p] * len(COLS))
+    col_list = ",".join(COLS)
+    if dialect == "postgres":
+        update_set = ",".join(f"{c}=EXCLUDED.{c}" for c in COLS
+                              if c not in ("date","store_id"))
+        sql = (f"INSERT INTO store_daily_weather ({col_list}) VALUES ({ph}) "
+               f"ON CONFLICT (date,store_id) DO UPDATE SET {update_set}")
+    else:
+        sql = f"INSERT OR REPLACE INTO store_daily_weather ({col_list}) VALUES ({ph})"
+    cur.executemany(sql, [tuple(r[c] for c in COLS) for r in rows])
+    return len(rows)
+
+
+def get_store_locations(conn, dialect):
+    """Return list of (store_id, lat, lon) from the stores table."""
+    cur = conn.cursor()
+    cur.execute("SELECT store_id, lat, lon FROM stores WHERE lat IS NOT NULL AND lon IS NOT NULL")
+    return [(str(r[0]), float(r[1]), float(r[2])) for r in cur.fetchall()]
+
+
+def backfill_store_weather():
+    """
+    Full historical backfill for store_daily_weather.
+    Fetches hourly data from Jan 1 2024 → today for every store.
+    One API call per store (Open-Meteo returns the whole range in one shot).
+    """
+    conn, dialect = get_conn()
+    create_store_weather_table(conn, dialect)
+    cur = conn.cursor()
+
+    stores = get_store_locations(conn, dialect)
+    start  = "2024-01-01"
+    end    = date.today().isoformat()
+    total  = 0
+
+    print(f"Backfilling store weather: {len(stores)} stores, {start} → {end}")
+    for store_id, lat, lon in stores:
+        print(f"  {store_id} ({lat:.4f}, {lon:.4f})…")
+        try:
+            data = fetch_open_meteo_hourly(lat, lon, start, end)
+            rows = process_store_hourly(data, store_id)
+            n = upsert_store_weather(cur, dialect, rows)
+            conn.commit()
+            total += n
+            print(f"    ✓ {n} days")
+        except Exception as e:
+            print(f"    ⚠️  {e}")
+            conn.rollback()
+        time.sleep(0.3)
+
+    conn.close()
+    print(f"\nDone — {total:,} store-day rows upserted.")
+
+
+def update_store_weather():
+    """
+    Fast daily update: fetch last 10 days for every store.
+    Runs automatically in the GitHub Actions weather workflow.
+    """
+    conn, dialect = get_conn()
+    create_store_weather_table(conn, dialect)
+    cur = conn.cursor()
+
+    stores = get_store_locations(conn, dialect)
+    end    = date.today().isoformat()
+    start  = (date.today() - timedelta(days=10)).isoformat()
+    total  = 0
+
+    print(f"Updating store weather ({start} → {end}) for {len(stores)} stores…")
+    for store_id, lat, lon in stores:
+        try:
+            data = fetch_open_meteo_hourly(lat, lon, start, end)
+            rows = process_store_hourly(data, store_id)
+            n = upsert_store_weather(cur, dialect, rows)
+            conn.commit()
+            total += n
+        except Exception as e:
+            print(f"  ⚠️  {store_id}: {e}")
+            conn.rollback()
+        time.sleep(0.2)
+
+    conn.close()
+    print(f"Store weather update done — {total:,} rows upserted.")
+
+
 if __name__ == "__main__":
     import sys as _sys
-    if "--update" in _sys.argv:
+    args = set(_sys.argv[1:])
+
+    if "--backfill-stores" in args:
+        print("=== Store Weather Full Backfill ===")
+        backfill_store_weather()
+    elif "--update" in args:
         print("=== Weather Daily Update ===")
         update_to_today()
+        update_store_weather()   # also update per-store weather
+    elif "--update-stores" in args:
+        print("=== Store Weather Daily Update ===")
+        update_store_weather()
     else:
         print("=== Weather Full Backfill ===")
         backfill()
+        backfill_store_weather()

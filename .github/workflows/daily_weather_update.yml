@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: pip install psycopg2-binary
 
-      - name: Update weather data
+      - name: Update weather data (market-level + per-store with hourly dayparts)
         env:
           SUPABASE_HOST:     ${{ secrets.SUPABASE_HOST }}
           SUPABASE_PORT:     ${{ secrets.SUPABASE_PORT }}
