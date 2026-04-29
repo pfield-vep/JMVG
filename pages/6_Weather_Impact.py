@@ -495,8 +495,8 @@ rain_days = ts[ts["rainy"] >= 0.5]
 fig_ts = go.Figure()
 fig_ts.add_trace(go.Bar(
     x=rain_days["sale_date"],
-    y=[999]*len(rain_days),
-    base=[-999]*len(rain_days),
+    y=[80]*len(rain_days),
+    base=[-40]*len(rain_days),
     name="Rainy day",
     marker=dict(color="rgba(100,150,255,0.15)", line_width=0),
     hoverinfo="skip",
@@ -518,7 +518,7 @@ fig_ts.update_layout(
     font=dict(family="Arial, sans-serif", size=12, color=TEXT),
     margin=dict(l=40, r=20, t=40, b=50),
     xaxis=dict(tickformat="%b '%y", gridcolor="#E5E7EB"),
-    yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", range=[-50, 60]),
+    yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", range=[-40, 40]),
     legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
                 font=dict(size=11), orientation="h",
                 yanchor="top", y=-0.12, xanchor="center", x=0.5),
@@ -527,32 +527,57 @@ fig_ts.update_layout(
 )
 st.plotly_chart(fig_ts, use_container_width=True)
 
-# ── By-market bucket table ─────────────────────────────────────────────────────
-st.markdown('<div class="section-title">SSS% by Market & Weather Condition</div>',
+# ── By sub-region bucket table ────────────────────────────────────────────────
+st.markdown('<div class="section-title">SSS% by Sub-Region & Weather Condition</div>',
             unsafe_allow_html=True)
 
-markets_avail = [m for m in ["Los Angeles","San Diego"]
-                 if m in df_clean["market"].unique()]
+# Geographic sub-regions based on store lat/lon clusters
+SUBREGION_MAP = {
+    # San Fernando Valley — inland, hot (20026=Tampa store in Northridge)
+    '20026':'Valley', '20267':'Valley', '20116':'Valley', '20363':'Valley',
+    '20156':'Valley', '20424':'Valley', '20366':'Valley', '20294':'Valley',
+    '20352':'Valley', '20218':'Valley', '20381':'Valley', '20311':'Valley',
+    # Conejo Valley / West LA — transition zone, marine-influenced
+    '20011':'Conejo Valley', '20048':'Conejo Valley',
+    '20245':'Conejo Valley', '20255':'Conejo Valley',
+    # Mountains — alpine climate (Big Bear + Lake Arrowhead)
+    '20273':'Mountains', '20388':'Mountains',
+    # Santa Barbara County — coastal & inland valley
+    '20075':'Santa Barbara', '20335':'Santa Barbara',
+    '20360':'Santa Barbara', '20013':'Santa Barbara',
+    # Inland Riverside/SD — hot summers, inland valleys
+    '20171':'Inland Riverside', '20177':'Inland Riverside',
+    '20291':'Inland Riverside', '20091':'Inland Riverside',
+    '20071':'Inland SD',  '20300':'Inland SD', '20292':'Inland SD',
+}
+SUBREGION_ORDER = ['Valley','Conejo Valley','Mountains','Santa Barbara',
+                   'Inland Riverside','Inland SD']
 
-pivot = (df_clean[df_clean["weather_bucket"].isin(BUCKET_ORDER)]
-         .groupby(["weather_bucket","market"])["sss_pct"]
-         .mean().unstack("market").reindex(BUCKET_ORDER))
+df_sub = df_clean.copy()
+df_sub["subregion"] = df_sub["store_id"].map(SUBREGION_MAP)
+df_sub = df_sub[df_sub["subregion"].notna()]
+
+pivot = (df_sub[df_sub["weather_bucket"].isin(BUCKET_ORDER)]
+         .groupby(["weather_bucket","subregion"])["sss_pct"]
+         .mean().unstack("subregion").reindex(BUCKET_ORDER))
 pivot["All"] = (df_clean[df_clean["weather_bucket"].isin(BUCKET_ORDER)]
                 .groupby("weather_bucket")["sss_pct"].mean().reindex(BUCKET_ORDER))
+
+cols_avail = [c for c in SUBREGION_ORDER if c in pivot.columns]
 
 def _cell(v):
     if pd.isna(v): return "—"
     cls = "pos" if v >= 0 else "neg"
     return f'<span class="{cls}">{v:+.1f}%</span>'
 
-col_headers = "".join(f"<th>{m}</th>" for m in [*markets_avail, "All"])
+col_headers = "".join(f"<th>{m}</th>" for m in [*cols_avail, "All"])
 rows_html = ""
 for bkt_name in BUCKET_ORDER:
     if bkt_name not in pivot.index: continue
     cells = "".join(
         f"<td>{_cell(pivot.loc[bkt_name, m])}</td>" if m in pivot.columns
         else "<td>—</td>"
-        for m in [*markets_avail, "All"]
+        for m in [*cols_avail, "All"]
     )
     rows_html += f"<tr><td>{bkt_name}</td>{cells}</tr>"
 
