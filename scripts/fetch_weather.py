@@ -738,7 +738,7 @@ def get_store_locations(conn, dialect):
         if rows:
             return [(str(r[0]), float(r[1]), float(r[2])) for r in rows]
     except Exception:
-        pass  # columns don't exist yet — use fallback
+        conn.rollback()  # MUST rollback or connection stays in aborted state
 
     # Fallback: use hardcoded coordinates
     print("  ℹ️  Using hardcoded store coordinates (lat/lon not in DB)")
