@@ -713,28 +713,34 @@ with tab1:
         online   = f"{r['online_pct']:.1f}%" if r["online_pct"] else "—"
         thirdp   = f"{r['thirdp_pct']:.1f}%" if r["thirdp_pct"] else "—"
         avg_t    = f"${r['avg_ticket']:.2f}" if r["avg_ticket"] else "—"
+        # AUV = (net_sales / stores / days in period) * 364  →  annualised per-store run-rate
+        _n_stores = r["stores"] if r["stores"] else 1
+        auv_val  = (r["net_sales"] / _n_stores / days) * 364 if r["net_sales"] else None
+        auv_str  = fmt_dollar(auv_val) if auv_val else "—"
         return (
             f"<tr>"
             f"<td>{r['market']}</td>"
-            f"<td>{r['stores']}</td>"
-            f"<td>{fmt_dollar(r['net_sales'])}</td>"
             f"<td class='{sss_cls}'>{fmt_pct(r['sss_pct'])}</td>"
             f"<td class='{sst_cls}'>{fmt_pct(r['sst_pct'])}</td>"
+            f"<td>{auv_str}</td>"
+            f"<td>{fmt_dollar(r['net_sales'])}</td>"
             f"<td>{avg_t}</td>"
             f"<td>{online}</td>"
             f"<td>{thirdp}</td>"
-            f"<td>{r['comp_count']}</td>"
+            f"<td style='text-align:center'>{r['stores']}</td>"
+            f"<td style='text-align:center'>{r['comp_count']}</td>"
             f"</tr>"
         )
-    
+
     rows_html = "".join(_row_html(r, r["market"] == "TOTAL") for r in mkt_rows)
     st.markdown(f"""
     <div class="mkt-scroll">
     <table class="mkt-table">
       <thead><tr>
-        <th>Market</th><th style="text-align:center">Stores</th>
-        <th>Net Sales</th><th>SSS%</th><th>SST%</th>
-        <th>Avg Ticket</th><th>Online%</th><th>3P%</th>
+        <th>Market</th><th>SSS%</th><th>SST%</th>
+        <th>AUV</th><th>Total Sales</th><th>Avg Ticket</th>
+        <th>Online%</th><th>3P%</th>
+        <th style="text-align:center">Stores</th>
         <th style="text-align:center">Comps</th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
