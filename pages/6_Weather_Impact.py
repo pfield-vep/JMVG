@@ -269,7 +269,7 @@ df["lunch_rain_change"]  = df.get("curr_lunch_rain",  pd.Series(0, index=df.inde
 df["dinner_rain_change"] = df.get("curr_dinner_rain",  pd.Series(0, index=df.index)).fillna(0)                          - df.get("prior_dinner_rain", pd.Series(0, index=df.index)).fillna(0)
 # Categorise weather change
 def weather_bucket(row):
-    if pd.isna(row["curr_rainy"]) or pd.isna(row["curr_avg"]):
+    if pd.isna(row.get("curr_rainy")) or pd.isna(row.get("curr_max")):
         return "Unknown"
     if row["curr_rainy"] == 1 and row["prior_rainy"] == 0:
         return "Rain (was dry)"
