@@ -397,9 +397,6 @@ with sc1:
     fig_t.update_layout(**PLOTLY_BASE,
         title=dict(text="Temp Delta (°F YoY) vs SSS%", font=dict(size=13, color=BLUE), x=0),
         xaxis_title="Temperature Change vs. Prior Year (°F)",
-        legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
-                    font=dict(size=10), orientation="h",
-                    yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
     )
     st.plotly_chart(fig_t, use_container_width=True)
 
@@ -433,9 +430,6 @@ with sc2:
     fig_p.update_layout(**PLOTLY_BASE,
         title=dict(text="Precip Delta (inches YoY) vs SSS%", font=dict(size=13, color=BLUE), x=0),
         xaxis_title="Precipitation Change vs. Prior Year (inches)",
-        legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
-                    font=dict(size=10), orientation="h",
-                    yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
     )
     st.plotly_chart(fig_p, use_container_width=True)
 
@@ -521,9 +515,6 @@ with b2:
         xaxis=dict(tickformat="%b '%y", gridcolor="#E5E7EB"),
         yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB"),
         title=dict(text="SSS% Over Time (blue bands = rainy days)", font=dict(size=13, color=BLUE), x=0),
-        legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
-                    font=dict(size=10), orientation="h",
-                    yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
         height=320,
     )
     st.plotly_chart(fig_ts, use_container_width=True)
