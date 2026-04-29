@@ -473,14 +473,13 @@ def _rain_change_scatter(col, change_col, title, has_data):
             ))
     fig.add_hline(y=0, line_color=MUTED, line_width=1)
     fig.add_vline(x=0, line_color=MUTED, line_width=1)
-    fig.update_layout(**PLOTLY_BASE,
-        title=dict(text=title, font=dict(size=13, color=BLUE), x=0),
-        xaxis_title="Rain change vs. prior year (0=same, +1=new rain, -1=was rain)",
-        xaxis=dict(tickvals=[-1,0,1],
-                   ticktext=["Lost rain","No change","Gained rain"],
-                   gridcolor="#E5E7EB"),
-        yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", range=[-50,60]),
-    )
+    fig.update_layout(**PLOTLY_BASE)
+    fig.update_layout(title=dict(text=title, font=dict(size=13, color=BLUE), x=0))
+    fig.update_xaxes(tickvals=[-1,0,1],
+                     ticktext=["Lost rain","No change","Gained rain"],
+                     gridcolor="#E5E7EB",
+                     title_text="Rain change vs. prior year")
+    fig.update_yaxes(ticksuffix="%", gridcolor="#E5E7EB", range=[-50, 60])
     col.plotly_chart(fig, use_container_width=True)
 
 if "lunch_rain_change" in df_clean.columns:
