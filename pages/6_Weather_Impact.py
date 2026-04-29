@@ -167,37 +167,32 @@ with c3:
 @st.cache_data(ttl=300)
 def load_correlation_data():
     conn, dialect = get_conn()
-    p = "%s" if dialect == "postgres" else "?"
-    # Pull all daily_sales + daily_weather joined for current and prior year
-    sql = """
-        SELECT
-            s.sale_date,
-            s.store_id,
-            s.net_sales,
-            s.total_transactions,
-            s.lunch_sales,
-            s.dinner_sales,
-            s.morning_sales
-        FROM daily_sales s
-        WHERE s.net_sales IS NOT NULL AND s.net_sales > 0
-        ORDER BY s.sale_date
-    """
-    sales = pd.read_sql_query(sql, conn)
-
-    weather_sql = """
-        SELECT date, market, temp_max_f, temp_min_f, avg_temp_f,
-               precip_in, is_rainy, is_cold
-        FROM daily_weather
-        ORDER BY date
-    """
-    weather = pd.read_sql_query(weather_sql, conn)
+    sales = pd.read_sql_query(
+        "SELECT sale_date, store_id, net_sales, total_transactions "
+        "FROM daily_sales WHERE net_sales IS NOT NULL AND net_sales > 0 "
+        "ORDER BY sale_date", conn)
+    try:
+        weather = pd.read_sql_query(
+            "SELECT date, store_id, temp_max_f, precip_in, is_rainy, is_cold, "
+            "temp_spread_f, lunch_temp_f, lunch_precip_in, lunch_is_rainy, "
+            "dinner_temp_f, dinner_precip_in, dinner_is_rainy "
+            "FROM store_daily_weather ORDER BY date", conn)
+    except Exception:
+        # Fall back to market-level daily_weather if store table not ready
+        weather = pd.read_sql_query(
+            "SELECT date, market, temp_max_f, NULL AS temp_min_f, "
+            "temp_max_f AS avg_temp_f, precip_in, is_rainy, is_cold, "
+            "NULL AS temp_spread_f, NULL AS lunch_temp_f, NULL AS lunch_precip_in, "
+            "NULL AS lunch_is_rainy, NULL AS dinner_temp_f, NULL AS dinner_precip_in, "
+            "NULL AS dinner_is_rainy FROM daily_weather ORDER BY date", conn)
+        weather["store_id"] = None
     conn.close()
-
     sales["sale_date"] = pd.to_datetime(sales["sale_date"])
     weather["date"]    = pd.to_datetime(weather["date"])
+    sales["store_id"]  = sales["store_id"].astype(str)
+    weather["store_id"] = weather["store_id"].astype(str)
     sales["market"]    = sales["store_id"].apply(get_market)
-    sales = sales[sales["market"].notna()]   # drop Tampa and any unmapped stores
-
+    sales = sales[sales["market"].notna()]
     return sales, weather
 
 sales_raw, weather_raw = load_correlation_data()
@@ -222,47 +217,56 @@ else:
 
 sales_curr = sales_raw[sales_raw["sale_date"] > cutoff].copy()
 
-# ── Build daily aggregates by market ──────────────────────────────────────────
-# Current period
-curr_agg = sales_curr.groupby(["sale_date","market"]).agg(
+# ── Build store-level aggregates (per-store, per-day) ─────────────────────────
+curr_agg = sales_curr.groupby(["sale_date","store_id","market"]).agg(
     net_sales=("net_sales","sum"),
     transactions=("total_transactions","sum"),
-    store_count=("store_id","nunique"),
 ).reset_index()
 
-# Prior year (364 days back)
 curr_agg["prior_date"] = curr_agg["sale_date"] - pd.Timedelta(days=364)
 
-prior_agg = sales_raw.groupby(["sale_date","market"]).agg(
+prior_agg = sales_raw.groupby(["sale_date","store_id"]).agg(
     net_sales_prior=("net_sales","sum"),
     txn_prior=("total_transactions","sum"),
 ).reset_index().rename(columns={"sale_date":"prior_date"})
 
-df = curr_agg.merge(prior_agg, on=["prior_date","market"], how="inner")
+df = curr_agg.merge(prior_agg, on=["prior_date","store_id"], how="inner")
 df = df[df["net_sales_prior"] > 0].copy()
 df["sss_pct"] = (df["net_sales"] - df["net_sales_prior"]) / df["net_sales_prior"] * 100
 df["sst_pct"] = (df["transactions"] - df["txn_prior"]) / df["txn_prior"] * 100
 
-# ── Join weather: current + prior ─────────────────────────────────────────────
+# ── Join per-store weather: current + prior ────────────────────────────────────
 wx = weather_raw.copy()
-wx_curr  = wx.rename(columns={"date":"sale_date",
-    "temp_max_f":"curr_max","temp_min_f":"curr_min","avg_temp_f":"curr_avg",
-    "precip_in":"curr_precip","is_rainy":"curr_rainy","is_cold":"curr_cold"})
+wx_curr = wx.rename(columns={"date":"sale_date",
+    "temp_max_f":"curr_max","precip_in":"curr_precip","is_rainy":"curr_rainy",
+    "is_cold":"curr_cold","temp_spread_f":"curr_spread",
+    "lunch_temp_f":"curr_lunch_t","lunch_precip_in":"curr_lunch_p",
+    "lunch_is_rainy":"curr_lunch_rain",
+    "dinner_temp_f":"curr_dinner_t","dinner_precip_in":"curr_dinner_p",
+    "dinner_is_rainy":"curr_dinner_rain"})
 wx_prior = wx.rename(columns={"date":"prior_date",
-    "temp_max_f":"prior_max","temp_min_f":"prior_min","avg_temp_f":"prior_avg",
-    "precip_in":"prior_precip","is_rainy":"prior_rainy","is_cold":"prior_cold"})
+    "temp_max_f":"prior_max","precip_in":"prior_precip","is_rainy":"prior_rainy",
+    "lunch_precip_in":"prior_lunch_p","lunch_is_rainy":"prior_lunch_rain",
+    "dinner_precip_in":"prior_dinner_p","dinner_is_rainy":"prior_dinner_rain"})
 
-df = df.merge(wx_curr[["sale_date","market","curr_max","curr_min","curr_avg",
-                         "curr_precip","curr_rainy","curr_cold"]],
-              on=["sale_date","market"], how="left")
-df = df.merge(wx_prior[["prior_date","market","prior_max","prior_min","prior_avg",
-                          "prior_precip","prior_rainy","prior_cold"]],
-              on=["prior_date","market"], how="left")
+wx_curr_cols  = ["sale_date","store_id","curr_max","curr_precip","curr_rainy",
+                 "curr_cold","curr_spread","curr_lunch_t","curr_lunch_p",
+                 "curr_lunch_rain","curr_dinner_t","curr_dinner_p","curr_dinner_rain"]
+wx_prior_cols = ["prior_date","store_id","prior_max","prior_precip","prior_rainy",
+                 "prior_lunch_p","prior_lunch_rain","prior_dinner_p","prior_dinner_rain"]
+
+wx_curr_cols  = [c for c in wx_curr_cols  if c in wx_curr.columns]
+wx_prior_cols = [c for c in wx_prior_cols if c in wx_prior.columns]
+
+df = df.merge(wx_curr[wx_curr_cols],   on=["sale_date","store_id"], how="left")
+df = df.merge(wx_prior[wx_prior_cols], on=["prior_date","store_id"], how="left")
 
 # Weather deltas (positive = warmer/wetter than prior year)
-df["temp_delta"]   = df["curr_avg"]    - df["prior_avg"]
-df["precip_delta"] = df["curr_precip"] - df["prior_precip"]
-df["rain_change"]  = df["curr_rainy"].fillna(0) - df["prior_rainy"].fillna(0)
+df["temp_delta"]         = df["curr_max"]      - df["prior_max"]
+df["precip_delta"]       = df["curr_precip"]   - df["prior_precip"]
+df["rain_change"]        = df["curr_rainy"].fillna(0)       - df["prior_rainy"].fillna(0)
+df["lunch_rain_change"]  = df.get("curr_lunch_rain",  pd.Series(0, index=df.index)).fillna(0)                          - df.get("prior_lunch_rain", pd.Series(0, index=df.index)).fillna(0)
+df["dinner_rain_change"] = df.get("curr_dinner_rain",  pd.Series(0, index=df.index)).fillna(0)                          - df.get("prior_dinner_rain", pd.Series(0, index=df.index)).fillna(0)
 # Categorise weather change
 def weather_bucket(row):
     if pd.isna(row["curr_rainy"]) or pd.isna(row["curr_avg"]):
@@ -291,6 +295,10 @@ if df.empty:
 q_lo, q_hi = df["sss_pct"].quantile(0.01), df["sss_pct"].quantile(0.99)
 df_clean = df[(df["sss_pct"] >= q_lo) & (df["sss_pct"] <= q_hi) &
               df["temp_delta"].notna()].copy()
+
+# For the precip scatter: exclude days where precip didn't meaningfully change
+# (delta near zero adds noise and pulls the correlation line toward zero)
+df_precip_scatter = df_clean[df_clean["precip_delta"].abs() >= 0.05].copy()
 
 # ── Summary KPIs ───────────────────────────────────────────────────────────────
 # Correlation: temp_delta vs sss_pct
@@ -402,7 +410,9 @@ with sc1:
 
 # Scatter: precip delta vs SSS%
 with sc2:
-    scatter_p = df_clean.dropna(subset=["precip_delta","sss_pct"])
+    # Use df_precip_scatter: excludes days where precip delta < 0.05"
+    # (zero/near-zero deltas cluster at x=0 and dilute the correlation)
+    scatter_p = df_precip_scatter.dropna(subset=["precip_delta","sss_pct"])
     fig_p = go.Figure()
     for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
         sub = scatter_p[scatter_p["market"] == mkt]
@@ -428,8 +438,8 @@ with sc2:
     fig_p.add_hline(y=0, line_color=MUTED, line_width=1)
     fig_p.add_vline(x=0, line_color=MUTED, line_width=1)
     fig_p.update_layout(**PLOTLY_BASE,
-        title=dict(text="Precip Delta (inches YoY) vs SSS%", font=dict(size=13, color=BLUE), x=0),
-        xaxis_title="Precipitation Change vs. Prior Year (inches)",
+        title=dict(text="Precip Delta (inches YoY) vs SSS% — excludes days with <0.05\" change", font=dict(size=13, color=BLUE), x=0),
+        xaxis_title="Precipitation Change vs. Prior Year (inches) — meaningful changes only",
     )
     st.plotly_chart(fig_p, use_container_width=True)
 
