@@ -443,6 +443,54 @@ with sc2:
     )
     st.plotly_chart(fig_p, use_container_width=True)
 
+# ── Charts row 1b: Lunch & Dinner rain change correlations ────────────────────
+st.markdown('<div class="section-title">Daypart Rain Impact</div>', unsafe_allow_html=True)
+dc1, dc2 = st.columns(2)
+
+def _rain_change_scatter(col, change_col, title, has_data):
+    sub = df_clean[df_clean[change_col].notna() & (df_clean[change_col] != 0)].copy()
+    fig = go.Figure()
+    for mkt, mcolor in [("Los Angeles", BLUE), ("San Diego", RED)]:
+        m = sub[sub["market"] == mkt]
+        if m.empty: continue
+        fig.add_trace(go.Scatter(
+            x=m[change_col], y=m["sss_pct"],
+            mode="markers", name=mkt,
+            marker=dict(color=mcolor, size=5, opacity=0.5),
+        ))
+    if not sub.empty and len(sub) > 5:
+        xs = sub[change_col].values
+        ys = sub["sss_pct"].values
+        mask = np.isfinite(xs) & np.isfinite(ys)
+        if mask.sum() > 5:
+            coefs = np.polyfit(xs[mask], ys[mask], 1)
+            r = np.corrcoef(xs[mask], ys[mask])[0,1]
+            x_line = np.linspace(xs[mask].min(), xs[mask].max(), 50)
+            fig.add_trace(go.Scatter(
+                x=x_line, y=np.polyval(coefs, x_line),
+                mode="lines", name=f"Trend (R={r:+.2f})",
+                line=dict(color=DANGER, width=2, dash="dash"),
+            ))
+    fig.add_hline(y=0, line_color=MUTED, line_width=1)
+    fig.add_vline(x=0, line_color=MUTED, line_width=1)
+    fig.update_layout(**PLOTLY_BASE,
+        title=dict(text=title, font=dict(size=13, color=BLUE), x=0),
+        xaxis_title="Rain change vs. prior year (0=same, +1=new rain, -1=was rain)",
+        xaxis=dict(tickvals=[-1,0,1],
+                   ticktext=["Lost rain","No change","Gained rain"],
+                   gridcolor="#E5E7EB"),
+        yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", range=[-50,60]),
+    )
+    col.plotly_chart(fig, use_container_width=True)
+
+if "lunch_rain_change" in df_clean.columns:
+    _rain_change_scatter(dc1, "lunch_rain_change",
+                         "Lunch Rain Change (11am–2pm) vs SSS%", True)
+    _rain_change_scatter(dc2, "dinner_rain_change",
+                         "Dinner Rain Change (5pm–8pm) vs SSS%", True)
+else:
+    dc1.info("Lunch/dinner rain data not yet available.")
+
 # ── Charts row 2: bucket bar chart + time series ───────────────────────────────
 st.markdown('<div class="section-title">SSS% by Weather Condition</div>', unsafe_allow_html=True)
 
@@ -479,9 +527,9 @@ with b1:
     fig_b.update_layout(
         plot_bgcolor=WHITE, paper_bgcolor=WHITE,
         font=dict(family="Arial, sans-serif", size=12),
-        margin=dict(l=10, r=80, t=40, b=30),
+        margin=dict(l=140, r=90, t=40, b=30),
         xaxis=dict(ticksuffix="%", gridcolor="#E5E7EB", zerolinecolor=BORDER),
-        yaxis=dict(gridcolor="rgba(0,0,0,0)"),
+        yaxis=dict(gridcolor="rgba(0,0,0,0)", automargin=True),
         title=dict(text="Avg SSS% by Weather Bucket", font=dict(size=13, color=BLUE), x=0),
         showlegend=False,
         height=320,
@@ -523,7 +571,8 @@ with b2:
         font=dict(family="Arial, sans-serif", size=12, color=TEXT),
         margin=dict(l=40, r=20, t=40, b=50),
         xaxis=dict(tickformat="%b '%y", gridcolor="#E5E7EB"),
-        yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB"),
+        yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB",
+                   range=[-50, 60]),   # clamp extremes — per-store outliers skew axis
         title=dict(text="SSS% Over Time (blue bands = rainy days)", font=dict(size=13, color=BLUE), x=0),
         height=320,
     )
