@@ -377,7 +377,8 @@ SUBREGION_COLORS = {
     'Inland SD':        '#dc2626',
 }
 
-df_clean["subregion"] = df_clean["store_id"].map(SUBREGION_MAP)
+df_clean["subregion"]        = df_clean["store_id"].map(SUBREGION_MAP)
+df_precip_scatter["subregion"] = df_precip_scatter["store_id"].map(SUBREGION_MAP)
 
 st.markdown('<div class="section-title">Correlation Scatter — by Sub-Region</div>', unsafe_allow_html=True)
 
