@@ -11,6 +11,7 @@ pg = st.navigation([
     st.Page("pages/0_Home.py",               title="Home",               icon="🏠", default=True),
     st.Page("pages/5_Daily_Sales.py",        title="Daily Sales",        icon="📊"),
     st.Page("pages/6_Weather_Impact.py",     title="Weather Impact",     icon="🌤️"),
+    st.Page("pages/7_Hourly_Heatmap.py",    title="Hourly Heatmap",     icon="🕐"),
     st.Page("pages/2_Balanced_Scorecard.py", title="Balanced Scorecard", icon="🎯"),
     st.Page("pages/1_SSS_Dashboard.py",      title="SSS Dashboard",      icon="📈"),
     st.Page("pages/3_Data_Export.py",        title="Data Export",        icon="📥"),

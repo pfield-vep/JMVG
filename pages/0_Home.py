@@ -63,22 +63,24 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Row 1: Primary dashboards ─────────────────────────────────────────────────
-_, c1, sp, c2, sp2, c3, _ = st.columns([0.5, 3, 0.4, 3, 0.4, 3, 0.5])
+# ── Row 1: Primary dashboards (4 across) ──────────────────────────────────────
+_, c1, sp, c2, sp2, c3, sp3, c4, _ = st.columns([0.3, 3, 0.35, 3, 0.35, 3, 0.35, 3, 0.3])
 with c1:
-    st.page_link("pages/5_Daily_Sales.py",        label="📊  Daily Sales",        use_container_width=True)
+    st.page_link("pages/5_Daily_Sales.py",     label="📊  Daily Sales",     use_container_width=True)
 with c2:
-    st.page_link("pages/6_Weather_Impact.py",     label="🌤️  Weather Impact",     use_container_width=True)
+    st.page_link("pages/7_Hourly_Heatmap.py",  label="🕐  Hourly Heatmap",  use_container_width=True)
 with c3:
+    st.page_link("pages/6_Weather_Impact.py",  label="🌤️  Weather Impact",  use_container_width=True)
+with c4:
     st.page_link("pages/2_Balanced_Scorecard.py", label="🎯  Balanced Scorecard", use_container_width=True)
 
 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
 # ── Row 2: Supporting dashboards ──────────────────────────────────────────────
-_, c4, sp3, c5, sp4, c6, _ = st.columns([0.5, 3, 0.4, 3, 0.4, 3, 0.5])
-with c4:
-    st.page_link("pages/1_SSS_Dashboard.py", label="📈  Same Store Sales",  use_container_width=True)
+_, c5, sp4, c6, sp5, c7, _ = st.columns([0.5, 3, 0.4, 3, 0.4, 3, 0.5])
 with c5:
-    st.page_link("pages/3_Data_Export.py",   label="📥  Data Export",       use_container_width=True)
+    st.page_link("pages/1_SSS_Dashboard.py", label="📈  Same Store Sales",  use_container_width=True)
 with c6:
+    st.page_link("pages/3_Data_Export.py",   label="📥  Data Export",       use_container_width=True)
+with c7:
     st.page_link("pages/4_Update_Data.py",   label="🔄  Update Weekly Data", use_container_width=True)
