@@ -446,8 +446,8 @@ with tab2:
                           line_dash="dot", line_width=1,
                           annotation_text="avg",
                           annotation_font_size=9)
+        fig_bar.update_layout(**PLOTLY_BASE)
         fig_bar.update_layout(
-            **PLOTLY_BASE,
             title=dict(text="Total Net Sales by Day of Week",
                        font=dict(size=12, color=BLUE), x=0),
             xaxis=dict(gridcolor="rgba(0,0,0,0)"),
