@@ -282,11 +282,12 @@ def places_text_search(query, api_key):
 
 def places_details(place_id, api_key):
     """
-    GET /v1/places/{place_id}
+    GET /v1/places/{place_id}?reviews.sort_order=NEWEST
     Returns dict with: displayName, rating, userRatingCount, reviews[]
     Each review has: rating, text.text, publishTime, authorAttribution.displayName
+    reviews.sort_order=NEWEST ensures we always capture the most recent reviews first.
     """
-    url = f"{PLACES_NEW_BASE}/places/{place_id}"
+    url = f"{PLACES_NEW_BASE}/places/{place_id}?reviews.sort_order=NEWEST"
     req = Request(url, method="GET",
                   headers=_headers(api_key,
                                    "displayName,rating,userRatingCount,reviews"))
