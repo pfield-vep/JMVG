@@ -104,18 +104,34 @@ def load_dm_store_map():
 
 @st.cache_data(ttl=300)
 def load_comp_eligible_stores(period_start_str: str) -> set:
-    """Return store_ids eligible as comps: open_date + 364 days <= period_start."""
+    """
+    Return store_ids eligible as comps.
+
+    Eligibility rules (applied in order):
+      1. open_date IS NULL  → include unconditionally (acquired stores whose
+         original open date is unknown but are clearly established franchises;
+         the inner-join in comp_metrics will drop them if prior-year data is absent)
+      2. open_date IS NOT NULL AND open_date + 364 days <= period_start → include
+      3. open_date IS NOT NULL AND open_date + 364 days > period_start → exclude
+         (store not yet open for a full year relative to the period start)
+
+    All store_ids are returned as strings to match daily_sales.store_id (TEXT).
+    """
     conn, dialect = get_conn()
-    p = "%s" if dialect == "postgres" else "?"
     try:
         stores = pd.read_sql_query(
-            f"SELECT store_id, open_date FROM stores WHERE open_date IS NOT NULL",
+            "SELECT store_id, open_date FROM stores",
             conn
         )
         conn.close()
+        stores["store_id"] = stores["store_id"].astype(str).str.strip()
         stores["open_date"] = pd.to_datetime(stores["open_date"], errors="coerce")
         cutoff = pd.to_datetime(period_start_str) - pd.Timedelta(days=364)
-        return set(stores[stores["open_date"] <= cutoff]["store_id"].tolist())
+        eligible = stores[
+            stores["open_date"].isna() |          # unknown open date → assume established
+            (stores["open_date"] <= cutoff)        # known open date old enough
+        ]
+        return set(eligible["store_id"].tolist())
     except Exception:
         conn.close()
         return set()
@@ -140,6 +156,7 @@ def load_sales(start_str: str, end_str: str, prior_start_str: str, prior_end_str
     )
     conn.close()
     df["sale_date"] = pd.to_datetime(df["sale_date"])
+    df["store_id"]  = df["store_id"].astype(str).str.strip()
     df["market"] = df["store_id"].apply(get_market)
     df["store_name"] = df["store_id"].map(STORE_NAMES).fillna(df["store_id"])
     return df
@@ -506,8 +523,14 @@ def comp_metrics(curr: pd.DataFrame, prior: pd.DataFrame):
     daypart mix calculated on all stores in the filtered dataframe.
     """
     # Restrict to comp-eligible stores for SSS/SST
-    curr_comp = curr[curr["store_id"].isin(comp_eligible)] if comp_eligible else curr
-    prior_comp = prior[prior["store_id"].isin(comp_eligible)] if comp_eligible else prior
+    # Note: comp_eligible is a set of strings; store_id in curr/prior are also strings.
+    # If comp_eligible is empty (DB error), fall through gracefully — SSS returns None.
+    if comp_eligible:
+        curr_comp  = curr[curr["store_id"].astype(str).isin(comp_eligible)]
+        prior_comp = prior[prior["store_id"].astype(str).isin(comp_eligible)]
+    else:
+        curr_comp  = curr.iloc[0:0]   # empty — no comps available
+        prior_comp = prior.iloc[0:0]
 
     c_agg = curr_comp.groupby("store_id").agg(
         net_sales=("net_sales","sum"),
