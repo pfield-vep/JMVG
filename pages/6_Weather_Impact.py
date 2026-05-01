@@ -135,6 +135,21 @@ try:
 except Exception:
     _LOGO = None
 
+@st.cache_data(ttl=300)
+def _wx_freshness():
+    conn, _ = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM store_daily_weather")
+        row = cur.fetchone()
+        conn.close()
+        return pd.to_datetime(row[0]).date() if row and row[0] else None
+    except Exception:
+        conn.close()
+        return None
+
+_wx_fresh = _wx_freshness()
+_wx_fresh_str = _wx_fresh.strftime("%a %b %d, %Y") if _wx_fresh else "—"
 _logo_html = f'<img src="{_LOGO}" style="height:44px;width:auto;flex-shrink:0;"/>' if _LOGO else ""
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;
@@ -143,6 +158,10 @@ st.markdown(f"""
   <div style="font-size:13px;font-weight:800;color:{WHITE};
               letter-spacing:2px;text-transform:uppercase;">
     Weather Impact Analysis
+  </div>
+  <div style="margin-left:auto;font-size:10px;color:rgba(255,255,255,0.72);
+              text-align:right;white-space:nowrap;line-height:1.5;">
+    🕐 Data through<br/><b style="font-size:11px;">{_wx_fresh_str}</b>
   </div>
 </div>
 """, unsafe_allow_html=True)

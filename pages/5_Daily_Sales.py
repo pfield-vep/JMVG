@@ -396,8 +396,13 @@ try:
 except Exception:
     _LOGO = None
 
+# ── Date controls (loaded before header so we can show freshness) ──────────────
+min_date, max_date = get_date_range()
+today = max_date  # most recent data date
+
 # ── Header ─────────────────────────────────────────────────────────────────────
 _logo_html = f'<img src="{_LOGO}" style="height:44px;width:auto;flex-shrink:0;"/>' if _LOGO else ""
+_fresh_str = max_date.strftime("%a %b %d, %Y") if max_date else "—"
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;
             background:{BLUE};border-radius:10px;padding:12px 20px;
@@ -408,12 +413,12 @@ st.markdown(f"""
               font-family:Arial,sans-serif;">
     Daily Sales Dashboard
   </div>
+  <div style="margin-left:auto;font-size:10px;color:rgba(255,255,255,0.72);
+              text-align:right;white-space:nowrap;line-height:1.5;">
+    🕐 Data through<br/><b style="font-size:11px;">{_fresh_str}</b>
+  </div>
 </div>
 """, unsafe_allow_html=True)
-
-# ── Date controls ──────────────────────────────────────────────────────────────
-min_date, max_date = get_date_range()
-today = max_date  # most recent data date
 
 # ── Period toggle ──────────────────────────────────────────────────────────────
 mkt_filter = "All Markets"   # no market filter — DM tab shows all markets

@@ -161,6 +161,21 @@ def load_store_list(markets=None):
 
 all_weeks, all_markets = load_filter_options()
 
+# ── Data freshness ───────────────────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def _export_freshness():
+    conn, _ = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(sale_date) FROM daily_sales")
+        row = cur.fetchone(); conn.close()
+        return pd.to_datetime(row[0]).date() if row and row[0] else None
+    except Exception:
+        conn.close(); return None
+
+_exp_fresh = _export_freshness()
+_exp_fresh_str = _exp_fresh.strftime("%a %b %d, %Y") if _exp_fresh else "—"
+
 # ── Header bar ────────────────────────────────────────────────────────────────
 logo_col, from_col, to_col, mkt_col, home_col = st.columns([2.2, 1.5, 1.5, 2.5, 1])
 
@@ -168,9 +183,14 @@ with logo_col:
     st.markdown(f"""
         <div style='display:flex;align-items:center;gap:12px;padding:4px 0;'>
             <img src="{_LOGO}" style="height:38px;width:auto;"/>
-            <span style='font-size:13px;font-weight:700;letter-spacing:0.5px;color:white;'>
+            <div>
+              <div style='font-size:13px;font-weight:700;letter-spacing:0.5px;color:white;'>
                 DATA EXPORT
-            </span>
+              </div>
+              <div style='font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px;'>
+                🕐 Data through <b>{_exp_fresh_str}</b>
+              </div>
+            </div>
         </div>
     """, unsafe_allow_html=True)
 

@@ -122,6 +122,21 @@ try:
 except Exception:
     _LOGO = None
 
+@st.cache_data(ttl=300)
+def _hourly_freshness():
+    conn, _ = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(sale_date) FROM hourly_sales")
+        row = cur.fetchone()
+        conn.close()
+        return pd.to_datetime(row[0]).date() if row and row[0] else None
+    except Exception:
+        conn.close()
+        return None
+
+_h_fresh = _hourly_freshness()
+_h_fresh_str = _h_fresh.strftime("%a %b %d, %Y") if _h_fresh else "—"
 _logo_html = f'<img src="{_LOGO}" style="height:44px;width:auto;flex-shrink:0;"/>' if _LOGO else ""
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:10px;
@@ -130,6 +145,10 @@ st.markdown(f"""
   <div style="font-size:13px;font-weight:800;color:{WHITE};
               letter-spacing:2px;text-transform:uppercase;">
     Hourly Sales Heatmap
+  </div>
+  <div style="margin-left:auto;font-size:10px;color:rgba(255,255,255,0.72);
+              text-align:right;white-space:nowrap;line-height:1.5;">
+    🕐 Data through<br/><b style="font-size:11px;">{_h_fresh_str}</b>
   </div>
 </div>
 """, unsafe_allow_html=True)

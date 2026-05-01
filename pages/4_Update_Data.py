@@ -166,7 +166,15 @@ def show_status(conn, dialect):
     except Exception:
         recent = []
 
+    # Latest daily_sales date
+    try:
+        cur.execute("SELECT MAX(sale_date) FROM daily_sales")
+        latest_daily = cur.fetchone()[0] or "—"
+    except Exception:
+        latest_daily = "—"
+
     chips = [
+        f"<span class='status-chip'>🕐 Daily sales through: <b>{latest_daily}</b></span>",
         f"<span class='status-chip'>📅 Latest store week: <b>{latest_sales}</b></span>",
         f"<span class='status-chip'>📊 Weeks in DB: <b>{n_weeks}</b></span>",
         f"<span class='status-chip'>🏆 Latest benchmark: <b>{latest_bm}</b></span>",

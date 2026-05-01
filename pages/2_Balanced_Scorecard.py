@@ -207,6 +207,25 @@ stores_df = load_stores()
 markets = (["All Markets"]+sorted(stores_df["co_op"].dropna().unique().tolist())
            if stores_df is not None else ["All Markets","Los Angeles","Santa Barbara","San Diego"])
 
+# ── Data freshness ───────────────────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def _bsc_freshness():
+    conn = get_db_connection()
+    if conn is None:
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(sale_date) FROM daily_sales")
+        row = cur.fetchone()
+        conn.close()
+        return pd.to_datetime(row[0]).date() if row and row[0] else None
+    except Exception:
+        conn.close()
+        return None
+
+_bsc_fresh = _bsc_freshness()
+_bsc_fresh_str = _bsc_fresh.strftime("%a %b %d, %Y") if _bsc_fresh else "—"
+
 # ── HEADER ROW: logo | period | market | store | home ─────────────────────────
 st.markdown(f"""
 <div style="display:flex;align-items:center;gap:8px;
@@ -216,6 +235,10 @@ st.markdown(f"""
     <div style="font-size:13px;font-weight:800;color:#FFFFFF;letter-spacing:2px;
                 text-transform:uppercase;font-family:Arial,sans-serif;margin-right:16px;">
         Balanced Scorecard
+    </div>
+    <div style="margin-left:auto;font-size:10px;color:rgba(255,255,255,0.72);
+                text-align:right;white-space:nowrap;line-height:1.5;">
+        🕐 Data through<br/><b style="font-size:11px;">{_bsc_fresh_str}</b>
     </div>
 </div>
 """, unsafe_allow_html=True)
