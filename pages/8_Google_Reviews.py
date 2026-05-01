@@ -105,14 +105,16 @@ def load_reviews():
             "FROM store_reviews ORDER BY review_date DESC NULLS LAST", conn)
         has_tags = df["complaint_tags"].notna().any()
     except Exception:
+        # Postgres aborts the transaction on unknown column — roll back before retrying
         try:
-            df = pd.read_sql_query(
-                f"SELECT {base_cols} FROM store_reviews "
-                "ORDER BY review_date DESC NULLS LAST", conn)
-        finally:
+            conn.rollback()
+        except Exception:
             pass
-        df["complaint_tags"] = None
-        df["praise_tags"]    = None
+        df = pd.read_sql_query(
+            f"SELECT {base_cols} FROM store_reviews "
+            "ORDER BY review_date DESC NULLS LAST", conn)
+        df["complaint_tags"]     = None
+        df["praise_tags"]        = None
         df["employee_mentioned"] = None
         has_tags = False
     finally:
