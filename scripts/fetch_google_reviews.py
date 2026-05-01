@@ -87,6 +87,7 @@ def get_conn():
                 user=os.environ.get("SUPABASE_USER"),
                 password=os.environ.get("SUPABASE_PASSWORD"),
                 sslmode="require",
+                options="-c statement_timeout=0",
             )
             print("Connected to Supabase via environment variables")
             return conn, "postgres"
@@ -107,7 +108,11 @@ def get_conn():
                 conn = psycopg2.connect(
                     host=s["host"], port=int(s["port"]),
                     dbname=s["dbname"], user=s["user"],
-                    password=s["password"], sslmode="require"
+                    password=s["password"], sslmode="require",
+                    # Disable statement timeout for long-running scripts.
+                    # Supabase's PgBouncer pooler enforces a short timeout
+                    # by default; this overrides it for CLI use.
+                    options="-c statement_timeout=0"
                 )
                 print("Connected to Supabase / Postgres")
                 return conn, "postgres"
