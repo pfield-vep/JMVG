@@ -257,8 +257,6 @@ def _classify_with_fallback(reviews, api_key):
     mid = len(reviews) // 2
     return (_classify_with_fallback(reviews[:mid], api_key) +
             _classify_with_fallback(reviews[mid:], api_key))
-                continue
-            raise
 
 
 def validate_result(r):
