@@ -174,34 +174,50 @@ def create_tables(conn, dialect):
     cur = conn.cursor()
 
     if dialect == "postgres":
-        # This reaches Postgres even through PgBouncer's transaction mode.
-        # 'options' in the connection string is stripped by the pooler;
-        # SET LOCAL inside a transaction is not.
+        # SET LOCAL reaches Postgres through PgBouncer; 'options' in the
+        # connection string is stripped by the pooler.
+        # lock_timeout = 3s means ALTER TABLE fails fast if Streamlit (or any
+        # other connection) is holding a lock — instead of hanging forever.
         cur.execute("SET LOCAL statement_timeout = 0")
+        cur.execute("SET LOCAL lock_timeout = '3s'")
 
     cur.execute(CREATE_REVIEWS_PG if dialect == "postgres" else CREATE_REVIEWS_SQLITE)
 
+    all_ok = True
     for col, dtype in STORES_NEW_COLS:
         if dialect == "postgres":
-            # Check column existence first — avoids an AccessExclusiveLock
-            # on stores when the column is already there (normal after first run).
+            # Skip the ALTER entirely if the column already exists —
+            # no lock needed for an information_schema read.
             cur.execute(
                 "SELECT 1 FROM information_schema.columns "
                 "WHERE table_schema = 'public' AND table_name = 'stores' "
                 "AND column_name = %s",
                 (col,)
             )
-            if not cur.fetchone():
-                print(f"  + Adding column stores.{col}…")
+            if cur.fetchone():
+                continue   # already there, nothing to do
+            print(f"  + Adding column stores.{col}…")
+            try:
                 cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
+            except Exception as e:
+                conn.rollback()
+                all_ok = False
+                print(f"  ⚠️  Could not add stores.{col}: {e}")
+                print(f"     This usually means another connection (e.g. the Streamlit app)")
+                print(f"     is holding a lock. Close the app and re-run, or add the column")
+                print(f"     manually:  ALTER TABLE stores ADD COLUMN {col} {dtype};")
         else:
             try:
                 cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
             except Exception:
                 conn.rollback()
 
-    conn.commit()
-    print("store_reviews table ready + stores.google_* columns ensured")
+    if all_ok:
+        conn.commit()
+        print("store_reviews table ready + stores.google_* columns ensured")
+    else:
+        conn.commit()   # commit whatever succeeded
+        print("store_reviews table ready (some stores columns may need manual adding — see above)")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -382,21 +398,27 @@ def discover_all_place_ids():
         print("✓  All stores already have a Google Place ID.")
         return
 
-    print(f"Discovering Place IDs for {len(stores)} stores via Places API (New)…")
+    total = len(stores)
+    print(f"Discovering Place IDs for {total} stores via Places API (New)…")
+    print(f"{'─'*60}")
 
     # ── Phase 2: Call Google API with NO DB connection open ───────────────────
     results_map = {}   # store_id → (place_id, name, formatted_address)
 
-    for store_id, address in stores:
+    for i, (store_id, address) in enumerate(stores, 1):
+        prefix = f"[{i:2d}/{total}] {store_id}"
+
         if not address:
-            print(f"  {store_id}: no address in DB — skipping")
+            print(f"{prefix}: ⚠️  no address in DB — skipping")
             continue
 
-        query   = f"Jersey Mike's Subs {address}"
+        query = f"Jersey Mike's Subs {address}"
+        print(f"{prefix}: searching… ", end="", flush=True)
+
         results = places_text_search(query, api_key)
 
         if not results:
-            print(f"  {store_id}: no results for '{query}'")
+            print(f"no match for '{address}'")
             time.sleep(0.4)
             continue
 
@@ -404,10 +426,12 @@ def discover_all_place_ids():
         pid   = place.get("id", "")
         name  = (place.get("displayName") or {}).get("text", "")
         addr  = place.get("formattedAddress", "")
-        print(f"  {store_id}: '{name}' — {addr} → {pid}")
 
         if pid:
             results_map[store_id] = (pid, name, addr)
+            print(f"✓  {name} | {addr}")
+        else:
+            print(f"⚠️  result had no place ID")
 
         time.sleep(0.35)
 
@@ -496,16 +520,21 @@ def fetch_all_reviews(log=None):
         out("No stores have a Google Place ID yet — run --discover first.")
         return 0, 0
 
-    out(f"Fetching reviews for {len(stores)} stores via Places API (New)…")
+    total = len(stores)
+    out(f"Fetching reviews for {total} stores via Places API (New)…")
+    out(f"{'─'*60}")
 
     # ── Phase 2: Call Google API with NO DB connection open ───────────────────
     # Collect all results in memory before touching the DB again.
     api_results = []   # list of (store_id, rating, review_count, reviews[])
 
-    for store_id, place_id in stores:
+    for i, (store_id, place_id) in enumerate(stores, 1):
+        prefix = f"[{i:2d}/{total}] {store_id}"
+        out(f"{prefix}: fetching… ")
+
         result = places_details(place_id, api_key)
         if result is None:
-            out(f"  {store_id}: ⚠️  no data returned")
+            out(f"{prefix}: ⚠️  no data returned")
             time.sleep(0.5)
             continue
 
@@ -515,7 +544,7 @@ def fetch_all_reviews(log=None):
 
         stars     = f"★{rating:.1f}" if rating else "★?"
         total_str = f"{review_count:,}" if review_count else "?"
-        out(f"  {store_id}: {stars}  {total_str} total on Google  {len(reviews)} reviews fetched")
+        out(f"{prefix}: {stars}  {total_str} reviews on Google  →  {len(reviews)} fetched")
 
         api_results.append((store_id, rating, review_count, reviews))
         time.sleep(0.3)
