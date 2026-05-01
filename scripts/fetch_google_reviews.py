@@ -162,62 +162,87 @@ STORES_NEW_COLS = [
 ]
 
 
+SCHEMA_SQL = """\
+-- Run this ONCE in Supabase SQL Editor before using this script.
+-- (Project → SQL Editor → paste → Run)
+
+CREATE TABLE IF NOT EXISTS store_reviews (
+    id                SERIAL  PRIMARY KEY,
+    store_id          TEXT    NOT NULL,
+    review_id         TEXT    NOT NULL UNIQUE,
+    platform          TEXT    NOT NULL DEFAULT 'google',
+    reviewer_name     TEXT,
+    rating            INTEGER NOT NULL,
+    review_text       TEXT,
+    review_date       DATE,
+    fetched_at        TIMESTAMP DEFAULT NOW(),
+    topic_speed       INTEGER,
+    topic_accuracy    INTEGER,
+    topic_staff       INTEGER,
+    topic_food        INTEGER,
+    topic_cleanliness INTEGER,
+    topic_online      INTEGER,
+    sentiment         TEXT,
+    classified_at     TIMESTAMP
+);
+
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS google_place_id       TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS google_rating         REAL;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS google_review_count   INTEGER;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS google_rating_updated TEXT;
+"""
+
+
 def create_tables(conn, dialect):
-    """
-    Create store_reviews and add google_* columns to stores.
-    Uses SET LOCAL statement_timeout = 0 so PgBouncer can't cancel the
-    ALTER TABLE — SET LOCAL applies for the duration of this transaction
-    and actually reaches Postgres even in PgBouncer transaction mode.
-    Also checks information_schema before each ALTER to avoid grabbing an
-    exclusive table lock when the column already exists.
-    """
+    """SQLite-only: creates tables locally for dev/testing."""
     cur = conn.cursor()
-
-    if dialect == "postgres":
-        # SET LOCAL reaches Postgres through PgBouncer; 'options' in the
-        # connection string is stripped by the pooler.
-        # lock_timeout = 3s means ALTER TABLE fails fast if Streamlit (or any
-        # other connection) is holding a lock — instead of hanging forever.
-        cur.execute("SET LOCAL statement_timeout = 0")
-        cur.execute("SET LOCAL lock_timeout = '3s'")
-
-    cur.execute(CREATE_REVIEWS_PG if dialect == "postgres" else CREATE_REVIEWS_SQLITE)
-
-    all_ok = True
+    cur.execute(CREATE_REVIEWS_SQLITE)
     for col, dtype in STORES_NEW_COLS:
-        if dialect == "postgres":
-            # Skip the ALTER entirely if the column already exists —
-            # no lock needed for an information_schema read.
-            cur.execute(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_schema = 'public' AND table_name = 'stores' "
-                "AND column_name = %s",
-                (col,)
-            )
-            if cur.fetchone():
-                continue   # already there, nothing to do
-            print(f"  + Adding column stores.{col}…")
-            try:
-                cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
-            except Exception as e:
-                conn.rollback()
-                all_ok = False
-                print(f"  ⚠️  Could not add stores.{col}: {e}")
-                print(f"     This usually means another connection (e.g. the Streamlit app)")
-                print(f"     is holding a lock. Close the app and re-run, or add the column")
-                print(f"     manually:  ALTER TABLE stores ADD COLUMN {col} {dtype};")
-        else:
-            try:
-                cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
-            except Exception:
-                conn.rollback()
+        try:
+            cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
+        except Exception:
+            conn.rollback()
+    conn.commit()
+    print("store_reviews table ready (SQLite)")
 
-    if all_ok:
-        conn.commit()
-        print("store_reviews table ready + stores.google_* columns ensured")
-    else:
-        conn.commit()   # commit whatever succeeded
-        print("store_reviews table ready (some stores columns may need manual adding — see above)")
+
+def assert_schema_ready(conn, dialect):
+    """
+    Verify the schema has been applied in Supabase.
+    For SQLite: creates tables on the fly.
+    For Postgres: checks that store_reviews and stores.google_place_id exist,
+    and raises a clear error if not (never runs DDL — avoids all lock issues).
+    """
+    if dialect != "postgres":
+        create_tables(conn, dialect)
+        return
+
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'store_reviews'"
+    )
+    if not cur.fetchone():
+        raise RuntimeError(
+            "\n\n"
+            "  Schema not applied yet. Run this in the Supabase SQL Editor:\n\n"
+            "    py scripts/fetch_google_reviews.py --print-schema\n\n"
+            "  Copy the output, paste into Supabase → SQL Editor → Run.\n"
+            "  Then re-run this script.\n"
+        )
+    cur.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = 'stores' "
+        "AND column_name = 'google_place_id'"
+    )
+    if not cur.fetchone():
+        raise RuntimeError(
+            "\n\n"
+            "  stores.google_place_id column missing. Run this in the Supabase SQL Editor:\n\n"
+            "    py scripts/fetch_google_reviews.py --print-schema\n\n"
+            "  Copy the output, paste into Supabase → SQL Editor → Run.\n"
+            "  Then re-run this script.\n"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -370,17 +395,10 @@ def discover_all_place_ids():
 
     # ── Phase 1: Read stores from DB, then close immediately ─────────────────
     conn, dialect = get_conn()
-
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'store_reviews'"
-    )
-    if not cur.fetchone():
-        print("First run — creating schema…")
-        create_tables(conn, dialect)
+    assert_schema_ready(conn, dialect)   # fast read-only check, no DDL
 
     try:
+        cur = conn.cursor()
         cur.execute("""
             SELECT store_id, address
             FROM   stores
@@ -493,20 +511,9 @@ def fetch_all_reviews(log=None):
 
     # ── Phase 1: Read store list from DB, then close immediately ─────────────
     conn, dialect = get_conn()
+    assert_schema_ready(conn, dialect)   # fast read-only check, no DDL
 
-    # Only run schema migration if store_reviews doesn't exist yet.
-    # On normal daily runs the table is already there — skipping the migration
-    # avoids any ALTER TABLE locking entirely.
     cur = conn.cursor()
-    cur.execute(
-        "SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'store_reviews'"
-    )
-    needs_migration = not cur.fetchone()
-    if needs_migration:
-        out("First run — creating schema…")
-        create_tables(conn, dialect)
-
     cur.execute("""
         SELECT store_id, google_place_id
         FROM   stores
@@ -636,7 +643,10 @@ def get_review_stats(conn, dialect):
 if __name__ == "__main__":
     args = set(sys.argv[1:])
 
-    if "--discover" in args:
+    if "--print-schema" in args:
+        print(SCHEMA_SQL)
+
+    elif "--discover" in args:
         print("=== Discover Google Place IDs (Places API New) ===")
         discover_all_place_ids()
 
