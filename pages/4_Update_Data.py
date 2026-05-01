@@ -173,11 +173,50 @@ def show_status(conn, dialect):
     except Exception:
         latest_daily = "—"
 
+    # Google Reviews summary
+    try:
+        cur.execute(
+            "SELECT COUNT(*), MAX(review_date), COUNT(DISTINCT store_id) "
+            "FROM store_reviews"
+        )
+        row = cur.fetchone()
+        n_reviews    = row[0] or 0
+        latest_rev   = row[1] or "—"
+        stores_w_rev = row[2] or 0
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        n_reviews, latest_rev, stores_w_rev = 0, "—", 0
+
+    # Stores with a Google Place ID mapped
+    try:
+        cur.execute(
+            "SELECT COUNT(*) FROM stores "
+            "WHERE google_place_id IS NOT NULL AND google_place_id != ''"
+        )
+        stores_mapped = cur.fetchone()[0] or 0
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        stores_mapped = 0
+
+    rev_chip = (
+        f"<span class='status-chip'>⭐ Reviews: <b>{n_reviews:,}</b> "
+        f"across {stores_w_rev} stores · latest {latest_rev}</span>"
+        if n_reviews > 0
+        else f"<span class='status-chip'>⭐ Reviews: <b>not yet fetched</b> · {stores_mapped} stores mapped</span>"
+    )
+
     chips = [
         f"<span class='status-chip'>🕐 Daily sales through: <b>{latest_daily}</b></span>",
         f"<span class='status-chip'>📅 Latest store week: <b>{latest_sales}</b></span>",
         f"<span class='status-chip'>📊 Weeks in DB: <b>{n_weeks}</b></span>",
         f"<span class='status-chip'>🏆 Latest benchmark: <b>{latest_bm}</b></span>",
+        rev_chip,
     ]
     st.markdown(f'<div class="status-row">{"".join(chips)}</div>', unsafe_allow_html=True)
 
@@ -378,6 +417,69 @@ def fetch_jm_from_email(log: StLogger):
     return processed
 
 
+# ── Google Reviews helpers ────────────────────────────────────────────────────
+def _get_google_api_key():
+    """Check whether a Google Places API key is configured."""
+    try:
+        key = st.secrets.get("google", {}).get("places_api_key", "")
+        if key:
+            return key.strip()
+    except Exception:
+        pass
+    return os.environ.get("GOOGLE_PLACES_API_KEY", "").strip()
+
+
+def discover_place_ids(log: StLogger):
+    """Run fetch_google_reviews --discover and stream output to the log."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import importlib
+    import fetch_google_reviews as fgr
+    importlib.reload(fgr)
+
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            fgr.discover_all_place_ids()
+        for line in buf.getvalue().splitlines():
+            if line.strip():
+                log.write(line)
+        return True
+    except Exception as e:
+        for line in buf.getvalue().splitlines():
+            if line.strip():
+                log.write(line)
+        log.write(f"[ERROR] {e}")
+        return False
+
+
+def run_fetch_reviews(log: StLogger):
+    """Run fetch_google_reviews --fetch and stream output to the log."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import importlib
+    import fetch_google_reviews as fgr
+    importlib.reload(fgr)
+
+    lines_written = []
+    def _log_fn(msg):
+        log.write(msg)
+        lines_written.append(msg)
+
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            new_reviews, n_stores = fgr.fetch_all_reviews(log=_log_fn)
+        for line in buf.getvalue().splitlines():
+            if line.strip():
+                log.write(line)
+        return new_reviews, n_stores
+    except Exception as e:
+        for line in buf.getvalue().splitlines():
+            if line.strip():
+                log.write(line)
+        log.write(f"[ERROR] {e}")
+        return -1, 0
+
+
 # ── Weather data fetch ────────────────────────────────────────────────────────
 def fetch_weather(log: StLogger):
     """Run the Open-Meteo weather backfill and stream output to StLogger."""
@@ -512,7 +614,77 @@ with st.container(border=True):
                 log.write(f"\n[FATAL] {e}")
                 st.error(f"Benchmark update failed: {e}")
 
-# ── Section 3: Weather Data ──────────────────────────────────────────────────
+# ── Section 3: Google Reviews ────────────────────────────────────────────────
+with st.container(border=True):
+    st.markdown('<div class="section-title">⭐ Google Reviews — Fetch via Places API</div>', unsafe_allow_html=True)
+
+    api_key_set = bool(_get_google_api_key())
+
+    if not api_key_set:
+        st.warning(
+            "**Google Places API key not configured.** "
+            "Add it to `.streamlit/secrets.toml` under `[google]` → `places_api_key = 'AIzaSy...'`. "
+            "Enable the **Places API** in Google Cloud Console (free tier: ~5,000 calls/month)."
+        )
+    else:
+        st.markdown(
+            "Pulls the 5 most recent Google Maps reviews for every store and accumulates them "
+            "in the database. Run daily — duplicate reviews are skipped automatically. "
+            "Run **Discover** once the first time to map store addresses to Google Place IDs."
+        )
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown("**Step 1 — Map stores to Google (run once)**")
+        st.caption("Uses the Places Text Search API to find each store's Google Place ID from its address.")
+        if st.button("🔍 Discover Place IDs", key="discover_place_ids",
+                     disabled=not api_key_set):
+            disc_log_ph  = st.empty()
+            disc_done_ph = st.empty()
+            disc_log_ph.markdown('<div class="log-box">Searching Google Places...</div>',
+                                 unsafe_allow_html=True)
+            log = StLogger(disc_log_ph)
+            try:
+                ok = discover_place_ids(log)
+                if ok:
+                    disc_done_ph.success("✅ Place ID discovery complete. Check the log for any stores that need manual mapping.")
+                else:
+                    disc_done_ph.warning("⚠️ Discovery completed with errors — see log above.")
+                get_conn.clear()
+            except Exception as e:
+                log.write(f"\n[FATAL] {e}")
+                st.error(f"Discovery failed: {e}")
+
+    with col_b:
+        st.markdown("**Step 2 — Fetch latest reviews (run daily)**")
+        st.caption("Fetches up to 5 recent reviews per store and stores any new ones in the database.")
+        if st.button("⭐ Fetch Google Reviews", key="fetch_google_reviews_btn",
+                     disabled=not api_key_set):
+            rev_log_ph  = st.empty()
+            rev_done_ph = st.empty()
+            rev_log_ph.markdown('<div class="log-box">Connecting to Google Places API...</div>',
+                                unsafe_allow_html=True)
+            log = StLogger(rev_log_ph)
+            try:
+                new_count, n_stores = run_fetch_reviews(log)
+                if new_count >= 0:
+                    if new_count > 0:
+                        rev_done_ph.success(
+                            f"✅ Done — {new_count} new review(s) stored across {n_stores} stores."
+                        )
+                    else:
+                        rev_done_ph.info(
+                            f"ℹ️ No new reviews — all {n_stores} stores are up to date."
+                        )
+                else:
+                    rev_done_ph.warning("⚠️ Fetch completed with errors — check the log above.")
+                get_conn.clear()
+            except Exception as e:
+                log.write(f"\n[FATAL] {e}")
+                st.error(f"Review fetch failed: {e}")
+
+# ── Section 4: Weather Data ──────────────────────────────────────────────────
 with st.container(border=True):
     st.markdown('<div class="section-title">🌤️ Weather Data — Sync from Open-Meteo</div>', unsafe_allow_html=True)
     st.markdown(
