@@ -807,36 +807,42 @@ with tab1:
     # Use comp_eligible stores fixed to the chart window start (not period toggle)
     _chart_comp = load_comp_eligible_stores(str(_chart_start))
 
-    # Filter to comp stores only — same methodology as comp_metrics()
-    _comp_data = _chart_all[_chart_all["store_id"].isin(_chart_comp)]
+    # Filter to comp stores only
+    _comp_data = _chart_all[_chart_all["store_id"].astype(str).isin(_chart_comp)].copy()
 
-    def _comp_day_sales(d_start, d_end):
-        """Sum net_sales for comp stores only between d_start and d_end."""
-        sub = _comp_data[_comp_data["sale_date"].dt.date.between(d_start, d_end)]
-        return sub.groupby("sale_date")["net_sales"].sum().reset_index()
+    def _sss_per_day(chart_days, lookback_days):
+        """
+        Compute SSS% for each day using only the intersection of stores that
+        have data on BOTH the current day AND the equivalent prior-year day.
+        This matches the comp_metrics() inner-join methodology used in the tiles,
+        so a store missing data on any given day is excluded from both sides of
+        that day's calc — never inflating/deflating the denominator.
+        Returns DataFrame with columns [sale_date, sss].
+        """
+        rows = []
+        for curr_day in chart_days:
+            prior_day = curr_day - timedelta(days=lookback_days)
+            curr_sub  = _comp_data[_comp_data["sale_date"].dt.date == curr_day]
+            prior_sub = _comp_data[_comp_data["sale_date"].dt.date == prior_day]
+            both = set(curr_sub["store_id"]) & set(prior_sub["store_id"])
+            if not both:
+                continue
+            c_sales = curr_sub[curr_sub["store_id"].isin(both)]["net_sales"].sum()
+            p_sales = prior_sub[prior_sub["store_id"].isin(both)]["net_sales"].sum()
+            if p_sales > 0:
+                rows.append({"sale_date": pd.Timestamp(curr_day), "sss": (c_sales - p_sales) / p_sales * 100})
+        return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["sale_date", "sss"])
 
-    # Current 7 days
-    _curr = _comp_day_sales(_chart_start, _chart_end)
-    _curr.columns = ["sale_date", "curr"]
+    _days7 = [_chart_start + timedelta(days=i) for i in range(7)]
 
-    # 1yr prior: same 7-day window 364 days back, shifted forward to align
-    _1yr_s = _chart_start - timedelta(days=364)
-    _1yr   = _comp_day_sales(_1yr_s, _1yr_s + timedelta(days=6))
-    _1yr["sale_date"] = _1yr["sale_date"] + pd.Timedelta(days=364)
-    _1yr.columns = ["sale_date", "s1yr"]
+    _sss1 = _sss_per_day(_days7, 364)
+    _sss2 = _sss_per_day(_days7, 728)
 
-    # 2yr prior: same 7-day window 728 days back, shifted forward to align
-    _2yr_s = _chart_start - timedelta(days=728)
-    _2yr   = _comp_day_sales(_2yr_s, _2yr_s + timedelta(days=6))
-    _2yr["sale_date"] = _2yr["sale_date"] + pd.Timedelta(days=728)
-    _2yr.columns = ["sale_date", "s2yr"]
-
-    _trend = _curr.merge(_1yr, on="sale_date", how="left") \
-                  .merge(_2yr, on="sale_date", how="left")
-
-    _trend["sss_1yr"] = (_trend["curr"] - _trend["s1yr"]) / _trend["s1yr"] * 100
-    _trend["sss_2yr"] = (_trend["curr"] - _trend["s2yr"]) / _trend["s2yr"] * 100
-    _trend = _trend[_trend["s1yr"] > 0].copy()
+    _trend = _sss1.rename(columns={"sss": "sss_1yr"}) \
+                  .merge(_sss2.rename(columns={"sss": "sss_2yr"}),
+                         on="sale_date", how="outer") \
+                  .sort_values("sale_date")
+    _trend = _trend[_trend["sss_1yr"].notna()].copy()
 
     fig_sss = go.Figure()
     fig_sss.add_trace(go.Bar(
@@ -936,30 +942,42 @@ with tab1:
         for (sr, d), row in _wx_prior_raw.items()
     }
 
-    # SSS% per sub-region per day (use already-loaded _comp_data)
+    # SSS% per sub-region per day — intersection methodology (matches tiles)
     _comp_sr = _comp_data.copy()
     _comp_sr["subregion"] = _comp_sr["store_id"].map(_SR_MAP)
     _comp_sr = _comp_sr[_comp_sr["subregion"].notna()]
 
-    def _sr_sales_range(d_start, d_end):
-        sub = _comp_sr[_comp_sr["sale_date"].dt.date.between(d_start, d_end)]
-        return sub.groupby(["sale_date","subregion"])["net_sales"].sum().reset_index()
+    def _sr_sss_per_day(chart_days):
+        """
+        For each (subregion, day) pair compute SSS% using only stores that
+        have data on both the current day and 364 days prior — same inner-join
+        logic as comp_metrics() so sub-region cells agree with the tiles.
+        """
+        rows = []
+        for curr_day in chart_days:
+            prior_day = curr_day - timedelta(days=364)
+            curr_sub  = _comp_sr[_comp_sr["sale_date"].dt.date == curr_day]
+            prior_sub = _comp_sr[_comp_sr["sale_date"].dt.date == prior_day]
+            for sr in _SR_ORDER:
+                c = curr_sub[curr_sub["subregion"] == sr]
+                p = prior_sub[prior_sub["subregion"] == sr]
+                both = set(c["store_id"]) & set(p["store_id"])
+                if not both:
+                    continue
+                c_sales = c[c["store_id"].isin(both)]["net_sales"].sum()
+                p_sales = p[p["store_id"].isin(both)]["net_sales"].sum()
+                if p_sales > 0:
+                    rows.append({
+                        "subregion": sr,
+                        "sale_date": pd.Timestamp(curr_day),
+                        "sss": (c_sales - p_sales) / p_sales * 100,
+                    })
+        return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["subregion","sale_date","sss"])
 
-    _curr_sr      = _sr_sales_range(_chart_start, _chart_end)
-    _1yr_sr_start = _chart_start - timedelta(days=364)
-    _1yr_sr       = _sr_sales_range(_1yr_sr_start, _1yr_sr_start + timedelta(days=6))
-    _1yr_sr["sale_date"] = _1yr_sr["sale_date"] + pd.Timedelta(days=364)
-    _1yr_sr = _1yr_sr.rename(columns={"net_sales": "prior"})
-
-    _sss_sr = _curr_sr.merge(_1yr_sr[["sale_date","subregion","prior"]],
-                              on=["sale_date","subregion"], how="left")
-    _sss_sr["sss"] = (
-        (_sss_sr["net_sales"] - _sss_sr["prior"]) / _sss_sr["prior"] * 100
-    ).where(_sss_sr["prior"] > 0, other=float("nan"))
+    _sss_sr_df = _sr_sss_per_day(_days7)
     _sss_lookup = {
         (r.subregion, r.sale_date.date()): r.sss
-        for _, r in _sss_sr.iterrows()
-        if pd.notna(r.sale_date)
+        for _, r in _sss_sr_df.iterrows()
     }
 
     # ── Cell helpers ──────────────────────────────────────────────────────────────
@@ -1009,8 +1027,6 @@ with tab1:
             dp_s = ""
         sep = ' <span style="color:#d1d5db;font-size:8px;">|</span> ' if dt_s and dp_s else ""
         return dt_s + sep + dp_s
-
-    _days7 = [_chart_start + timedelta(days=i) for i in range(7)]
 
     # ── Build header row ──────────────────────────────────────────────────────────
     _th_base = (f'padding:7px 6px;font-size:10px;font-weight:700;color:{WHITE};'
