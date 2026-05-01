@@ -2,17 +2,17 @@
 scripts/fetch_google_reviews.py
 ===============================
 Fetches Google Maps reviews for all JM Valley Group stores via the
-Google Places API (Legacy) and stores them in the store_reviews table.
+Google Places API (New) and stores them in the store_reviews table.
 
-The Google Places API returns up to 5 most recent reviews per call.
-Run this daily to accumulate a growing review history over time — each
-new call captures any reviews posted since the last run.
+The Places API (New) returns up to 5 most recent reviews per call.
+Run daily to accumulate a growing review history — duplicates are skipped.
 
 Usage
 -----
   py scripts/fetch_google_reviews.py --discover   # find Google Place IDs (run once)
   py scripts/fetch_google_reviews.py --fetch      # pull latest reviews (run daily)
   py scripts/fetch_google_reviews.py --update     # alias for --fetch
+  py scripts/fetch_google_reviews.py --stats      # show DB summary
 
 API Key Setup
 -------------
@@ -23,20 +23,34 @@ Add your Google Places API key to .streamlit/secrets.toml:
 
 Or set environment variable:  GOOGLE_PLACES_API_KEY=AIzaSy...
 
-The key needs the "Places API" enabled in Google Cloud Console.
-Free tier: 5,000 Place Details calls/month (~$0 for our 29 stores running daily).
+Enable "Places API (New)" in Google Cloud Console.
+Pricing: ~$0.017/Place Details call → ~$15/month for 29 stores daily.
+Google's $200/month free credit covers this entirely.
+
+Places API (New) differences from Legacy
+-----------------------------------------
+- Base URL: https://places.googleapis.com/v1/
+- Auth via header X-Goog-Api-Key (not ?key= param)
+- Fields requested via header X-Goog-FieldMask
+- Text Search: POST /places:searchText  (JSON body)
+- Place Details: GET  /places/{place_id}
+- place_id stored as "id" (not "place_id") in search results
+- Reviews use publishTime (ISO 8601) not time (Unix epoch)
+- reviewer name at authorAttribution.displayName
+- review text at text.text
+- review count at userRatingCount (not user_ratings_total)
 """
 
 import os, sys, time, json, hashlib
 from datetime import date, datetime
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from urllib.parse import urlencode
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
+PLACES_NEW_BASE = "https://places.googleapis.com/v1"
 
 
 # ── API Key ───────────────────────────────────────────────────────────────────
@@ -58,7 +72,7 @@ def get_api_key():
     return os.environ.get("GOOGLE_PLACES_API_KEY", "").strip()
 
 
-# ── DB connection (same pattern as all other scripts) ─────────────────────────
+# ── DB connection ─────────────────────────────────────────────────────────────
 
 def get_conn():
     import psycopg2
@@ -114,21 +128,20 @@ CREATE_REVIEWS_PG = """
 CREATE TABLE IF NOT EXISTS store_reviews (
     id                SERIAL  PRIMARY KEY,
     store_id          TEXT    NOT NULL,
-    review_id         TEXT    NOT NULL UNIQUE,   -- sha1 hash of store+reviewer+time
+    review_id         TEXT    NOT NULL UNIQUE,
     platform          TEXT    NOT NULL DEFAULT 'google',
     reviewer_name     TEXT,
-    rating            INTEGER NOT NULL,           -- 1–5 stars
+    rating            INTEGER NOT NULL,
     review_text       TEXT,
-    review_date       DATE,                       -- from Unix timestamp in API
+    review_date       DATE,
     fetched_at        TIMESTAMP DEFAULT NOW(),
-    -- Phase 2: LLM topic classification (populated by classify_reviews.py)
-    topic_speed       INTEGER,    -- 1 if review mentions wait time / speed
-    topic_accuracy    INTEGER,    -- 1 if mentions order accuracy / wrong order
-    topic_staff       INTEGER,    -- 1 if mentions staff attitude / friendliness
-    topic_food        INTEGER,    -- 1 if mentions food quality / freshness
-    topic_cleanliness INTEGER,    -- 1 if mentions cleanliness / store condition
-    topic_online      INTEGER,    -- 1 if mentions app / online ordering / delivery
-    sentiment         TEXT,       -- 'positive', 'negative', 'neutral'
+    topic_speed       INTEGER,
+    topic_accuracy    INTEGER,
+    topic_staff       INTEGER,
+    topic_food        INTEGER,
+    topic_cleanliness INTEGER,
+    topic_online      INTEGER,
+    sentiment         TEXT,
     classified_at     TIMESTAMP
 )"""
 
@@ -136,23 +149,17 @@ CREATE_REVIEWS_SQLITE = CREATE_REVIEWS_PG.replace(
     "SERIAL  PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT"
 ).replace("DEFAULT NOW()", "DEFAULT CURRENT_TIMESTAMP")
 
-# Columns to add to the existing stores table
 STORES_NEW_COLS = [
-    ("google_place_id",       "TEXT"),      # Google Maps Place ID (e.g. ChIJ...)
-    ("google_rating",         "REAL"),      # current overall star rating
-    ("google_review_count",   "INTEGER"),   # total reviews on Google Maps
-    ("google_rating_updated", "TEXT"),      # ISO date of last rating refresh
+    ("google_place_id",       "TEXT"),
+    ("google_rating",         "REAL"),
+    ("google_review_count",   "INTEGER"),
+    ("google_rating_updated", "TEXT"),
 ]
 
 
 def create_tables(conn, dialect):
-    """Create store_reviews and patch stores table with google_* columns."""
     cur = conn.cursor()
-
-    # store_reviews
     cur.execute(CREATE_REVIEWS_PG if dialect == "postgres" else CREATE_REVIEWS_SQLITE)
-
-    # Add google_* columns to stores (idempotent)
     for col, dtype in STORES_NEW_COLS:
         if dialect == "postgres":
             cur.execute(f"ALTER TABLE stores ADD COLUMN IF NOT EXISTS {col} {dtype}")
@@ -161,81 +168,85 @@ def create_tables(conn, dialect):
                 cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
             except Exception:
                 conn.rollback()
-
     conn.commit()
     print("store_reviews table ready + stores.google_* columns ensured")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GOOGLE PLACES API HELPERS
+# PLACES API (NEW) HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def places_get(endpoint, params):
-    """GET https://maps.googleapis.com/maps/api/place/<endpoint>/json?..."""
-    url = f"{PLACES_BASE}/{endpoint}/json?{urlencode(params)}"
-    with urlopen(url, timeout=15) as resp:
-        return json.loads(resp.read())
+def _headers(api_key, field_mask):
+    return {
+        "Content-Type":    "application/json",
+        "X-Goog-Api-Key":  api_key,
+        "X-Goog-FieldMask": field_mask,
+    }
 
 
-def discover_place_id(store_id, address, api_key):
+def places_text_search(query, api_key):
     """
-    Use Places Text Search to find the Google Place ID for one store.
-    Query format: "Jersey Mike's <address>" — very reliable for chain locations.
-    Returns place_id string, or None if not found.
+    POST /v1/places:searchText
+    Returns list of place dicts from the 'places' array, or [].
+    Each place has: id, displayName.text, formattedAddress
     """
-    query = f"Jersey Mike's Subs {address}" if address else f"Jersey Mike's store {store_id}"
+    url  = f"{PLACES_NEW_BASE}/places:searchText"
+    body = json.dumps({
+        "textQuery":    query,
+        "includedType": "restaurant",
+        "maxResultCount": 5,
+    }).encode()
+    req = Request(url, data=body, method="POST",
+                  headers=_headers(api_key,
+                                   "places.id,places.displayName,places.formattedAddress"))
     try:
-        data = places_get("textsearch", {
-            "query": query,
-            "key":   api_key,
-            "type":  "restaurant",
-        })
-        results = data.get("results", [])
-        if not results:
-            print(f"  {store_id}: no results for '{query}'")
-            return None
-        place  = results[0]
-        pid    = place.get("place_id")
-        name   = place.get("name", "")
-        addr   = place.get("formatted_address", "")
-        print(f"  {store_id}: '{name}' at {addr} → {pid}")
-        return pid
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read()).get("places", [])
     except Exception as e:
-        print(f"  {store_id}: Text Search error — {e}")
+        print(f"  Text Search error: {e}")
+        return []
+
+
+def places_details(place_id, api_key):
+    """
+    GET /v1/places/{place_id}
+    Returns dict with: displayName, rating, userRatingCount, reviews[]
+    Each review has: rating, text.text, publishTime, authorAttribution.displayName
+    """
+    url = f"{PLACES_NEW_BASE}/places/{place_id}"
+    req = Request(url, method="GET",
+                  headers=_headers(api_key,
+                                   "displayName,rating,userRatingCount,reviews"))
+    try:
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        print(f"  Place Details error for {place_id}: {e}")
         return None
 
 
-def fetch_place_detail(place_id, api_key):
+def make_review_id(store_id, reviewer, publish_time):
     """
-    Fetch Place Details: name, rating, user_ratings_total, reviews (up to 5).
-    Returns the 'result' dict from the API, or None on error.
+    Stable 16-char unique ID: hash(store_id | reviewer | publish_time).
+    Uses publishTime string directly — no Unix epoch conversion needed.
     """
-    try:
-        data = places_get("details", {
-            "place_id":     place_id,
-            "fields":       "name,rating,user_ratings_total,reviews",
-            "key":          api_key,
-            "language":     "en",
-            "reviews_sort": "newest",
-        })
-        status = data.get("status")
-        if status != "OK":
-            print(f"  ⚠️  Places Details status: {status}")
-            return None
-        return data.get("result", {})
-    except Exception as e:
-        print(f"  ⚠️  Places Details error: {e}")
-        return None
-
-
-def make_review_id(store_id, reviewer, ts):
-    """
-    Generate a stable 16-char unique ID for a review.
-    Google's legacy API doesn't expose a native review ID, so we hash
-    (store_id, reviewer_name, unix_timestamp) which is effectively unique.
-    """
-    raw = f"{store_id}|{reviewer}|{ts}"
+    raw = f"{store_id}|{reviewer}|{publish_time}"
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def parse_publish_time(publish_time_str):
+    """Convert ISO 8601 publishTime → date object. Returns None on failure."""
+    if not publish_time_str:
+        return None
+    try:
+        # Format: "2024-03-15T18:42:00Z" or "2024-03-15T18:42:00.123456Z"
+        dt = datetime.fromisoformat(publish_time_str.replace("Z", "+00:00"))
+        return dt.date()
+    except Exception:
+        try:
+            return date.fromisoformat(publish_time_str[:10])
+        except Exception:
+            return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -244,17 +255,18 @@ def make_review_id(store_id, reviewer, ts):
 
 def upsert_review(cur, dialect, store_id, rev):
     """
-    Insert one review into store_reviews.  Skips silently if review_id
-    already exists (ON CONFLICT DO NOTHING / INSERT OR IGNORE).
+    Insert one review from the Places API (New) response into store_reviews.
+    Silently skips duplicates (ON CONFLICT DO NOTHING / INSERT OR IGNORE).
     Returns 1 if inserted, 0 if skipped.
     """
-    p  = "%s" if dialect == "postgres" else "?"
-    ts = rev.get("time", 0)
-    reviewer  = rev.get("author_name", "")
-    rid       = make_review_id(store_id, reviewer, ts)
-    rating    = rev.get("rating", 0)
-    text      = rev.get("text", "")
-    rev_date  = date.fromtimestamp(ts).isoformat() if ts else None
+    p = "%s" if dialect == "postgres" else "?"
+
+    publish_time = rev.get("publishTime", "")
+    reviewer     = (rev.get("authorAttribution") or {}).get("displayName", "")
+    rid          = make_review_id(store_id, reviewer, publish_time)
+    rating       = rev.get("rating", 0)
+    text         = (rev.get("text") or {}).get("text", "")
+    rev_date     = parse_publish_time(publish_time)
 
     if dialect == "postgres":
         sql = (
@@ -269,12 +281,13 @@ def upsert_review(cur, dialect, store_id, rev):
             f"    (store_id, review_id, platform, reviewer_name, rating, review_text, review_date) "
             f"VALUES ({p},{p},{p},{p},{p},{p},{p})"
         )
-    cur.execute(sql, (store_id, rid, "google", reviewer, rating, text, rev_date))
+    cur.execute(sql, (store_id, rid, "google", reviewer, rating, text,
+                      rev_date.isoformat() if rev_date else None))
     return cur.rowcount
 
 
 def update_store_meta(cur, dialect, store_id, rating, review_count):
-    """Refresh the google_rating + google_review_count snapshot on the store row."""
+    """Refresh google_rating + google_review_count snapshot on the store row."""
     p = "%s" if dialect == "postgres" else "?"
     today = date.today().isoformat()
     cur.execute(
@@ -288,13 +301,13 @@ def update_store_meta(cur, dialect, store_id, rating, review_count):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DISCOVER  (run once — maps store addresses → google_place_id)
+# DISCOVER  (run once — map store addresses → google_place_id)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def discover_all_place_ids():
     """
-    For every store without a google_place_id, call the Places Text Search
-    API to find one and save it.  Safe to re-run — skips stores already mapped.
+    For every store without a google_place_id, use Text Search to find one.
+    Saves place IDs back to the DB. Safe to re-run — skips already-mapped stores.
     """
     api_key = get_api_key()
     if not api_key:
@@ -306,7 +319,6 @@ def discover_all_place_ids():
     create_tables(conn, dialect)
     cur = conn.cursor()
 
-    # Load stores that still need a place_id
     try:
         cur.execute("""
             SELECT store_id, address
@@ -325,15 +337,29 @@ def discover_all_place_ids():
         conn.close()
         return
 
-    print(f"Discovering Place IDs for {len(stores)} stores…")
+    print(f"Discovering Place IDs for {len(stores)} stores via Places API (New)…")
     p = "%s" if dialect == "postgres" else "?"
     found = 0
 
     for store_id, address in stores:
         if not address:
-            print(f"  {store_id}: no address in DB — skipping (add address via update_stores.py first)")
+            print(f"  {store_id}: no address in DB — skipping")
             continue
-        pid = discover_place_id(store_id, address, api_key)
+
+        query   = f"Jersey Mike's Subs {address}"
+        results = places_text_search(query, api_key)
+
+        if not results:
+            print(f"  {store_id}: no results for '{query}'")
+            time.sleep(0.4)
+            continue
+
+        place = results[0]
+        pid   = place.get("id", "")
+        name  = (place.get("displayName") or {}).get("text", "")
+        addr  = place.get("formattedAddress", "")
+        print(f"  {store_id}: '{name}' — {addr} → {pid}")
+
         if pid:
             cur.execute(
                 f"UPDATE stores SET google_place_id = {p} WHERE store_id = {p}",
@@ -341,12 +367,13 @@ def discover_all_place_ids():
             )
             conn.commit()
             found += 1
-        time.sleep(0.35)   # stay well within the free quota
+
+        time.sleep(0.35)
 
     conn.close()
     print(f"\nDone — {found}/{len(stores)} stores now have a Google Place ID.")
     if found < len(stores):
-        print("  Stores with no address will need their google_place_id set manually.")
+        print("  Stores with no address need their google_place_id set manually:")
         print("  UPDATE stores SET google_place_id='ChIJ...' WHERE store_id='XXXXX';")
 
 
@@ -357,9 +384,9 @@ def discover_all_place_ids():
 def fetch_all_reviews(log=None):
     """
     For every store with a google_place_id, fetch the 5 most recent reviews
-    and upsert them into store_reviews.  Fully idempotent — duplicates skipped.
+    and upsert new ones into store_reviews. Fully idempotent.
 
-    `log` is an optional callable(str) for streaming output to a UI logger.
+    `log` is an optional callable(str) for streaming output to the UI.
     Falls back to print() if None.
     """
     def out(msg):
@@ -378,7 +405,6 @@ def fetch_all_reviews(log=None):
     create_tables(conn, dialect)
     cur = conn.cursor()
 
-    # Stores with a known Place ID
     cur.execute("""
         SELECT store_id, google_place_id
         FROM   stores
@@ -392,30 +418,29 @@ def fetch_all_reviews(log=None):
         conn.close()
         return 0, 0
 
-    out(f"Fetching reviews for {len(stores)} stores…")
-    total_new   = 0
+    out(f"Fetching reviews for {len(stores)} stores via Places API (New)…")
+    total_new    = 0
     total_stores = 0
 
     for store_id, place_id in stores:
-        result = fetch_place_detail(place_id, api_key)
+        result = places_details(place_id, api_key)
         if result is None:
             out(f"  {store_id}: ⚠️  no data returned")
             time.sleep(0.5)
             continue
 
         rating       = result.get("rating")
-        review_count = result.get("user_ratings_total")
+        review_count = result.get("userRatingCount")   # New API uses userRatingCount
         reviews      = result.get("reviews") or []
 
-        # Update the star-rating snapshot on the store row
         if rating is not None:
             update_store_meta(cur, dialect, store_id, rating, review_count)
 
         new_count = sum(upsert_review(cur, dialect, store_id, r) for r in reviews)
-        total_new   += new_count
+        total_new    += new_count
         total_stores += 1
 
-        stars = f"★{rating:.1f}" if rating else "★?"
+        stars     = f"★{rating:.1f}" if rating else "★?"
         total_str = f"{review_count:,}" if review_count else "?"
         out(f"  {store_id}: {stars}  {total_str} total on Google  +{new_count} new in DB")
 
@@ -428,7 +453,7 @@ def fetch_all_reviews(log=None):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SUMMARY STATS  (used by Update Data page status display)
+# SUMMARY STATS  (used by Update Data page)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_review_stats(conn, dialect):
@@ -439,18 +464,18 @@ def get_review_stats(conn, dialect):
     """
     cur = conn.cursor()
     stats = {
-        "total_reviews":       0,
-        "latest_review_date":  None,
-        "stores_with_reviews": 0,
+        "total_reviews":        0,
+        "latest_review_date":   None,
+        "stores_with_reviews":  0,
         "stores_with_place_id": 0,
-        "avg_rating":          None,
+        "avg_rating":           None,
     }
+
     try:
-        cur.execute("""
-            SELECT COUNT(*), MAX(review_date), COUNT(DISTINCT store_id),
-                   ROUND(AVG(rating::numeric), 2)
-            FROM store_reviews
-        """)
+        cur.execute(
+            "SELECT COUNT(*), MAX(review_date), COUNT(DISTINCT store_id), "
+            "ROUND(AVG(CAST(rating AS REAL)), 2) FROM store_reviews"
+        )
         row = cur.fetchone()
         if row:
             stats["total_reviews"]       = row[0] or 0
@@ -460,19 +485,6 @@ def get_review_stats(conn, dialect):
     except Exception:
         try:
             conn.rollback()
-        except Exception:
-            pass
-        try:
-            cur.execute(
-                "SELECT COUNT(*), MAX(review_date), COUNT(DISTINCT store_id), "
-                "ROUND(AVG(CAST(rating AS REAL)), 2) FROM store_reviews"
-            )
-            row = cur.fetchone()
-            if row:
-                stats["total_reviews"]       = row[0] or 0
-                stats["latest_review_date"]  = row[1]
-                stats["stores_with_reviews"] = row[2] or 0
-                stats["avg_rating"]          = row[3]
         except Exception:
             pass
 
@@ -501,11 +513,11 @@ if __name__ == "__main__":
     args = set(sys.argv[1:])
 
     if "--discover" in args:
-        print("=== Discover Google Place IDs (run once) ===")
+        print("=== Discover Google Place IDs (Places API New) ===")
         discover_all_place_ids()
 
     elif "--fetch" in args or "--update" in args:
-        print("=== Fetch Google Reviews ===")
+        print("=== Fetch Google Reviews (Places API New) ===")
         fetch_all_reviews()
 
     elif "--stats" in args:
@@ -513,15 +525,15 @@ if __name__ == "__main__":
         create_tables(conn, dialect)
         s = get_review_stats(conn, dialect)
         conn.close()
-        print(f"Total reviews:    {s['total_reviews']:,}")
-        print(f"Latest review:    {s['latest_review_date'] or '—'}")
-        print(f"Stores w/ reviews:{s['stores_with_reviews']}")
-        print(f"Stores w/ PlaceID:{s['stores_with_place_id']}")
-        print(f"Avg rating:       {s['avg_rating'] or '—'}")
+        print(f"Total reviews      : {s['total_reviews']:,}")
+        print(f"Latest review date : {s['latest_review_date'] or '—'}")
+        print(f"Stores w/ reviews  : {s['stores_with_reviews']}")
+        print(f"Stores w/ Place ID : {s['stores_with_place_id']}")
+        print(f"Avg rating         : {s['avg_rating'] or '—'}")
 
     else:
         print("Usage:")
-        print("  py scripts/fetch_google_reviews.py --discover   # find Place IDs (run once per store)")
+        print("  py scripts/fetch_google_reviews.py --discover   # map store addresses → Place IDs")
         print("  py scripts/fetch_google_reviews.py --fetch      # pull latest reviews (run daily)")
         print("  py scripts/fetch_google_reviews.py --update     # alias for --fetch")
         print("  py scripts/fetch_google_reviews.py --stats      # show DB summary")
