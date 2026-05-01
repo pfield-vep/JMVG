@@ -163,16 +163,43 @@ STORES_NEW_COLS = [
 
 
 def create_tables(conn, dialect):
+    """
+    Create store_reviews and add google_* columns to stores.
+    Uses SET LOCAL statement_timeout = 0 so PgBouncer can't cancel the
+    ALTER TABLE — SET LOCAL applies for the duration of this transaction
+    and actually reaches Postgres even in PgBouncer transaction mode.
+    Also checks information_schema before each ALTER to avoid grabbing an
+    exclusive table lock when the column already exists.
+    """
     cur = conn.cursor()
+
+    if dialect == "postgres":
+        # This reaches Postgres even through PgBouncer's transaction mode.
+        # 'options' in the connection string is stripped by the pooler;
+        # SET LOCAL inside a transaction is not.
+        cur.execute("SET LOCAL statement_timeout = 0")
+
     cur.execute(CREATE_REVIEWS_PG if dialect == "postgres" else CREATE_REVIEWS_SQLITE)
+
     for col, dtype in STORES_NEW_COLS:
         if dialect == "postgres":
-            cur.execute(f"ALTER TABLE stores ADD COLUMN IF NOT EXISTS {col} {dtype}")
+            # Check column existence first — avoids an AccessExclusiveLock
+            # on stores when the column is already there (normal after first run).
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'stores' "
+                "AND column_name = %s",
+                (col,)
+            )
+            if not cur.fetchone():
+                print(f"  + Adding column stores.{col}…")
+                cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
         else:
             try:
                 cur.execute(f"ALTER TABLE stores ADD COLUMN {col} {dtype}")
             except Exception:
                 conn.rollback()
+
     conn.commit()
     print("store_reviews table ready + stores.google_* columns ensured")
 
@@ -327,8 +354,16 @@ def discover_all_place_ids():
 
     # ── Phase 1: Read stores from DB, then close immediately ─────────────────
     conn, dialect = get_conn()
-    create_tables(conn, dialect)
+
     cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'store_reviews'"
+    )
+    if not cur.fetchone():
+        print("First run — creating schema…")
+        create_tables(conn, dialect)
+
     try:
         cur.execute("""
             SELECT store_id, address
@@ -434,8 +469,20 @@ def fetch_all_reviews(log=None):
 
     # ── Phase 1: Read store list from DB, then close immediately ─────────────
     conn, dialect = get_conn()
-    create_tables(conn, dialect)
+
+    # Only run schema migration if store_reviews doesn't exist yet.
+    # On normal daily runs the table is already there — skipping the migration
+    # avoids any ALTER TABLE locking entirely.
     cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'store_reviews'"
+    )
+    needs_migration = not cur.fetchone()
+    if needs_migration:
+        out("First run — creating schema…")
+        create_tables(conn, dialect)
+
     cur.execute("""
         SELECT store_id, google_place_id
         FROM   stores
