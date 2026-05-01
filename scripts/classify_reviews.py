@@ -147,16 +147,15 @@ def get_api_key():
 
 # ── Classify a batch via Anthropic API ───────────────────────────────────────
 
-def classify_batch(reviews, api_key):
+def _call_api(reviews, api_key):
     """
-    Send a batch of review texts to Claude Haiku.
-    Returns list of classification dicts (same length as reviews).
-    Raises on unrecoverable error.
+    Single API call for a list of reviews.
+    Returns parsed list of dicts, or raises on error / count mismatch.
     """
     import urllib.request, urllib.error
 
     numbered = "\n\n".join(
-        f"[{i+1}] {r['text'][:1500]}"   # cap at 1500 chars per review
+        f"[{i+1}] {r['text'][:1500]}"
         for i, r in enumerate(reviews)
     )
     user_msg = f"Classify these {len(reviews)} reviews:\n\n{numbered}"
@@ -179,20 +178,33 @@ def classify_batch(reviews, api_key):
         },
     )
 
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        body = json.loads(resp.read())
+    raw = body["content"][0]["text"].strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    results = json.loads(raw)
+    if not isinstance(results, list) or len(results) != len(reviews):
+        raise ValueError(f"Expected {len(reviews)} results, got {len(results)}")
+    return results
+
+
+def classify_batch(reviews, api_key):
+    """
+    Classify a batch of reviews with automatic fallback on count mismatch:
+      1. Try the full batch (up to MAX_RETRIES times).
+      2. If it consistently returns the wrong count, split into halves and
+         classify each half separately.
+      3. If a half still fails, fall back to one-at-a-time for that half.
+    This handles reviews with special characters or content that confuses
+    the model's counting without losing any reviews.
+    """
+    import urllib.error
+
+    # ── Attempt full batch first ──────────────────────────────────────────────
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                body = json.loads(resp.read())
-            raw = body["content"][0]["text"].strip()
-            # Strip markdown code fences if present
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            results = json.loads(raw)
-            if not isinstance(results, list) or len(results) != len(reviews):
-                raise ValueError(
-                    f"Expected {len(reviews)} results, got {len(results)}"
-                )
-            return results
+            return _call_api(reviews, api_key)
         except urllib.error.HTTPError as e:
             body = e.read().decode(errors="replace")
             if e.code == 429 or e.code >= 500:
@@ -207,6 +219,44 @@ def classify_batch(reviews, api_key):
                 wait = RETRY_DELAY * attempt
                 print(f"  ⚠️  Error ({e}) — retrying in {wait}s...")
                 time.sleep(wait)
+
+    # ── Full batch failed — split into halves ─────────────────────────────────
+    if len(reviews) == 1:
+        # Can't split further — return a blank result so we don't lose the row
+        print(f"  ⚠️  Single review failed all retries — using blank classification")
+        return [{
+            "topic_speed": None, "topic_accuracy": None, "topic_staff": None,
+            "topic_food": None, "topic_cleanliness": None, "topic_online": None,
+            "topic_value": None, "sentiment": "neutral", "flag_needs_response": False,
+        }]
+
+    print(f"  ↳ Splitting batch of {len(reviews)} into halves...")
+    mid = len(reviews) // 2
+    left  = _classify_with_fallback(reviews[:mid], api_key)
+    right = _classify_with_fallback(reviews[mid:], api_key)
+    return left + right
+
+
+def _classify_with_fallback(reviews, api_key):
+    """Classify a sub-batch, falling back to halves then one-at-a-time."""
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return _call_api(reviews, api_key)
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY)
+
+    if len(reviews) == 1:
+        print(f"  ⚠️  Single review failed — using blank classification")
+        return [{
+            "topic_speed": None, "topic_accuracy": None, "topic_staff": None,
+            "topic_food": None, "topic_cleanliness": None, "topic_online": None,
+            "topic_value": None, "sentiment": "neutral", "flag_needs_response": False,
+        }]
+
+    mid = len(reviews) // 2
+    return (_classify_with_fallback(reviews[:mid], api_key) +
+            _classify_with_fallback(reviews[mid:], api_key))
                 continue
             raise
 
