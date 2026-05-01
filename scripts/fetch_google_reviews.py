@@ -332,15 +332,26 @@ def upsert_review(cur, dialect, store_id, rev):
     Insert one review from the Places API (New) response into store_reviews.
     Silently skips duplicates (ON CONFLICT DO NOTHING / INSERT OR IGNORE).
     Returns 1 if inserted, 0 if skipped.
+
+    Uses Google's native review ID (extracted from the 'name' field) so that
+    deduplication matches Outscraper-loaded records which also use Google's IDs.
+    Falls back to a computed hash if the name field is absent.
     """
     p = "%s" if dialect == "postgres" else "?"
 
     publish_time = rev.get("publishTime", "")
     reviewer     = (rev.get("authorAttribution") or {}).get("displayName", "")
-    rid          = make_review_id(store_id, reviewer, publish_time)
     rating       = rev.get("rating", 0)
     text         = (rev.get("text") or {}).get("text", "")
     rev_date     = parse_publish_time(publish_time)
+
+    # Prefer Google's native review ID from the 'name' field
+    # Format: "places/{place_id}/reviews/{review_id}"
+    name_field = rev.get("name", "")
+    if name_field and "/reviews/" in name_field:
+        rid = name_field.split("/reviews/")[-1]
+    else:
+        rid = make_review_id(store_id, reviewer, publish_time)
 
     if dialect == "postgres":
         sql = (
