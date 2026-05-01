@@ -749,9 +749,9 @@ with tab1:
     """, unsafe_allow_html=True)
     
     # ── Daily SSS Trend (always last 7 days, independent of period toggle) ────────
-    # _SR_COL_W must match the Sub-Region column width in the attribution table below
-    # so that the 7 day bars align with the 7 day columns in the table.
-    _SR_COL_W = 150  # px
+    # _SR_COL_W = sub-region label (150px) + legend column (72px)
+    # Chart margin.l is set to this combined width so bars align with day columns.
+    _SR_COL_W = 222  # px  (150 label + 72 legend)
     PLOTLY_LAYOUT = dict(
         plot_bgcolor=WHITE, paper_bgcolor=WHITE,
         font=dict(family="Arial, sans-serif", size=12, color=TEXT),
@@ -853,6 +853,15 @@ with tab1:
     }
     _SR_ORDER = ['Valley','Conejo','Mountains','Santa Barbara','Inland Riverside','Inland SD']
 
+    # Store counts per sub-region
+    _sr_counts = {}
+    for _sid, _srn in _SR_MAP.items():
+        _sr_counts[_srn] = _sr_counts.get(_srn, 0) + 1
+
+    # Column widths (must sum to _SR_COL_W so day columns align with chart bars)
+    _LABEL_W  = 150  # sub-region name column
+    _LEGEND_W = 72   # how-to-read column
+
     @st.cache_data(ttl=300)
     def load_weather_by_store_7d(start_str, end_str):
         conn, dialect = get_conn()
@@ -870,20 +879,34 @@ with tab1:
             conn.close()
             return pd.DataFrame()
 
-    _wx7 = load_weather_by_store_7d(str(_chart_start), str(_chart_end))
+    def _agg_wx_by_sr(raw_df, sr_map):
+        """Aggregate per-store weather → per-subregion, return lookup dict keyed (sr, date)."""
+        if raw_df.empty:
+            return {}
+        raw_df = raw_df.copy()
+        raw_df["subregion"] = raw_df["store_id"].map(sr_map)
+        agg = (raw_df[raw_df["subregion"].notna()]
+               .groupby(["subregion","date"])
+               .agg(temp=("temp_max_f","mean"),
+                    precip=("precip_in","mean"),
+                    rainy=("is_rainy","max"))
+               .reset_index())
+        return {(r.subregion, r.date.date()): r for _, r in agg.iterrows()}
 
-    # Aggregate weather per sub-region per day
-    if not _wx7.empty:
-        _wx7["subregion"] = _wx7["store_id"].map(_SR_MAP)
-        _wx_sr = (_wx7[_wx7["subregion"].notna()]
-                  .groupby(["subregion","date"])
-                  .agg(temp=("temp_max_f","mean"),
-                       precip=("precip_in","mean"),
-                       rainy=("is_rainy","max"))
-                  .reset_index())
-        _wx_lookup = {(r.subregion, r.date.date()): r for _, r in _wx_sr.iterrows()}
-    else:
-        _wx_lookup = {}
+    # Current 7-day window weather + prior-year window (364 days back)
+    _wx7_curr  = load_weather_by_store_7d(str(_chart_start), str(_chart_end))
+    _1yr_wx_s  = _chart_start - timedelta(days=364)
+    _1yr_wx_e  = _chart_end   - timedelta(days=364)
+    _wx7_prior = load_weather_by_store_7d(str(_1yr_wx_s), str(_1yr_wx_e))
+
+    _wx_lookup = _agg_wx_by_sr(_wx7_curr, _SR_MAP)
+
+    # Build prior-year lookup keyed to CURRENT dates (shift +364 days)
+    _wx_prior_raw = _agg_wx_by_sr(_wx7_prior, _SR_MAP)
+    _wx_prior_lookup = {
+        (sr, d + timedelta(days=364)): row
+        for (sr, d), row in _wx_prior_raw.items()
+    }
 
     # SSS% per sub-region per day (use already-loaded _comp_data)
     _comp_sr = _comp_data.copy()
@@ -894,9 +917,9 @@ with tab1:
         sub = _comp_sr[_comp_sr["sale_date"].dt.date.between(d_start, d_end)]
         return sub.groupby(["sale_date","subregion"])["net_sales"].sum().reset_index()
 
-    _curr_sr = _sr_sales_range(_chart_start, _chart_end)
+    _curr_sr      = _sr_sales_range(_chart_start, _chart_end)
     _1yr_sr_start = _chart_start - timedelta(days=364)
-    _1yr_sr = _sr_sales_range(_1yr_sr_start, _1yr_sr_start + timedelta(days=6))
+    _1yr_sr       = _sr_sales_range(_1yr_sr_start, _1yr_sr_start + timedelta(days=6))
     _1yr_sr["sale_date"] = _1yr_sr["sale_date"] + pd.Timedelta(days=364)
     _1yr_sr = _1yr_sr.rename(columns={"net_sales": "prior"})
 
@@ -911,7 +934,7 @@ with tab1:
         if pd.notna(r.sale_date)
     }
 
-    # Helpers
+    # ── Cell helpers ──────────────────────────────────────────────────────────────
     def _wx_icon_sr(r):
         if r is None: return "—"
         if pd.notna(r.rainy) and r.rainy >= 0.5: return "🌧️"
@@ -935,44 +958,86 @@ with tab1:
         if v is None or (isinstance(v, float) and pd.isna(v)): return MUTED
         return GREEN if v >= 0 else DANGER
 
+    def _fmt_delta(curr_r, prior_r):
+        """Return (temp_delta_html, precip_delta_html) strings."""
+        # Temp delta
+        if (curr_r is not None and prior_r is not None
+                and pd.notna(curr_r.temp) and pd.notna(prior_r.temp)):
+            dt = curr_r.temp - prior_r.temp
+            dt_clr = "#ea580c" if dt > 3 else ("#3b82f6" if dt < -3 else MUTED)
+            dt_s = f'<span style="color:{dt_clr};font-size:9px;">{dt:+.0f}°</span>'
+        else:
+            dt_s = ""
+        # Precip delta
+        if (curr_r is not None and prior_r is not None
+                and pd.notna(curr_r.precip) and pd.notna(prior_r.precip)):
+            dp = curr_r.precip - prior_r.precip
+            if abs(dp) >= 0.01:
+                dp_clr = "#3b82f6" if dp > 0.02 else ("#d97706" if dp < -0.02 else MUTED)
+                dp_s = f'<span style="color:{dp_clr};font-size:9px;">{dp:+.2f}"</span>'
+            else:
+                dp_s = ""
+        else:
+            dp_s = ""
+        sep = ' <span style="color:#d1d5db;font-size:8px;">|</span> ' if dt_s and dp_s else ""
+        return dt_s + sep + dp_s
+
     _days7 = [_chart_start + timedelta(days=i) for i in range(7)]
 
-    # Header row
-    _hdr = (f'<th style="width:{_SR_COL_W}px;min-width:{_SR_COL_W}px;max-width:{_SR_COL_W}px;'
-            f'padding:7px 10px;text-align:left;font-size:10px;font-weight:700;'
-            f'color:{WHITE};text-transform:uppercase;letter-spacing:0.5px;'
-            f'white-space:nowrap;border-right:1px solid rgba(255,255,255,0.2);">Sub-Region</th>')
+    # ── Build header row ──────────────────────────────────────────────────────────
+    _th_base = (f'padding:7px 6px;font-size:10px;font-weight:700;color:{WHITE};'
+                f'border-right:1px solid rgba(255,255,255,0.2);')
+    _hdr = (
+        f'<th style="width:{_LABEL_W}px;min-width:{_LABEL_W}px;{_th_base}'
+        f'text-align:left;padding-left:10px;white-space:nowrap;">Sub-Region</th>'
+        f'<th style="width:{_LEGEND_W}px;min-width:{_LEGEND_W}px;{_th_base}'
+        f'text-align:left;font-style:italic;opacity:0.75;">How to read</th>'
+    )
     for _d in _days7:
-        _hdr += (f'<th style="text-align:center;padding:7px 6px;font-size:10px;font-weight:700;'
-                 f'color:{WHITE};border-right:1px solid rgba(255,255,255,0.2);white-space:nowrap;">'
+        _hdr += (f'<th style="text-align:center;{_th_base}white-space:nowrap;min-width:68px;">'
                  f'{_d.strftime("%a")}<br/>{_d.strftime("%b %d")}</th>')
 
-    # Data rows
+    # ── Build data rows ───────────────────────────────────────────────────────────
+    _legend_td = (
+        f'<td style="width:{_LEGEND_W}px;min-width:{_LEGEND_W}px;padding:5px 6px;'
+        f'border-right:1px solid {BORDER};border-top:1px solid {BORDER};'
+        f'background:{LIGHT};vertical-align:middle;text-align:left;">'
+        f'<div style="font-size:9px;color:{MUTED};line-height:1.8;white-space:nowrap;">'
+        f'🌡 Cond / Hi<br/>Δ vs yr ago<br/>SSS% (1yr)'
+        f'</div></td>'
+    )
+
     _body = ""
     for _sr in _SR_ORDER:
-        _cells = (f'<td style="width:{_SR_COL_W}px;min-width:{_SR_COL_W}px;max-width:{_SR_COL_W}px;'
-                  f'padding:6px 10px;font-size:11px;font-weight:700;color:{TEXT};'
-                  f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
-                  f'border-right:1px solid {BORDER};'
-                  f'border-top:1px solid {BORDER};background:{LIGHT};">{_sr}</td>')
+        _n = _sr_counts.get(_sr, 0)
+        _label_td = (
+            f'<td style="width:{_LABEL_W}px;min-width:{_LABEL_W}px;max-width:{_LABEL_W}px;'
+            f'padding:6px 10px;border-right:1px solid {BORDER};'
+            f'border-top:1px solid {BORDER};background:{LIGHT};vertical-align:middle;">'
+            f'<div style="font-size:11px;font-weight:700;color:{TEXT};white-space:nowrap;">{_sr}</div>'
+            f'<div style="font-size:9px;color:{MUTED};margin-top:1px;">n={_n} stores</div>'
+            f'</td>'
+        )
+        _cells = _label_td + _legend_td
+
         for _d in _days7:
             _wr  = _wx_lookup.get((_sr, _d))
+            _wpr = _wx_prior_lookup.get((_sr, _d))
             _sv  = _sss_lookup.get((_sr, _d))
             _ico = _wx_icon_sr(_wr)
             _tmp = f"{_wr.temp:.0f}°" if _wr is not None and pd.notna(_wr.temp) else "—"
-            _prc = (f'{_wr.precip:.2f}"' if _wr is not None
-                    and pd.notna(_wr.precip) and _wr.precip > 0.01 else "")
+            _prc = (f'<span style="color:#3b82f6;font-size:9px;">&nbsp;{_wr.precip:.2f}"</span>'
+                    if _wr is not None and pd.notna(_wr.precip) and _wr.precip > 0.01 else "")
+            _delta_html = _fmt_delta(_wr, _wpr)
             _bg  = _cell_bg(_sv)
             _ss  = f"{_sv:+.1f}%" if _sv is not None and not (isinstance(_sv, float) and pd.isna(_sv)) else "—"
             _sc  = _sss_clr(_sv)
-            _prc_html = (f'&nbsp;<span style="color:#3b82f6;font-size:9px;">{_prc}</span>'
-                         if _prc else "")
             _cells += (
                 f'<td style="text-align:center;padding:5px 4px;background:{_bg};'
                 f'border-right:1px solid {BORDER};border-top:1px solid {BORDER};min-width:68px;">'
-                f'<div style="font-size:17px;line-height:1.1;">{_ico}</div>'
-                f'<div style="font-size:10px;color:{MUTED};line-height:1.3;">'
-                f'{_tmp}{_prc_html}</div>'
+                f'<div style="font-size:16px;line-height:1.1;">{_ico}&nbsp;'
+                f'<span style="font-size:10px;color:{MUTED};">{_tmp}{_prc}</span></div>'
+                f'<div style="font-size:9px;line-height:1.4;min-height:14px;">{_delta_html}</div>'
                 f'<div style="font-size:12px;font-weight:700;color:{_sc};margin-top:1px;">{_ss}</div>'
                 f'</td>'
             )
@@ -988,13 +1053,12 @@ with tab1:
           🌡️ Weather × SSS Attribution — Last 7 Days</span>
         <span style="font-size:10px;color:rgba(255,255,255,0.7);">
           Cell color = SSS% vs. prior year &nbsp;·&nbsp;
-          🔥 ≥90° &nbsp;☀️ 80-89° &nbsp;🌤️ 68-79° &nbsp;⛅ 55-67° &nbsp;❄️ &lt;55° &nbsp;🌧️ rain</span>
+          🔥 ≥90° &nbsp;☀️ 80-89° &nbsp;🌤️ 68-79° &nbsp;⛅ 55-67° &nbsp;❄️ &lt;55° &nbsp;🌧️ rain
+          &nbsp;·&nbsp; Δ = change vs. same week 1yr ago</span>
       </div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="background:{BLUE};">{_hdr}</tr>
-          </thead>
+          <thead><tr style="background:{BLUE};">{_hdr}</tr></thead>
           <tbody>{_body}</tbody>
         </table>
       </div>
