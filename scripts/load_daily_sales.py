@@ -114,14 +114,14 @@ def upsert_rows(conn, dialect, df):
                  lunch_sales, dinner_sales, morning_sales)
             VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})
             ON CONFLICT (store_id, sale_date) DO UPDATE SET
-                net_sales          = EXCLUDED.net_sales,
-                total_transactions = EXCLUDED.total_transactions,
-                walkin_sales       = EXCLUDED.walkin_sales,
-                online_sales       = EXCLUDED.online_sales,
-                third_party_sales  = EXCLUDED.third_party_sales,
-                lunch_sales        = EXCLUDED.lunch_sales,
-                dinner_sales       = EXCLUDED.dinner_sales,
-                morning_sales      = EXCLUDED.morning_sales
+                net_sales          = COALESCE(daily_sales.net_sales,          EXCLUDED.net_sales),
+                total_transactions = COALESCE(daily_sales.total_transactions, EXCLUDED.total_transactions),
+                walkin_sales       = COALESCE(daily_sales.walkin_sales,       EXCLUDED.walkin_sales),
+                online_sales       = COALESCE(daily_sales.online_sales,       EXCLUDED.online_sales),
+                third_party_sales  = COALESCE(daily_sales.third_party_sales,  EXCLUDED.third_party_sales),
+                lunch_sales        = COALESCE(daily_sales.lunch_sales,        EXCLUDED.lunch_sales),
+                dinner_sales       = COALESCE(daily_sales.dinner_sales,       EXCLUDED.dinner_sales),
+                morning_sales      = COALESCE(daily_sales.morning_sales,      EXCLUDED.morning_sales)
         """
     else:
         sql = f"""

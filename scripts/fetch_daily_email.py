@@ -199,22 +199,18 @@ def main():
 
     for fname, xl_bytes in xlsx_files.items():
         print(f"\n── Daily sales: {fname} ({len(xl_bytes):,} bytes)")
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT MAX(sale_date) FROM daily_sales")
-            row = cur.fetchone()
-            latest_ds = pd.to_datetime(row[0]).date() if row and row[0] else None
-        except Exception:
-            latest_ds = None
-
         df_ds = ds_parse(io.BytesIO(xl_bytes))
         total_rows = len(df_ds)
-        if latest_ds:
-            df_ds = df_ds[df_ds["Date"].dt.date > latest_ds]
-            print(f"  Latest in DB: {latest_ds} → {len(df_ds):,} new rows "
-                  f"(skipped {total_rows - len(df_ds):,})")
-        else:
-            print(f"  Full load: {total_rows:,} rows")
+
+        # Always process the last 5 days from the email so that stores whose
+        # data arrived late (NULL fields on a prior run) get backfilled.
+        # Rows older than 5 days that are already fully loaded are skipped by
+        # the NULL-preserving upsert — no data is ever overwritten.
+        from datetime import timedelta
+        cutoff = df_ds["Date"].max().date() - timedelta(days=4)
+        df_ds = df_ds[df_ds["Date"].dt.date >= cutoff]
+        print(f"  Processing last 5 days ({cutoff} → {df_ds['Date'].max().date()}): "
+              f"{len(df_ds):,} rows ({total_rows - len(df_ds):,} older rows skipped)")
 
         if not df_ds.empty:
             n = ds_upsert(conn, dialect, df_ds)
