@@ -51,7 +51,7 @@ STORE_NAMES = {
 def get_market(store_id):
     if store_id in SAN_DIEGO_IDS:     return "San Diego"
     if store_id in SANTA_BARBARA_IDS: return "Santa Barbara"
-    return "Los Angeles"
+    return "LA - San Fernando Valley"
 
 # ── DB connection ──────────────────────────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jerseymikes.db")
@@ -87,7 +87,7 @@ def load_dm_store_map():
             g = str(geo or "").strip()
             if "San Diego" in g:                 return "San Diego"
             if "Santa Barbara" in g or "San Luis" in g: return "Santa Barbara"
-            return "Los Angeles"
+            return "LA - San Fernando Valley"
 
         def _first(name):
             return str(name or "").strip().split()[0]
@@ -717,9 +717,11 @@ with tab1:
         _n_stores = r["stores"] if r["stores"] else 1
         auv_val  = (r["net_sales"] / _n_stores / days) * 364 if r["net_sales"] else None
         auv_str  = fmt_dollar(auv_val) if auv_val else "—"
+        _n_label = (f"&nbsp;<span style='font-size:9px;font-weight:400;color:#6B7280;'>"
+                    f"n={r['stores']}</span>") if not is_total else ""
         return (
             f"<tr>"
-            f"<td>{r['market']}</td>"
+            f"<td>{r['market']}{_n_label}</td>"
             f"<td class='{sss_cls}'>{fmt_pct(r['sss_pct'])}</td>"
             f"<td class='{sst_cls}'>{fmt_pct(r['sst_pct'])}</td>"
             f"<td>{auv_str}</td>"
@@ -727,7 +729,6 @@ with tab1:
             f"<td>{avg_t}</td>"
             f"<td>{online}</td>"
             f"<td>{thirdp}</td>"
-            f"<td style='text-align:center'>{r['stores']}</td>"
             f"<td style='text-align:center'>{r['comp_count']}</td>"
             f"</tr>"
         )
@@ -740,7 +741,6 @@ with tab1:
         <th>Market</th><th>SSS%</th><th>SST%</th>
         <th>AUV</th><th>Total Sales</th><th>Avg Ticket</th>
         <th>Online%</th><th>3P%</th>
-        <th style="text-align:center">Stores</th>
         <th style="text-align:center">Comps</th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
