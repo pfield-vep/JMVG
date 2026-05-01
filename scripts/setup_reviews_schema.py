@@ -16,9 +16,15 @@ sys.path.insert(0, ROOT)
 
 def get_direct_conn():
     """
-    Connect to Supabase using the DIRECT host (db.<ref>.supabase.co)
-    instead of the pooler (*.pooler.supabase.com).
-    The direct connection has no statement_timeout or lock_timeout limits.
+    Connect to Supabase using the DIRECT host (no pooler).
+    Reads 'direct_host' from secrets.toml if set; otherwise falls back to
+    the pooler with autocommit=True and a best-effort statement_timeout=0.
+
+    To set direct_host: Supabase dashboard → Settings → Database →
+    Connection string → Direct connection tab → copy the Host field.
+    Add to .streamlit/secrets.toml:
+        [supabase]
+        direct_host = "aws-0-us-east-1.aws.neon.tech"  (or whatever it shows)
     """
     secrets_path = os.path.join(ROOT, ".streamlit", "secrets.toml")
     try:
@@ -30,35 +36,48 @@ def get_direct_conn():
         cfg = tomllib.load(f)
 
     s = cfg["supabase"]
-    pooler_host = s["host"]   # e.g. aws-0-us-east-1.pooler.supabase.com
-
-    # Derive the direct host from the user string: postgres.<project_ref>
-    # Direct host format: db.<project_ref>.supabase.co
-    user = s["user"]          # e.g. postgres.duxaqruvgggftxndubpn
-    project_ref = user.split(".")[-1] if "." in user else None
-
-    if project_ref:
-        direct_host = f"db.{project_ref}.supabase.co"
-        print(f"Pooler host : {pooler_host}")
-        print(f"Direct host : {direct_host}  ← using this")
-    else:
-        # Fallback: swap pooler host → direct host heuristically
-        direct_host = pooler_host.replace("pooler.supabase.com", "supabase.co")
-        if not direct_host.startswith("db."):
-            direct_host = pooler_host   # give up and use pooler
-        print(f"Using host  : {direct_host}")
+    pooler_host = s["host"]
+    direct_host = s.get("direct_host", "").strip()
 
     import psycopg2
+
+    # ── Try explicit direct_host from secrets.toml first ─────────────────────
+    if direct_host:
+        print(f"Pooler host : {pooler_host}")
+        print(f"Direct host : {direct_host}  ← using this (from secrets.toml)")
+        # Direct connection uses plain 'postgres' user (not postgres.<ref>)
+        conn = psycopg2.connect(
+            host=direct_host,
+            port=5432,
+            dbname=s["dbname"],
+            user="postgres",
+            password=s["password"],
+            sslmode="require",
+            connect_timeout=30,
+        )
+        conn.autocommit = True   # each DDL statement is its own transaction
+        return conn
+
+    # ── Fallback: pooler with autocommit + no timeout ─────────────────────────
+    # autocommit=True means each statement is its own implicit transaction —
+    # no long-running transaction to trigger pooler timeouts.
+    print(f"No direct_host in secrets.toml — using pooler with autocommit")
+    print(f"  (Add direct_host to secrets.toml for a more reliable connection)")
     conn = psycopg2.connect(
-        host=direct_host,
-        port=5432,
+        host=pooler_host,
+        port=int(s["port"]),
         dbname=s["dbname"],
-        user="postgres",          # direct connection uses plain 'postgres'
+        user=s["user"],
         password=s["password"],
         sslmode="require",
         connect_timeout=30,
     )
-    conn.autocommit = False
+    conn.autocommit = True
+    cur = conn.cursor()
+    try:
+        cur.execute("SET statement_timeout = 0")
+    except Exception:
+        pass
     return conn
 
 
@@ -126,12 +145,16 @@ def main():
         print(f"  {label}… ", end="", flush=True)
         try:
             cur.execute(sql)
-            conn.commit()
             print("✓")
         except Exception as e:
-            conn.rollback()
-            all_ok = False
-            print(f"✗  {e}")
+            # "already exists" / "duplicate column" errors are fine — schema
+            # was already applied, just keep going.
+            msg = str(e).strip().splitlines()[0]
+            if "already exists" in msg or "duplicate column" in msg.lower():
+                print(f"✓  (already exists)")
+            else:
+                all_ok = False
+                print(f"✗  {msg}")
 
     conn.close()
 
