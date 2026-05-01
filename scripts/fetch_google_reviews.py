@@ -308,6 +308,11 @@ def discover_all_place_ids():
     """
     For every store without a google_place_id, use Text Search to find one.
     Saves place IDs back to the DB. Safe to re-run — skips already-mapped stores.
+
+    Pattern: read DB → CLOSE connection → call Google for all stores →
+             reconnect → write all results in one fast batch.
+    This avoids Supabase pooler statement timeouts that occur when a connection
+    sits idle during API calls and sleeps.
     """
     api_key = get_api_key()
     if not api_key:
@@ -315,10 +320,10 @@ def discover_all_place_ids():
         print("    Add to .streamlit/secrets.toml:  [google] / places_api_key = 'AIza...'")
         return
 
+    # ── Phase 1: Read stores from DB, then close immediately ─────────────────
     conn, dialect = get_conn()
     create_tables(conn, dialect)
     cur = conn.cursor()
-
     try:
         cur.execute("""
             SELECT store_id, address
@@ -331,15 +336,16 @@ def discover_all_place_ids():
         print(f"❌  Could not query stores: {e}")
         conn.close()
         return
+    conn.close()   # close before any API calls
 
     if not stores:
         print("✓  All stores already have a Google Place ID.")
-        conn.close()
         return
 
     print(f"Discovering Place IDs for {len(stores)} stores via Places API (New)…")
-    p = "%s" if dialect == "postgres" else "?"
-    found = 0
+
+    # ── Phase 2: Call Google API with NO DB connection open ───────────────────
+    results_map = {}   # store_id → (place_id, name, formatted_address)
 
     for store_id, address in stores:
         if not address:
@@ -361,20 +367,36 @@ def discover_all_place_ids():
         print(f"  {store_id}: '{name}' — {addr} → {pid}")
 
         if pid:
-            cur.execute(
-                f"UPDATE stores SET google_place_id = {p} WHERE store_id = {p}",
-                (pid, store_id)
-            )
-            conn.commit()
-            found += 1
+            results_map[store_id] = (pid, name, addr)
 
         time.sleep(0.35)
 
+    if not results_map:
+        print("\nNo Place IDs found — check addresses in the stores table.")
+        return
+
+    # ── Phase 3: Reconnect and write all results in one fast batch ────────────
+    print(f"\nSaving {len(results_map)} Place IDs to database…")
+    conn, dialect = get_conn()
+    cur  = conn.cursor()
+    p    = "%s" if dialect == "postgres" else "?"
+    found = 0
+
+    for store_id, (pid, name, addr) in results_map.items():
+        cur.execute(
+            f"UPDATE stores SET google_place_id = {p} WHERE store_id = {p}",
+            (pid, store_id)
+        )
+        found += cur.rowcount
+
+    conn.commit()
     conn.close()
-    print(f"\nDone — {found}/{len(stores)} stores now have a Google Place ID.")
-    if found < len(stores):
-        print("  Stores with no address need their google_place_id set manually:")
-        print("  UPDATE stores SET google_place_id='ChIJ...' WHERE store_id='XXXXX';")
+
+    print(f"Done — {found}/{len(stores)} stores now have a Google Place ID.")
+    skipped = len(stores) - len(results_map)
+    if skipped > 0:
+        print(f"  {skipped} store(s) had no address or no Google match.")
+        print("  Set manually:  UPDATE stores SET google_place_id='ChIJ...' WHERE store_id='XXXXX';")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -385,6 +407,10 @@ def fetch_all_reviews(log=None):
     """
     For every store with a google_place_id, fetch the 5 most recent reviews
     and upsert new ones into store_reviews. Fully idempotent.
+
+    Pattern: read store list → CLOSE connection → call Google for all stores →
+             reconnect → write everything in one fast batch.
+    Avoids Supabase pooler timeouts from a connection sitting idle during API calls.
 
     `log` is an optional callable(str) for streaming output to the UI.
     Falls back to print() if None.
@@ -401,10 +427,10 @@ def fetch_all_reviews(log=None):
         out("    Add to .streamlit/secrets.toml:  [google] / places_api_key = 'AIza...'")
         return 0, 0
 
+    # ── Phase 1: Read store list from DB, then close immediately ─────────────
     conn, dialect = get_conn()
     create_tables(conn, dialect)
     cur = conn.cursor()
-
     cur.execute("""
         SELECT store_id, google_place_id
         FROM   stores
@@ -412,15 +438,17 @@ def fetch_all_reviews(log=None):
         ORDER  BY store_id
     """)
     stores = cur.fetchall()
+    conn.close()   # close before any API calls
 
     if not stores:
         out("No stores have a Google Place ID yet — run --discover first.")
-        conn.close()
         return 0, 0
 
     out(f"Fetching reviews for {len(stores)} stores via Places API (New)…")
-    total_new    = 0
-    total_stores = 0
+
+    # ── Phase 2: Call Google API with NO DB connection open ───────────────────
+    # Collect all results in memory before touching the DB again.
+    api_results = []   # list of (store_id, rating, review_count, reviews[])
 
     for store_id, place_id in stores:
         result = places_details(place_id, api_key)
@@ -430,24 +458,39 @@ def fetch_all_reviews(log=None):
             continue
 
         rating       = result.get("rating")
-        review_count = result.get("userRatingCount")   # New API uses userRatingCount
+        review_count = result.get("userRatingCount")
         reviews      = result.get("reviews") or []
 
+        stars     = f"★{rating:.1f}" if rating else "★?"
+        total_str = f"{review_count:,}" if review_count else "?"
+        out(f"  {store_id}: {stars}  {total_str} total on Google  {len(reviews)} reviews fetched")
+
+        api_results.append((store_id, rating, review_count, reviews))
+        time.sleep(0.3)
+
+    if not api_results:
+        out("No data returned from Google — nothing to write.")
+        return 0, 0
+
+    # ── Phase 3: Reconnect and write everything in one fast batch ─────────────
+    out(f"\nWriting results to database…")
+    conn, dialect = get_conn()
+    cur = conn.cursor()
+    total_new    = 0
+    total_stores = 0
+
+    for store_id, rating, review_count, reviews in api_results:
         if rating is not None:
             update_store_meta(cur, dialect, store_id, rating, review_count)
 
         new_count = sum(upsert_review(cur, dialect, store_id, r) for r in reviews)
         total_new    += new_count
         total_stores += 1
+        out(f"  {store_id}: +{new_count} new review(s) stored")
 
-        stars     = f"★{rating:.1f}" if rating else "★?"
-        total_str = f"{review_count:,}" if review_count else "?"
-        out(f"  {store_id}: {stars}  {total_str} total on Google  +{new_count} new in DB")
-
-        conn.commit()
-        time.sleep(0.3)
-
+    conn.commit()
     conn.close()
+
     out(f"\nDone — {total_new} new reviews stored across {total_stores} stores.")
     return total_new, total_stores
 
