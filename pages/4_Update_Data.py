@@ -91,7 +91,9 @@ def get_conn():
         conn = psycopg2.connect(
             host=s["host"], port=int(s["port"]),
             dbname=s["dbname"], user=s["user"],
-            password=s["password"], sslmode="require"
+            password=s["password"], sslmode="require",
+            connect_timeout=10,
+            options="-c statement_timeout=8000",
         )
         return conn, "postgres"
     except Exception:
@@ -107,7 +109,9 @@ def fresh_conn():
         conn = psycopg2.connect(
             host=s["host"], port=int(s["port"]),
             dbname=s["dbname"], user=s["user"],
-            password=s["password"], sslmode="require"
+            password=s["password"], sslmode="require",
+            connect_timeout=10,
+            options="-c statement_timeout=8000",
         )
         return conn, "postgres"
     except Exception:
@@ -132,7 +136,12 @@ class StLogger:
     def result_text(self): return "\n".join(self.lines)
 
 # ── Status summary ────────────────────────────────────────────────────────────
-def show_status(conn, dialect):
+def show_status(_conn, _dialect):
+    """Open a fresh connection for status queries so failures never corrupt the cache."""
+    try:
+        conn, dialect = fresh_conn()
+    except Exception:
+        conn, dialect = _conn, _dialect
     p = "%s" if dialect == "postgres" else "?"
     cur = conn.cursor()
 
@@ -224,6 +233,12 @@ def show_status(conn, dialect):
         with st.expander("📋 Recently processed files", expanded=False):
             for fname, ts in recent:
                 st.markdown(f"- `{fname}` — {ts}")
+
+    # Close the fresh connection we opened for status queries
+    try:
+        conn.close()
+    except Exception:
+        pass
 
 # ── JM email fetch & parse ────────────────────────────────────────────────────
 def fetch_jm_from_email(log: StLogger):
