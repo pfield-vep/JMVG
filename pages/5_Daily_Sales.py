@@ -749,13 +749,16 @@ with tab1:
     """, unsafe_allow_html=True)
     
     # ── Daily SSS Trend (always last 7 days, independent of period toggle) ────────
+    # _SR_COL_W must match the Sub-Region column width in the attribution table below
+    # so that the 7 day bars align with the 7 day columns in the table.
+    _SR_COL_W = 150  # px
     PLOTLY_LAYOUT = dict(
         plot_bgcolor=WHITE, paper_bgcolor=WHITE,
         font=dict(family="Arial, sans-serif", size=12, color=TEXT),
         dragmode=False,
         modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
                               "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
-        margin=dict(l=20, r=20, t=40, b=80),
+        margin=dict(l=_SR_COL_W, r=20, t=40, b=80),
         legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
                     font=dict(size=11), orientation="h",
                     yanchor="top", y=-0.25, xanchor="center", x=0.5),
@@ -935,7 +938,8 @@ with tab1:
     _days7 = [_chart_start + timedelta(days=i) for i in range(7)]
 
     # Header row
-    _hdr = (f'<th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;'
+    _hdr = (f'<th style="width:{_SR_COL_W}px;min-width:{_SR_COL_W}px;max-width:{_SR_COL_W}px;'
+            f'padding:7px 10px;text-align:left;font-size:10px;font-weight:700;'
             f'color:{WHITE};text-transform:uppercase;letter-spacing:0.5px;'
             f'white-space:nowrap;border-right:1px solid rgba(255,255,255,0.2);">Sub-Region</th>')
     for _d in _days7:
@@ -946,8 +950,10 @@ with tab1:
     # Data rows
     _body = ""
     for _sr in _SR_ORDER:
-        _cells = (f'<td style="padding:6px 10px;font-size:11px;font-weight:700;color:{TEXT};'
-                  f'white-space:nowrap;border-right:1px solid {BORDER};'
+        _cells = (f'<td style="width:{_SR_COL_W}px;min-width:{_SR_COL_W}px;max-width:{_SR_COL_W}px;'
+                  f'padding:6px 10px;font-size:11px;font-weight:700;color:{TEXT};'
+                  f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+                  f'border-right:1px solid {BORDER};'
                   f'border-top:1px solid {BORDER};background:{LIGHT};">{_sr}</td>')
         for _d in _days7:
             _wr  = _wx_lookup.get((_sr, _d))
