@@ -660,41 +660,60 @@ with tab_ins:
                 st.caption(f"Showing first 50 of {len(df_filtered):,}. Apply region filter to narrow down.")
 
     else:
-        # ── Default view: no topic selected — show quick summary ───────────────
+        # ── Default view: no topic selected ────────────────────────────────────
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         sc1, sc2 = st.columns(2)
+
+        store_complaints = (
+            df_ins[df_ins["sentiment"].isin(["negative","mixed"])]
+            .groupby("store_name")["id"].count()
+            .sort_values(ascending=False)
+            .head(12)
+        )
+        max_sc = store_complaints.max() if not store_complaints.empty else 1
 
         with sc1:
             st.markdown(
                 f"<div class='section-hdr'>🏪 Stores With Most Complaints</div>",
                 unsafe_allow_html=True
             )
-            store_complaints = (
-                df_ins[df_ins["sentiment"].isin(["negative","mixed"])]
-                .groupby("store_name")["id"].count()
-                .sort_values(ascending=False)
-                .head(10)
-            )
-            if not store_complaints.empty:
-                fig_sc = go.Figure(go.Bar(
-                    x=store_complaints.values,
-                    y=store_complaints.index,
-                    orientation="h",
-                    marker_color=RED,
-                    text=store_complaints.values,
-                    textposition="outside",
-                ))
-                fig_sc.update_layout(
-                    height=280, margin=dict(l=0, r=40, t=10, b=10),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    xaxis=dict(showgrid=False, showticklabels=False),
-                    yaxis=dict(autorange="reversed"),
-                    dragmode=False,
-                )
-                fig_sc.update_layout(modebar_remove=[
-                    "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
-                ])
-                st.plotly_chart(fig_sc, use_container_width=True, key="store_complaints")
+            for sname, cnt in store_complaints.items():
+                is_sel_s  = (st.session_state.ins_store == sname)
+                any_sel_s = st.session_state.ins_store is not None
+                pct       = cnt / max_sc * 100
+                bg        = f"{RED}dd" if is_sel_s else RED
+                opacity   = "1" if (not any_sel_s or is_sel_s) else "0.35"
+                fw        = "700" if is_sel_s else "500"
+
+                row_l, row_r = st.columns([11, 1])
+                with row_l:
+                    st.markdown(f"""
+                    <div style="background:{'#fff1f1' if is_sel_s else 'white'};
+                                border:1px solid {'#fca5a5' if is_sel_s else BORDER};
+                                border-radius:8px;padding:8px 14px;
+                                margin-bottom:2px;opacity:{opacity};">
+                      <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="font-weight:{fw};font-size:13px;color:{TEXT};
+                                    min-width:110px;white-space:nowrap;">{sname}</div>
+                        <div style="flex:1;background:#F3F4F6;border-radius:4px;
+                                    height:9px;overflow:hidden;">
+                          <div style="width:{pct:.1f}%;background:{bg};
+                                      height:9px;border-radius:4px;"></div>
+                        </div>
+                        <div style="font-weight:700;font-size:13px;color:{RED};
+                                    min-width:24px;text-align:right;">{cnt}</div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with row_r:
+                    if st.button(
+                        "✕" if is_sel_s else "→",
+                        key=f"dsbtn_{sname}",
+                        type="primary" if is_sel_s else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state.ins_store = None if is_sel_s else sname
+                        st.rerun()
 
         with sc2:
             st.markdown(
@@ -702,7 +721,8 @@ with tab_ins:
                 unsafe_allow_html=True
             )
             sent_counts = df_ins["sentiment"].value_counts()
-            colors_map  = {"positive": GREEN, "negative": DANGER, "mixed": AMBER, "neutral": MUTED}
+            colors_map  = {"positive": GREEN, "negative": DANGER,
+                           "mixed": AMBER, "neutral": MUTED}
             fig_sent = go.Figure(go.Pie(
                 labels=sent_counts.index,
                 values=sent_counts.values,
@@ -713,20 +733,79 @@ with tab_ins:
             ))
             fig_sent.update_layout(
                 height=280, margin=dict(l=0, r=0, t=10, b=10),
-                paper_bgcolor="white",
-                showlegend=False,
-                dragmode=False,
+                paper_bgcolor="white", showlegend=False, dragmode=False,
             )
             fig_sent.update_layout(modebar_remove=[
                 "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
             ])
             st.plotly_chart(fig_sent, use_container_width=True, key="sent_donut")
 
-        st.markdown(
-            f"<div style='text-align:center;color:{MUTED};font-size:13px;padding:8px 0;'>"
-            f"👆 Click a bar in the charts above to drill into specific reviews</div>",
-            unsafe_allow_html=True
-        )
+        # ── Store-selected reviews (default view) ──────────────────────────────
+        if st.session_state.ins_store:
+            sname = st.session_state.ins_store
+            st.markdown(
+                f"<div class='section-hdr' style='margin-top:16px;'>"
+                f"Negative &amp; Mixed Reviews — {sname}</div>",
+                unsafe_allow_html=True
+            )
+            df_store_revs = (
+                df_ins[
+                    (df_ins["store_name"] == sname) &
+                    (df_ins["sentiment"].isin(["negative","mixed"]))
+                ]
+                .sort_values("review_date", ascending=False)
+            )
+            st.caption(f"{len(df_store_revs):,} reviews")
+            for _, rev in df_store_revs.head(30).iterrows():
+                rating    = rev.get("rating")
+                star_str  = ("★"*int(rating)+"☆"*(5-int(rating))) if rating else "—"
+                reviewer  = rev.get("reviewer_name") or "Anonymous"
+                rev_date  = (rev["review_date"].strftime("%b %d, %Y")
+                             if pd.notna(rev.get("review_date")) else "—")
+                text      = rev.get("review_text") or ""
+                sentiment = (rev.get("sentiment") or "neutral").lower()
+                sc_       = sent_color(sentiment)
+                low_topics = []
+                for t in TOPICS:
+                    v = rev.get(t)
+                    if v is not None and not pd.isna(v) and float(v) <= 2:
+                        low_topics.append(
+                            f"<span style='background:{DANGER}18;color:{DANGER};"
+                            f"border-radius:4px;padding:2px 5px;font-size:11px;"
+                            f"font-weight:600;margin-right:4px;'>"
+                            f"{TOPIC_LABELS[t]} {v:.0f}</span>"
+                        )
+                st.markdown(f"""
+                <div style="background:white;border:1px solid {BORDER};
+                            border-left:4px solid {DANGER};
+                            border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+                  <div style="display:flex;justify-content:space-between;
+                              flex-wrap:wrap;gap:4px;">
+                    <div>
+                      <span style="color:{STAR};font-size:12px;">{star_str}</span>
+                      <span style="color:{MUTED};font-size:11px;margin-left:6px;">
+                        {reviewer} · {rev_date}
+                      </span>
+                    </div>
+                    <span style="background:{sc_};color:white;border-radius:12px;
+                                 padding:2px 8px;font-size:11px;font-weight:600;
+                                 text-transform:capitalize;">{sentiment}</span>
+                  </div>
+                  <div style="margin-top:7px;font-size:13px;color:#374151;
+                              line-height:1.5;">
+                    {(text[:300]+"…") if len(text)>300 else text}
+                  </div>
+                  {"<div style='margin-top:6px;'>"+"".join(low_topics)+"</div>"
+                   if low_topics else ""}
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='text-align:center;color:{MUTED};font-size:13px;"
+                f"padding:12px 0;'>👆 Click → next to a store to see its reviews, "
+                f"or select a topic above to drill in</div>",
+                unsafe_allow_html=True
+            )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
