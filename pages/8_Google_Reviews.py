@@ -286,15 +286,33 @@ with tab_ins:
         st.info("No classified reviews yet. Run `py scripts/classify_reviews.py` to classify.")
         st.stop()
 
-    # ── Region filter ──────────────────────────────────────────────────────────
-    rc1, rc2 = st.columns([2,4])
+    # ── Filters ────────────────────────────────────────────────────────────────
+    rc1, rc2 = st.columns([2, 2])
     with rc1:
         ins_region = st.selectbox(
-            "Filter region", ["All Regions"] + SUBREGION_ORDER, key="ins_region"
+            "Region", ["All Regions"] + SUBREGION_ORDER, key="ins_region"
         )
+    with rc2:
+        PERIOD_OPTIONS = {
+            "Last 30 days": 30, "Last 60 days": 60,
+            "Last 90 days": 90, "All time": None,
+        }
+        ins_period = st.selectbox(
+            "Time period", list(PERIOD_OPTIONS.keys()),
+            index=0, key="ins_period"
+        )
+    days = PERIOD_OPTIONS[ins_period]
+
     df_ins = df_cls.copy()
     if ins_region != "All Regions":
         df_ins = df_ins[df_ins["subregion"] == ins_region]
+    if days:
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
+        df_ins = df_ins[df_ins["review_date"] >= cutoff]
+
+    if df_ins.empty:
+        st.info(f"No classified reviews in the last {days} days for this region.")
+        st.stop()
 
     # ── Build topic complaint / praise counts ──────────────────────────────────
     complaint_counts, praise_counts, mention_counts = {}, {}, {}
@@ -310,54 +328,46 @@ with tab_ins:
     c_vals         = [complaint_counts[l] for l in sorted_labels]
     p_vals         = [praise_counts[l]    for l in sorted_labels]
 
-    # ── Two-chart row (visual only) ────────────────────────────────────────────
-    ch1, ch2 = st.columns(2)
-
-    def _bar_chart(labels, values, bar_color, selected_label):
-        opacities = [
-            1.0 if selected_label is None or l == selected_label else 0.3
-            for l in labels
-        ]
-        fig = go.Figure(go.Bar(
-            x=values, y=labels, orientation="h",
-            marker=dict(color=bar_color, opacity=opacities),
-            text=[str(v) if v > 0 else "" for v in values],
-            textposition="outside",
-            hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
-        ))
-        fig.update_layout(
-            height=240,
-            margin=dict(l=0, r=40, t=10, b=10),
-            plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(showgrid=False, showticklabels=False),
-            yaxis=dict(gridcolor=BORDER, autorange="reversed"),
-            dragmode=False,
-        )
-        fig.update_layout(modebar_remove=[
-            "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
-        ])
-        st.plotly_chart(fig, use_container_width=True)
-
+    # ── Topic rows: bar + button inline ───────────────────────────────────────
     praise_sorted = sorted(praise_counts, key=lambda x: praise_counts[x], reverse=True)
-    p_vals_sorted = [praise_counts[l] for l in praise_sorted]
 
-    with ch1:
-        st.markdown(f"<div class='section-hdr'>🔴 Top Complaint Areas</div>",
-                    unsafe_allow_html=True)
-        _bar_chart(
-            sorted_labels, c_vals, DANGER,
-            st.session_state.ins_topic if st.session_state.ins_mode=="complaint" else None
-        )
-        # Clickable topic buttons below chart
-        btn_cols = st.columns(len(sorted_labels))
-        for i, label in enumerate(sorted_labels):
-            cnt = complaint_counts[label]
+    def _topic_rows(labels, counts, mode, bar_color):
+        max_cnt = max(counts.values()) if any(counts.values()) else 1
+        for label in labels:
+            cnt = counts[label]
+            pct = cnt / max_cnt * 100 if max_cnt > 0 else 0
             is_sel = (st.session_state.ins_topic == label
-                      and st.session_state.ins_mode == "complaint")
-            with btn_cols[i]:
+                      and st.session_state.ins_mode == mode)
+            any_sel = st.session_state.ins_topic is not None
+
+            bg      = f"{bar_color}12" if is_sel else "white"
+            border  = f"1px solid {bar_color}80" if is_sel else f"1px solid {BORDER}"
+            opacity = "1" if (is_sel or not any_sel) else "0.45"
+            name_w  = "700" if is_sel else "500"
+
+            row_l, row_r = st.columns([11, 1])
+            with row_l:
+                st.markdown(f"""
+                <div style="background:{bg};border:{border};border-radius:8px;
+                            padding:9px 14px;margin-bottom:2px;opacity:{opacity};">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="font-weight:{name_w};font-size:13px;color:{TEXT};
+                                min-width:90px;white-space:nowrap;">{label}</div>
+                    <div style="flex:1;background:#F3F4F6;border-radius:4px;height:9px;
+                                overflow:hidden;">
+                      <div style="width:{pct:.1f}%;background:{bar_color};
+                                  height:9px;border-radius:4px;
+                                  transition:width .3s;"></div>
+                    </div>
+                    <div style="font-weight:700;font-size:14px;color:{bar_color};
+                                min-width:32px;text-align:right;">{cnt}</div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+            with row_r:
                 if st.button(
-                    f"**{label}**\n{cnt}",
-                    key=f"cbtn_{label}",
+                    "✕" if is_sel else "→",
+                    key=f"btn_{mode}_{label}",
                     type="primary" if is_sel else "secondary",
                     use_container_width=True,
                 ):
@@ -366,37 +376,20 @@ with tab_ins:
                         st.session_state.ins_phrase = None
                     else:
                         st.session_state.ins_topic  = label
-                        st.session_state.ins_mode   = "complaint"
+                        st.session_state.ins_mode   = mode
                         st.session_state.ins_phrase = None
                     st.rerun()
+
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        st.markdown(f"<div class='section-hdr'>🔴 Top Complaint Areas</div>",
+                    unsafe_allow_html=True)
+        _topic_rows(sorted_labels, complaint_counts, "complaint", DANGER)
 
     with ch2:
         st.markdown(f"<div class='section-hdr'>🟢 Top Praise Areas</div>",
                     unsafe_allow_html=True)
-        _bar_chart(
-            praise_sorted, p_vals_sorted, GREEN,
-            st.session_state.ins_topic if st.session_state.ins_mode=="praise" else None
-        )
-        btn_cols2 = st.columns(len(praise_sorted))
-        for i, label in enumerate(praise_sorted):
-            cnt = praise_counts[label]
-            is_sel = (st.session_state.ins_topic == label
-                      and st.session_state.ins_mode == "praise")
-            with btn_cols2[i]:
-                if st.button(
-                    f"**{label}**\n{cnt}",
-                    key=f"pbtn_{label}",
-                    type="primary" if is_sel else "secondary",
-                    use_container_width=True,
-                ):
-                    if is_sel:
-                        st.session_state.ins_topic  = None
-                        st.session_state.ins_phrase = None
-                    else:
-                        st.session_state.ins_topic  = label
-                        st.session_state.ins_mode   = "praise"
-                        st.session_state.ins_phrase = None
-                    st.rerun()
+        _topic_rows(praise_sorted, praise_counts, "praise", GREEN)
 
     # ── Active filter banner ───────────────────────────────────────────────────
     sel_topic  = st.session_state.ins_topic
