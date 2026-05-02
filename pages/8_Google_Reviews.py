@@ -384,7 +384,7 @@ with tab_ins:
 
         # Handle bar click — only fires on actual user interaction
         if ev.selection and ev.selection.points:
-            clicked = ev.selection.points[0].y
+            clicked = ev.selection.points[0]["y"]
             st.session_state.pfig_ver += 1          # reset chart next render
             if clicked == sel_topic and sel_mode == mode:
                 st.session_state.ins_topic  = None  # toggle off
@@ -502,7 +502,7 @@ with tab_ins:
                     key=f"pfig_sv_{ver}",
                 )
                 if ev_sv.selection and ev_sv.selection.points:
-                    clicked_store = ev_sv.selection.points[0].x
+                    clicked_store = ev_sv.selection.points[0]["x"]
                     st.session_state.pfig_ver += 1
                     st.session_state.ins_store = (
                         None if clicked_store == sel_store else clicked_store
@@ -579,7 +579,7 @@ with tab_ins:
                     key=f"pfig_ph_{ver}",
                 )
                 if ev_ph.selection and ev_ph.selection.points:
-                    clicked_phrase = ev_ph.selection.points[0].y
+                    clicked_phrase = ev_ph.selection.points[0]["y"]
                     st.session_state.pfig_ver += 1
                     st.session_state.ins_phrase = (
                         None if clicked_phrase == sel_phrase else clicked_phrase
@@ -741,7 +741,7 @@ with tab_ins:
                 key=f"pfig_sc_{ver}",
             )
             if ev_sc.selection and ev_sc.selection.points:
-                clicked_store = ev_sc.selection.points[0].y
+                clicked_store = ev_sc.selection.points[0]["y"]
                 st.session_state.pfig_ver += 1
                 st.session_state.ins_store = (
                     None if clicked_store == st.session_state.ins_store
