@@ -124,7 +124,6 @@ def load_reviews():
     df["store_name"] = df["store_id"].map(STORE_NAMES).fillna(df["store_id"])
     df["subregion"]  = df["store_id"].map(SUBREGION_MAP).fillna("Other")
     df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce")
-    df.attrs["has_tags"] = has_tags
     return df
 
 
@@ -224,7 +223,10 @@ with st.spinner("Loading reviews…"):
         st.stop()
 
 df_cls   = df_all[df_all["classified_at"].notna()].copy()
-has_tags = df_all.attrs.get("has_tags", False) and df_cls["complaint_tags"].notna().any()
+has_tags = (
+    "complaint_tags" in df_cls.columns
+    and df_cls["complaint_tags"].notna().any()
+)
 
 
 # ── KPI strip ──────────────────────────────────────────────────────────────────
