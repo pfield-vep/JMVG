@@ -28,33 +28,58 @@ st.markdown(f"""
 
     .top-bar {{
         display: flex; justify-content: flex-end; align-items: center;
-        padding: 14px 8px 6px 8px;
+        padding: 14px 8px 8px 8px;
     }}
     .top-bar img {{ height: 52px; width: auto; }}
 
+    /* ── Card base styles ── */
     a[data-testid="stPageLink-NavLink"] {{
         display: flex !important; flex-direction: column !important;
         align-items: center !important; justify-content: center !important;
         background: {BLUE} !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 18px !important;
-        min-height: 160px !important;
-        padding: 28px 32px !important;
+        min-height: 140px !important;
+        padding: 24px 20px !important;
         text-decoration: none !important;
         transition: all 0.25s ease !important;
         cursor: pointer !important;
     }}
     a[data-testid="stPageLink-NavLink"]:hover {{
         border-color: rgba(238,50,39,0.5) !important;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 20px rgba(238,50,39,0.1) !important;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 20px rgba(238,50,39,0.12) !important;
         transform: translateY(-4px) !important;
         background: #0d3a5e !important;
     }}
     a[data-testid="stPageLink-NavLink"] p {{
-        color: {WHITE} !important; font-size: 1.45em !important;
+        color: {WHITE} !important; font-size: 1.35em !important;
         font-weight: 700 !important; text-align: center !important;
         font-family: Arial, sans-serif !important;
         margin: 0 !important; line-height: 1.3 !important;
+    }}
+
+    /* ── Mobile: stack columns into 2-wide grid ── */
+    @media (max-width: 768px) {{
+        /* Row 1 spacers: hide them */
+        [data-testid="stHorizontalBlock"]:nth-of-type(1) > [data-testid="stColumn"]:nth-child(odd) {{
+            display: none !important;
+        }}
+        /* All columns go 2-up */
+        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
+            min-width: 45% !important;
+            flex: 1 1 45% !important;
+        }}
+        [data-testid="stHorizontalBlock"] {{
+            flex-wrap: wrap !important;
+            gap: 12px !important;
+        }}
+        a[data-testid="stPageLink-NavLink"] {{
+            min-height: 110px !important;
+            padding: 18px 12px !important;
+        }}
+        a[data-testid="stPageLink-NavLink"] p {{
+            font-size: 1.1em !important;
+        }}
     }}
 </style>
 
@@ -63,24 +88,22 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Row 1: Primary dashboards (4 across) ──────────────────────────────────────
-_, c1, sp, c2, sp2, c3, sp3, c4, _ = st.columns([0.3, 3, 0.35, 3, 0.35, 3, 0.35, 3, 0.3])
+# ── Row 1: Four primary dashboards ────────────────────────────────────────────
+c1, c2, c3, c4 = st.columns(4, gap="medium")
 with c1:
-    st.page_link("pages/5_Daily_Sales.py",     label="📊  Daily Sales",     use_container_width=True)
+    st.page_link("pages/5_Daily_Sales.py",        label="📊  Daily Sales",        use_container_width=True)
 with c2:
-    st.page_link("pages/7_Hourly_Heatmap.py",  label="🕐  Hourly Heatmap",  use_container_width=True)
+    st.page_link("pages/7_Hourly_Heatmap.py",     label="🕐  Hourly Heatmap",     use_container_width=True)
 with c3:
-    st.page_link("pages/6_Weather_Impact.py",  label="🌤️  Weather Impact",  use_container_width=True)
+    st.page_link("pages/6_Weather_Impact.py",     label="🌤️  Weather Impact",     use_container_width=True)
 with c4:
     st.page_link("pages/2_Balanced_Scorecard.py", label="🎯  Balanced Scorecard", use_container_width=True)
 
-st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-# ── Row 2: Supporting dashboards ──────────────────────────────────────────────
-_, c5, sp4, c6, sp5, c7, _ = st.columns([0.5, 3, 0.4, 3, 0.4, 3, 0.5])
+# ── Row 2: Two secondary dashboards ───────────────────────────────────────────
+_, c5, gap, c6, _ = st.columns([1, 3, 0.4, 3, 1], gap="small")
 with c5:
-    st.page_link("pages/1_SSS_Dashboard.py", label="📈  Same Store Sales",  use_container_width=True)
+    st.page_link("pages/1_SSS_Dashboard.py",  label="📈  Same Store Sales", use_container_width=True)
 with c6:
-    st.page_link("pages/3_Data_Export.py",   label="📥  Data Export",       use_container_width=True)
-with c7:
-    st.page_link("pages/4_Update_Data.py",   label="🔄  Update Weekly Data", use_container_width=True)
+    st.page_link("pages/8_Google_Reviews.py", label="⭐  Google Reviews",   use_container_width=True)
