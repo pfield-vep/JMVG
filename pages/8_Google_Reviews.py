@@ -471,7 +471,8 @@ with tab_ins:
                     with scols[i]:
                         st.markdown(f"""
                         <div style="display:flex;flex-direction:column;
-                                    align-items:center;opacity:{opacity};">
+                                    align-items:center;opacity:{opacity};
+                                    height:{MAX_H + 24}px;justify-content:flex-end;">
                           <div style="font-size:11px;font-weight:700;
                                       color:{lc};margin-bottom:3px;">{cnt}</div>
                           <div style="width:80%;height:{bar_h}px;background:{bg};
