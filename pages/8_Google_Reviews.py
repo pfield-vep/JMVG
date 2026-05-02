@@ -266,6 +266,7 @@ st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 if "ins_topic"   not in st.session_state: st.session_state.ins_topic   = None
 if "ins_mode"    not in st.session_state: st.session_state.ins_mode    = "complaint"
 if "ins_phrase"  not in st.session_state: st.session_state.ins_phrase  = None
+if "ins_store"   not in st.session_state: st.session_state.ins_store   = None
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -374,10 +375,12 @@ with tab_ins:
                     if is_sel:
                         st.session_state.ins_topic  = None
                         st.session_state.ins_phrase = None
+                        st.session_state.ins_store  = None
                     else:
                         st.session_state.ins_topic  = label
                         st.session_state.ins_mode   = mode
                         st.session_state.ins_phrase = None
+                        st.session_state.ins_store  = None
                     st.rerun()
 
     ch1, ch2 = st.columns(2)
@@ -405,11 +408,12 @@ with tab_ins:
 
         banner_col, clear_col = st.columns([6,1])
         with banner_col:
+            store_part  = f" · <b>{st.session_state.ins_store}</b>" if st.session_state.ins_store else ""
             phrase_part = f" → <b>{sel_phrase}</b>" if sel_phrase else ""
             st.markdown(
                 f"<div class='filter-pill'>"
                 f"{'🔴' if sel_mode=='complaint' else '🟢'} "
-                f"<b>{sel_topic}</b> {mode_label}{phrase_part}"
+                f"<b>{sel_topic}</b> {mode_label}{store_part}{phrase_part}"
                 f"</div>",
                 unsafe_allow_html=True
             )
@@ -417,9 +421,10 @@ with tab_ins:
             if st.button("✕ Clear", key="ins_clear"):
                 st.session_state.ins_topic  = None
                 st.session_state.ins_phrase = None
+                st.session_state.ins_store  = None
                 st.rerun()
 
-        # ── Store breakdown chart ──────────────────────────────────────────────
+        # ── Store breakdown chart (vertical) ──────────────────────────────────
         if topic_key:
             if compare_op == "le":
                 _store_revs = df_ins[df_ins[topic_key].notna() & (df_ins[topic_key] <= threshold)]
@@ -428,38 +433,70 @@ with tab_ins:
 
             store_counts = (
                 _store_revs.groupby("store_name")["id"].count()
-                .sort_values(ascending=True)   # ascending=True → biggest bar at top
+                .sort_values(ascending=False)
             )
 
             if not store_counts.empty:
                 lc = DANGER if sel_mode == "complaint" else GREEN
+                sel_store = st.session_state.ins_store
+
                 st.markdown(
                     f"<div class='section-hdr' style='margin-top:16px;'>"
                     f"{'Complaints' if sel_mode=='complaint' else 'Praise'} by Store: {sel_topic}"
                     f"</div>",
                     unsafe_allow_html=True
                 )
+
+                bar_opacities = [
+                    1.0 if (sel_store is None or s == sel_store) else 0.3
+                    for s in store_counts.index
+                ]
                 fig_stores = go.Figure(go.Bar(
-                    x=store_counts.values,
-                    y=store_counts.index,
-                    orientation="h",
-                    marker_color=lc,
+                    x=store_counts.index,
+                    y=store_counts.values,
+                    marker=dict(color=lc, opacity=bar_opacities),
                     text=store_counts.values,
                     textposition="outside",
-                    hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
+                    hovertemplate="%{x}: <b>%{y}</b> reviews<extra></extra>",
                 ))
                 fig_stores.update_layout(
-                    height=max(200, len(store_counts) * 26),
-                    margin=dict(l=0, r=40, t=10, b=10),
+                    height=280,
+                    margin=dict(l=0, r=0, t=20, b=120),
                     plot_bgcolor="white", paper_bgcolor="white",
-                    xaxis=dict(showgrid=False, showticklabels=False),
-                    yaxis=dict(gridcolor=BORDER, tickfont=dict(size=12)),
+                    xaxis=dict(
+                        gridcolor=BORDER,
+                        tickangle=-40,
+                        tickfont=dict(size=11),
+                    ),
+                    yaxis=dict(
+                        showgrid=True, gridcolor=BORDER,
+                        showticklabels=False,
+                    ),
                     dragmode=False,
                 )
                 fig_stores.update_layout(modebar_remove=[
                     "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
                 ])
                 st.plotly_chart(fig_stores, use_container_width=True)
+
+                # Store filter buttons — one per store, in rows of 6
+                st.caption("Click a store to filter reviews:")
+                store_list = list(store_counts.index)
+                rows = [store_list[i:i+6] for i in range(0, len(store_list), 6)]
+                for row in rows:
+                    scols = st.columns(6)
+                    for j, sname in enumerate(row):
+                        cnt = store_counts[sname]
+                        is_sel_s = (sel_store == sname)
+                        with scols[j]:
+                            if st.button(
+                                f"{'✓ ' if is_sel_s else ''}{sname}\n({cnt})",
+                                key=f"sbtn_{sname}",
+                                type="primary" if is_sel_s else "secondary",
+                                use_container_width=True,
+                            ):
+                                st.session_state.ins_store = None if is_sel_s else sname
+                                st.rerun()
 
         # ── Specific issue breakdown (if tags available) ───────────────────────
         if has_tags and topic_key:
@@ -564,6 +601,12 @@ with tab_ins:
                 df_filtered = df_ins[
                     df_ins[topic_key].notna() & (df_ins[topic_key] >= threshold)
                 ].sort_values("review_date", ascending=False)
+
+            # Further filter by store if selected
+            if st.session_state.ins_store:
+                df_filtered = df_filtered[
+                    df_filtered["store_name"] == st.session_state.ins_store
+                ]
 
             # Further filter by phrase if selected
             if sel_phrase and has_tags:
