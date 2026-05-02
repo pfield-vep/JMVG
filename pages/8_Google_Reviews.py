@@ -193,20 +193,6 @@ st.markdown(f"""
     border-left:4px solid var(--lc);
     border-radius:8px; padding:14px 18px; margin-bottom:8px;
 }}
-/* Reduce gap between element blocks — tighten bar+button sections */
-[data-testid="stVerticalBlock"] > [data-testid="element-container"]:has(+ [data-testid="element-container"] > [data-testid="stHorizontalBlock"]) {{
-    margin-bottom: 0 !important;
-}}
-/* Tighten button row that follows HTML bar block */
-[data-testid="stVerticalBlock"] > [data-testid="element-container"] + [data-testid="element-container"] > [data-testid="stHorizontalBlock"] {{
-    margin-top: -6px;
-}}
-/* Make small button rows compact in height */
-[data-testid="stHorizontalBlock"] .stButton button {{
-    padding: 2px 4px !important;
-    min-height: 28px !important;
-    font-size: 11px !important;
-}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -281,6 +267,9 @@ if "ins_topic"   not in st.session_state: st.session_state.ins_topic   = None
 if "ins_mode"    not in st.session_state: st.session_state.ins_mode    = "complaint"
 if "ins_phrase"  not in st.session_state: st.session_state.ins_phrase  = None
 if "ins_store"   not in st.session_state: st.session_state.ins_store   = None
+# pfig_ver: incremented after each handled bar click so charts always get
+# a fresh key — prevents Plotly's persisted selection from re-firing
+if "pfig_ver"    not in st.session_state: st.session_state.pfig_ver    = 0
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -346,75 +335,78 @@ with tab_ins:
     # ── Topic rows: bar + button inline ───────────────────────────────────────
     praise_sorted = sorted(praise_counts, key=lambda x: praise_counts[x], reverse=True)
 
-    def _topic_rows(labels, counts, mode, bar_color):
-        max_cnt = max(counts.values()) if any(counts.values()) else 1
+    def _topic_bars_chart(labels, counts, mode, bar_color):
+        """Compact Plotly horizontal bar chart — clicking a bar drills in."""
+        max_cnt   = max(counts.values()) if any(counts.values()) else 1
         sel_topic = st.session_state.ins_topic
         sel_mode  = st.session_state.ins_mode
         any_sel   = sel_topic is not None
 
-        # ── Single HTML block — no Streamlit gaps between rows ────────────
-        html = '<div style="margin-bottom:4px;">'
-        for label in labels:
-            cnt    = counts[label]
-            pct    = cnt / max_cnt * 100 if max_cnt > 0 else 0
-            is_sel = (sel_topic == label and sel_mode == mode)
-            bg     = f"{bar_color}12" if is_sel else "white"
-            bdr    = f"1.5px solid {bar_color}70" if is_sel else f"1px solid {BORDER}"
-            op     = "1" if (is_sel or not any_sel) else "0.42"
-            fw     = "700" if is_sel else "500"
-            dot    = (f'<span style="color:{bar_color};font-size:9px;'
-                      f'margin-right:3px;vertical-align:middle;">●</span>'
-                      if is_sel else "")
-            html += (
-                f'<div style="background:{bg};border:{bdr};border-radius:6px;'
-                f'padding:5px 10px;margin-bottom:2px;opacity:{op};">'
-                f'<div style="display:flex;align-items:center;gap:10px;">'
-                f'<div style="font-weight:{fw};font-size:12px;color:{TEXT};'
-                f'min-width:82px;white-space:nowrap;">{dot}{label}</div>'
-                f'<div style="flex:1;background:#F3F4F6;border-radius:3px;'
-                f'height:7px;overflow:hidden;">'
-                f'<div style="width:{pct:.1f}%;background:{bar_color};'
-                f'height:7px;border-radius:3px;"></div></div>'
-                f'<div style="font-weight:700;font-size:12px;color:{bar_color};'
-                f'min-width:24px;text-align:right;">{cnt}</div>'
-                f'</div></div>'
-            )
-        html += '</div>'
-        st.markdown(html, unsafe_allow_html=True)
+        # Bar colors: full for selected/unfiltered, faded otherwise
+        colors = [
+            bar_color if (not any_sel or (l == sel_topic and sel_mode == mode))
+            else f"{bar_color}44"
+            for l in labels
+        ]
 
-        # ── Single compact button row, one button per topic ───────────────
-        bcols = st.columns(len(labels))
-        for i, label in enumerate(labels):
-            is_sel = (sel_topic == label and sel_mode == mode)
-            with bcols[i]:
-                if st.button(
-                    "✕" if is_sel else "→",
-                    key=f"btn_{mode}_{label}",
-                    type="primary" if is_sel else "secondary",
-                    use_container_width=True,
-                    help=label,
-                ):
-                    if is_sel:
-                        st.session_state.ins_topic  = None
-                        st.session_state.ins_phrase = None
-                        st.session_state.ins_store  = None
-                    else:
-                        st.session_state.ins_topic  = label
-                        st.session_state.ins_mode   = mode
-                        st.session_state.ins_phrase = None
-                        st.session_state.ins_store  = None
-                    st.rerun()
+        fig = go.Figure(go.Bar(
+            y=list(labels),
+            x=[counts[l] for l in labels],
+            orientation="h",
+            marker_color=colors,
+            text=[str(counts[l]) for l in labels],
+            textposition="outside",
+            hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
+            cliponaxis=False,
+        ))
+        fig.update_layout(
+            height=max(120, len(labels) * 34),
+            margin=dict(l=0, r=36, t=4, b=4),
+            plot_bgcolor="white", paper_bgcolor="white",
+            xaxis=dict(showgrid=False, showticklabels=False,
+                       range=[0, max_cnt * 1.28]),
+            yaxis=dict(autorange="reversed",
+                       tickfont=dict(size=12, color=TEXT),
+                       gridcolor=BORDER, ticksuffix="  "),
+            dragmode=False,
+            clickmode="event+select",
+        )
+        fig.update_layout(modebar_remove=[
+            "zoom2d","pan2d","select2d","lasso2d",
+            "autoScale2d","resetScale2d","zoomIn2d","zoomOut2d","toImage",
+        ])
+
+        ver = st.session_state.pfig_ver
+        ev  = st.plotly_chart(
+            fig, on_select="rerun", use_container_width=True,
+            key=f"pfig_{mode}_{ver}",
+        )
+
+        # Handle bar click — only fires on actual user interaction
+        if ev.selection and ev.selection.points:
+            clicked = ev.selection.points[0].y
+            st.session_state.pfig_ver += 1          # reset chart next render
+            if clicked == sel_topic and sel_mode == mode:
+                st.session_state.ins_topic  = None  # toggle off
+                st.session_state.ins_phrase = None
+                st.session_state.ins_store  = None
+            else:
+                st.session_state.ins_topic  = clicked
+                st.session_state.ins_mode   = mode
+                st.session_state.ins_phrase = None
+                st.session_state.ins_store  = None
+            st.rerun()
 
     ch1, ch2 = st.columns(2)
     with ch1:
         st.markdown(f"<div class='section-hdr'>🔴 Top Complaint Areas</div>",
                     unsafe_allow_html=True)
-        _topic_rows(sorted_labels, complaint_counts, "complaint", DANGER)
+        _topic_bars_chart(sorted_labels, complaint_counts, "complaint", DANGER)
 
     with ch2:
         st.markdown(f"<div class='section-hdr'>🟢 Top Praise Areas</div>",
                     unsafe_allow_html=True)
-        _topic_rows(praise_sorted, praise_counts, "praise", GREEN)
+        _topic_bars_chart(praise_sorted, praise_counts, "praise", GREEN)
 
     # ── Active filter banner ───────────────────────────────────────────────────
     sel_topic  = st.session_state.ins_topic
@@ -469,53 +461,53 @@ with tab_ins:
                     unsafe_allow_html=True
                 )
 
-                # Cap at 15 stores; build one column per store
+                # ── Plotly vertical bar chart — click a bar to drill in ───
                 stores_to_show = store_counts.head(15)
-                max_cnt_s      = stores_to_show.max()
-                MAX_H          = 120   # px for the tallest bar
-                MIN_H          = 12
+                snames = list(stores_to_show.index)
+                svals  = list(stores_to_show.values)
+                any_sel_s = sel_store is not None
 
-                # ── Single-pass: all bars as HTML, buttons in one row below ──
-                n_stores  = len(stores_to_show)
-                bar_items = list(stores_to_show.items())
+                s_colors = [
+                    lc if (not any_sel_s or s == sel_store) else f"{lc}44"
+                    for s in snames
+                ]
 
-                # Build the bar chart as one HTML block (bottom-aligned)
-                bar_html = (
-                    f'<div style="display:flex;gap:4px;align-items:flex-end;'
-                    f'height:{MAX_H + 26}px;margin-bottom:4px;">'
+                fig_sv = go.Figure(go.Bar(
+                    x=snames, y=svals,
+                    marker_color=s_colors,
+                    text=[str(v) for v in svals],
+                    textposition="outside",
+                    hovertemplate="%{x}: <b>%{y}</b><extra></extra>",
+                    cliponaxis=False,
+                ))
+                fig_sv.update_layout(
+                    height=220,
+                    margin=dict(l=0, r=0, t=20, b=4),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(tickfont=dict(size=10), tickangle=-30,
+                               gridcolor=BORDER),
+                    yaxis=dict(showgrid=False, showticklabels=False,
+                               range=[0, max(svals) * 1.25]),
+                    dragmode=False,
+                    clickmode="event+select",
                 )
-                for sname, cnt in bar_items:
-                    is_sel_s  = (sel_store == sname)
-                    any_sel_s = sel_store is not None
-                    bar_h     = max(MIN_H, int(cnt / max_cnt_s * MAX_H))
-                    opacity   = "1" if (not any_sel_s or is_sel_s) else "0.25"
-                    bg        = f"{lc}dd" if is_sel_s else lc
-                    bar_html += (
-                        f'<div style="flex:1;display:flex;flex-direction:column;'
-                        f'align-items:center;justify-content:flex-end;opacity:{opacity};">'
-                        f'<div style="font-size:10px;font-weight:700;color:{lc};'
-                        f'margin-bottom:2px;">{cnt}</div>'
-                        f'<div style="width:100%;height:{bar_h}px;background:{bg};'
-                        f'border-radius:3px 3px 0 0;"></div>'
-                        f'</div>'
-                    )
-                bar_html += '</div>'
-                st.markdown(bar_html, unsafe_allow_html=True)
+                fig_sv.update_layout(modebar_remove=[
+                    "zoom2d","pan2d","select2d","lasso2d",
+                    "autoScale2d","resetScale2d","zoomIn2d","zoomOut2d","toImage",
+                ])
 
-                # One row of buttons directly below
-                scols = st.columns(n_stores)
-                for i, (sname, cnt) in enumerate(bar_items):
-                    is_sel_s = (sel_store == sname)
-                    with scols[i]:
-                        if st.button(
-                            f"{'✓' if is_sel_s else ''}{sname[:7]}",
-                            key=f"sbtn_{sname}",
-                            type="primary" if is_sel_s else "secondary",
-                            use_container_width=True,
-                            help=sname,
-                        ):
-                            st.session_state.ins_store = None if is_sel_s else sname
-                            st.rerun()
+                ver = st.session_state.pfig_ver
+                ev_sv = st.plotly_chart(
+                    fig_sv, on_select="rerun", use_container_width=True,
+                    key=f"pfig_sv_{ver}",
+                )
+                if ev_sv.selection and ev_sv.selection.points:
+                    clicked_store = ev_sv.selection.points[0].x
+                    st.session_state.pfig_ver += 1
+                    st.session_state.ins_store = (
+                        None if clicked_store == sel_store else clicked_store
+                    )
+                    st.rerun()
 
                 if len(store_counts) > 15:
                     st.caption(f"Showing top 15 of {len(store_counts)} stores.")
@@ -550,53 +542,49 @@ with tab_ins:
                     unsafe_allow_html=True
                 )
 
-                # Phrase bar chart (visual)
-                opacities = [
-                    1.0 if sel_phrase is None or p == sel_phrase else 0.25
+                # ── Clickable phrase bar chart ─────────────────────────────
+                st.caption("Click a bar to filter reviews to that specific issue:")
+                p_colors = [
+                    bar_col if (sel_phrase is None or p == sel_phrase)
+                    else f"{bar_col}44"
                     for p in top_phrases
                 ]
                 fig_phrases = go.Figure(go.Bar(
                     x=top_vals, y=top_phrases, orientation="h",
-                    marker=dict(color=bar_col, opacity=opacities),
+                    marker_color=p_colors,
                     text=[str(v) for v in top_vals],
                     textposition="outside",
                     hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
+                    cliponaxis=False,
                 ))
                 fig_phrases.update_layout(
-                    height=max(160, len(top_phrases)*28),
-                    margin=dict(l=0, r=40, t=10, b=10),
+                    height=max(160, len(top_phrases) * 30),
+                    margin=dict(l=0, r=40, t=4, b=4),
                     plot_bgcolor="white", paper_bgcolor="white",
-                    xaxis=dict(showgrid=False, showticklabels=False),
+                    xaxis=dict(showgrid=False, showticklabels=False,
+                               range=[0, max(top_vals) * 1.28]),
                     yaxis=dict(gridcolor=BORDER, autorange="reversed",
-                               tickfont=dict(size=12)),
+                               tickfont=dict(size=12, color=TEXT)),
                     dragmode=False,
+                    clickmode="event+select",
                 )
                 fig_phrases.update_layout(modebar_remove=[
-                    "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
+                    "zoom2d","pan2d","select2d","lasso2d",
+                    "autoScale2d","resetScale2d","zoomIn2d","zoomOut2d","toImage",
                 ])
-                st.plotly_chart(fig_phrases, use_container_width=True)
 
-                # Phrase filter buttons — all in one tight row (or 2 rows of 8)
-                st.caption("Click a bar or button to filter reviews:")
-                per_row = min(len(top_phrases), 8)
-                phrase_chunks = [
-                    top_phrases[i:i+per_row]
-                    for i in range(0, len(top_phrases), per_row)
-                ]
-                for chunk in phrase_chunks:
-                    pcols = st.columns(len(chunk))
-                    for j, phrase in enumerate(chunk):
-                        cnt    = phrase_counts[phrase]
-                        is_sel = (sel_phrase == phrase)
-                        with pcols[j]:
-                            if st.button(
-                                f"{'✓ ' if is_sel else ''}{phrase} ({cnt})",
-                                key=f"phrase_{phrase}",
-                                type="primary" if is_sel else "secondary",
-                                use_container_width=True,
-                            ):
-                                st.session_state.ins_phrase = None if is_sel else phrase
-                                st.rerun()
+                ver = st.session_state.pfig_ver
+                ev_ph = st.plotly_chart(
+                    fig_phrases, on_select="rerun", use_container_width=True,
+                    key=f"pfig_ph_{ver}",
+                )
+                if ev_ph.selection and ev_ph.selection.points:
+                    clicked_phrase = ev_ph.selection.points[0].y
+                    st.session_state.pfig_ver += 1
+                    st.session_state.ins_phrase = (
+                        None if clicked_phrase == sel_phrase else clicked_phrase
+                    )
+                    st.rerun()
 
             elif topic_revs.empty:
                 pass
@@ -713,54 +701,53 @@ with tab_ins:
             store_list = list(store_complaints.items())
             any_sel_s  = st.session_state.ins_store is not None
 
-            # ── Single HTML block for all store bars ─────────────────────
-            html = '<div style="margin-bottom:4px;">'
-            for sname, cnt in store_list:
-                is_sel_s = (st.session_state.ins_store == sname)
-                pct      = cnt / max_sc * 100
-                bg       = f"{RED}dd" if is_sel_s else RED
-                bdr      = f"1.5px solid #fca5a5" if is_sel_s else f"1px solid {BORDER}"
-                card_bg  = "#fff1f1" if is_sel_s else "white"
-                opacity  = "1" if (not any_sel_s or is_sel_s) else "0.35"
-                fw       = "700" if is_sel_s else "500"
-                dot      = (f'<span style="color:{RED};font-size:9px;'
-                            f'margin-right:3px;vertical-align:middle;">●</span>'
-                            if is_sel_s else "")
-                html += (
-                    f'<div style="background:{card_bg};border:{bdr};'
-                    f'border-radius:6px;padding:5px 10px;margin-bottom:2px;'
-                    f'opacity:{opacity};">'
-                    f'<div style="display:flex;align-items:center;gap:10px;">'
-                    f'<div style="font-weight:{fw};font-size:12px;color:{TEXT};'
-                    f'min-width:105px;white-space:nowrap;">{dot}{sname}</div>'
-                    f'<div style="flex:1;background:#F3F4F6;border-radius:3px;'
-                    f'height:7px;overflow:hidden;">'
-                    f'<div style="width:{pct:.1f}%;background:{bg};'
-                    f'height:7px;border-radius:3px;"></div></div>'
-                    f'<div style="font-weight:700;font-size:12px;color:{RED};'
-                    f'min-width:22px;text-align:right;">{cnt}</div>'
-                    f'</div></div>'
-                )
-            html += '</div>'
-            st.markdown(html, unsafe_allow_html=True)
+            # ── Plotly horizontal bar chart — click bar to drill in ────────
+            sc_names  = [s for s, c in store_list]
+            sc_vals   = [c for s, c in store_list]
+            sc_colors = [
+                RED if (not any_sel_s or s == st.session_state.ins_store)
+                else f"{RED}44"
+                for s in sc_names
+            ]
 
-            # ── Compact button grid below (2 rows of 6) ───────────────────
-            per_row  = 6
-            chunks   = [store_list[i:i+per_row] for i in range(0, len(store_list), per_row)]
-            for chunk in chunks:
-                bcols = st.columns(len(chunk))
-                for j, (sname, cnt) in enumerate(chunk):
-                    is_sel_s = (st.session_state.ins_store == sname)
-                    with bcols[j]:
-                        if st.button(
-                            "✕" if is_sel_s else "→",
-                            key=f"dsbtn_{sname}",
-                            type="primary" if is_sel_s else "secondary",
-                            use_container_width=True,
-                            help=sname,
-                        ):
-                            st.session_state.ins_store = None if is_sel_s else sname
-                            st.rerun()
+            fig_sc = go.Figure(go.Bar(
+                y=sc_names, x=sc_vals, orientation="h",
+                marker_color=sc_colors,
+                text=[str(c) for c in sc_vals],
+                textposition="outside",
+                hovertemplate="%{y}: <b>%{x}</b> complaints<extra></extra>",
+                cliponaxis=False,
+            ))
+            fig_sc.update_layout(
+                height=max(200, len(sc_names) * 32),
+                margin=dict(l=0, r=36, t=4, b=4),
+                plot_bgcolor="white", paper_bgcolor="white",
+                xaxis=dict(showgrid=False, showticklabels=False,
+                           range=[0, max(sc_vals) * 1.28]),
+                yaxis=dict(autorange="reversed",
+                           tickfont=dict(size=12, color=TEXT),
+                           gridcolor=BORDER, ticksuffix="  "),
+                dragmode=False,
+                clickmode="event+select",
+            )
+            fig_sc.update_layout(modebar_remove=[
+                "zoom2d","pan2d","select2d","lasso2d",
+                "autoScale2d","resetScale2d","zoomIn2d","zoomOut2d","toImage",
+            ])
+
+            ver = st.session_state.pfig_ver
+            ev_sc = st.plotly_chart(
+                fig_sc, on_select="rerun", use_container_width=True,
+                key=f"pfig_sc_{ver}",
+            )
+            if ev_sc.selection and ev_sc.selection.points:
+                clicked_store = ev_sc.selection.points[0].y
+                st.session_state.pfig_ver += 1
+                st.session_state.ins_store = (
+                    None if clicked_store == st.session_state.ins_store
+                    else clicked_store
+                )
+                st.rerun()
 
         with sc2:
             st.markdown(
