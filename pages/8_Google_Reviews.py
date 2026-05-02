@@ -128,6 +128,21 @@ def load_reviews():
 
 
 @st.cache_data(ttl=300)
+def load_last_updated():
+    """Return the most recent classified_at timestamp — proxy for last pipeline run."""
+    conn, _ = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(classified_at) FROM store_reviews")
+        row = cur.fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+@st.cache_data(ttl=300)
 def load_store_ratings():
     conn, _ = get_conn()
     try:
@@ -204,16 +219,34 @@ st.markdown(f"""
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
+_last_updated = load_last_updated()
+if _last_updated:
+    try:
+        _lu_dt = pd.to_datetime(_last_updated)
+        _lu_str = _lu_dt.strftime("%-m/%-d/%Y at %-I:%M %p")
+    except Exception:
+        _lu_str = str(_last_updated)[:16]
+else:
+    _lu_str = "unknown"
+
 st.markdown(f"""
 <div style="background:linear-gradient(135deg,{BLUE},{BLUE}dd);
             border-radius:12px;padding:20px 28px;margin-bottom:20px;
-            display:flex;align-items:center;gap:16px;">
-  <span style="font-size:32px;">⭐</span>
-  <div>
-    <div style="color:white;font-size:22px;font-weight:800;">Google Reviews</div>
-    <div style="color:rgba(255,255,255,.75);font-size:13px;margin-top:3px;">
-      JM Valley Group — 29 stores
+            display:flex;align-items:center;justify-content:space-between;">
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span style="font-size:32px;">⭐</span>
+    <div>
+      <div style="color:white;font-size:22px;font-weight:800;">Google Reviews</div>
+      <div style="color:rgba(255,255,255,.75);font-size:13px;margin-top:3px;">
+        JM Valley Group — 29 stores
+      </div>
     </div>
+  </div>
+  <div style="text-align:right;">
+    <div style="color:rgba(255,255,255,.55);font-size:11px;text-transform:uppercase;
+                letter-spacing:.06em;">Last Updated</div>
+    <div style="color:rgba(255,255,255,.9);font-size:13px;font-weight:600;
+                margin-top:2px;">{_lu_str}</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
