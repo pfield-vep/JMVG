@@ -269,10 +269,11 @@ st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
 
 # ── Session state ──────────────────────────────────────────────────────────────
-if "ins_topic"   not in st.session_state: st.session_state.ins_topic   = None
-if "ins_mode"    not in st.session_state: st.session_state.ins_mode    = "complaint"
-if "ins_phrase"  not in st.session_state: st.session_state.ins_phrase  = None
-if "ins_store"   not in st.session_state: st.session_state.ins_store   = None
+if "ins_topic"     not in st.session_state: st.session_state.ins_topic     = None
+if "ins_mode"      not in st.session_state: st.session_state.ins_mode      = "complaint"
+if "ins_phrase"    not in st.session_state: st.session_state.ins_phrase    = None
+if "ins_store"     not in st.session_state: st.session_state.ins_store     = None
+if "ins_sentiment" not in st.session_state: st.session_state.ins_sentiment = None
 # pfig_ver: incremented after each handled bar click so charts always get
 # a fresh key — prevents Plotly's persisted selection from re-firing
 if "pfig_ver"    not in st.session_state: st.session_state.pfig_ver    = 0
@@ -438,9 +439,10 @@ with tab_ins:
             )
         with clear_col:
             if st.button("✕ Clear", key="ins_clear"):
-                st.session_state.ins_topic  = None
-                st.session_state.ins_phrase = None
-                st.session_state.ins_store  = None
+                st.session_state.ins_topic     = None
+                st.session_state.ins_phrase    = None
+                st.session_state.ins_store     = None
+                st.session_state.ins_sentiment = None
                 st.rerun()
 
         # ── Store breakdown chart (vertical) ──────────────────────────────────
@@ -752,55 +754,102 @@ with tab_ins:
                 st.rerun()
 
         with sc2:
-            st.markdown(
-                f"<div class='section-hdr'>📊 Sentiment Breakdown</div>",
-                unsafe_allow_html=True
-            )
+            sel_sent   = st.session_state.ins_sentiment
+            any_sent   = sel_sent is not None
             sent_counts = df_ins["sentiment"].value_counts()
             colors_map  = {"positive": GREEN, "negative": DANGER,
                            "mixed": AMBER, "neutral": MUTED}
+
+            # Pull selected slice out; fade unselected slices
+            pull_vals = [
+                0.08 if (any_sent and s == sel_sent) else 0
+                for s in sent_counts.index
+            ]
+            pie_colors = [
+                hex_rgba(colors_map.get(s, MUTED))
+                if (not any_sent or s == sel_sent)
+                else hex_rgba(colors_map.get(s, MUTED), 0.25)
+                for s in sent_counts.index
+            ]
+
+            sent_hdr = f"📊 Sentiment"
+            if sel_sent:
+                sent_hdr += f" — <span style='color:{colors_map.get(sel_sent,MUTED)};'>{sel_sent.capitalize()}</span> selected · <a href='#' onclick='return false;' style='font-size:12px;color:{MUTED};'>click again to clear</a>"
+            st.markdown(f"<div class='section-hdr'>{sent_hdr}</div>",
+                        unsafe_allow_html=True)
+
             fig_sent = go.Figure(go.Pie(
                 labels=sent_counts.index,
                 values=sent_counts.values,
-                marker_colors=[colors_map.get(s, MUTED) for s in sent_counts.index],
+                marker=dict(colors=pie_colors),
+                pull=pull_vals,
                 hole=0.55,
                 textinfo="label+percent",
-                hovertemplate="%{label}: <b>%{value}</b> reviews<extra></extra>",
+                hovertemplate="%{label}: <b>%{value}</b> reviews — click to filter<extra></extra>",
             ))
             fig_sent.update_layout(
                 height=280, margin=dict(l=0, r=0, t=10, b=10),
-                paper_bgcolor="white", showlegend=False, dragmode=False,
+                paper_bgcolor="white", showlegend=False,
+                dragmode=False, clickmode="event+select",
             )
             fig_sent.update_layout(modebar_remove=[
                 "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
             ])
-            st.plotly_chart(fig_sent, use_container_width=True, key="sent_donut")
 
-        # ── Store-selected reviews (default view) ──────────────────────────────
-        if st.session_state.ins_store:
-            sname = st.session_state.ins_store
+            ver = st.session_state.pfig_ver
+            ev_sent = st.plotly_chart(
+                fig_sent, on_select="rerun", use_container_width=True,
+                key=f"pfig_sent_{ver}",
+            )
+            if ev_sent.selection and ev_sent.selection.points:
+                clicked_sent = ev_sent.selection.points[0].get("label")
+                if clicked_sent:
+                    st.session_state.pfig_ver += 1
+                    st.session_state.ins_sentiment = (
+                        None if clicked_sent == sel_sent else clicked_sent
+                    )
+                    st.rerun()
+
+        # ── Default view reviews — filtered by store and/or sentiment ──────────
+        sel_sent  = st.session_state.ins_sentiment
+        sel_store = st.session_state.ins_store
+
+        if sel_store or sel_sent:
+            # Build filter
+            df_def = df_ins.copy()
+            if sel_store:
+                df_def = df_def[df_def["store_name"] == sel_store]
+            if sel_sent:
+                df_def = df_def[df_def["sentiment"] == sel_sent]
+            elif sel_store:
+                # store only — default to neg/mixed
+                df_def = df_def[df_def["sentiment"].isin(["negative","mixed"])]
+            df_def = df_def.sort_values("review_date", ascending=False)
+
+            # Header
+            parts = []
+            if sel_store:  parts.append(sel_store)
+            if sel_sent:   parts.append(sel_sent.capitalize())
+            elif sel_store: parts.append("Negative & Mixed")
+            hdr_lc = colors_map.get(sel_sent, DANGER) if sel_sent else DANGER
             st.markdown(
                 f"<div class='section-hdr' style='margin-top:16px;'>"
-                f"Negative &amp; Mixed Reviews — {sname}</div>",
+                f"Reviews — {' · '.join(parts)}</div>",
                 unsafe_allow_html=True
             )
-            df_store_revs = (
-                df_ins[
-                    (df_ins["store_name"] == sname) &
-                    (df_ins["sentiment"].isin(["negative","mixed"]))
-                ]
-                .sort_values("review_date", ascending=False)
-            )
-            st.caption(f"{len(df_store_revs):,} reviews")
-            for _, rev in df_store_revs.head(30).iterrows():
+            st.caption(f"{len(df_def):,} reviews")
+
+            for _, rev in df_def.head(40).iterrows():
                 rating    = rev.get("rating")
                 star_str  = ("★"*int(rating)+"☆"*(5-int(rating))) if rating else "—"
                 reviewer  = rev.get("reviewer_name") or "Anonymous"
+                sname_r   = rev.get("store_name", "")
                 rev_date  = (rev["review_date"].strftime("%b %d, %Y")
                              if pd.notna(rev.get("review_date")) else "—")
                 text      = rev.get("review_text") or ""
                 sentiment = (rev.get("sentiment") or "neutral").lower()
                 sc_       = sent_color(sentiment)
+                lc_rev    = colors_map.get(sentiment, MUTED)
                 low_topics = []
                 for t in TOPICS:
                     v = rev.get(t)
@@ -811,13 +860,19 @@ with tab_ins:
                             f"font-weight:600;margin-right:4px;'>"
                             f"{TOPIC_LABELS[t]} {v:.0f}</span>"
                         )
+                store_tag = (
+                    f"<span style='font-weight:700;font-size:12px;color:{BLUE};"
+                    f"margin-right:8px;'>{sname_r}</span>"
+                    if not sel_store else ""
+                )
                 st.markdown(f"""
                 <div style="background:white;border:1px solid {BORDER};
-                            border-left:4px solid {DANGER};
+                            border-left:4px solid {lc_rev};
                             border-radius:8px;padding:12px 16px;margin-bottom:8px;">
                   <div style="display:flex;justify-content:space-between;
                               flex-wrap:wrap;gap:4px;">
                     <div>
+                      {store_tag}
                       <span style="color:{STAR};font-size:12px;">{star_str}</span>
                       <span style="color:{MUTED};font-size:11px;margin-left:6px;">
                         {reviewer} · {rev_date}
@@ -835,11 +890,13 @@ with tab_ins:
                    if low_topics else ""}
                 </div>
                 """, unsafe_allow_html=True)
+
+            if len(df_def) > 40:
+                st.caption(f"Showing first 40 of {len(df_def):,}.")
         else:
             st.markdown(
                 f"<div style='text-align:center;color:{MUTED};font-size:13px;"
-                f"padding:12px 0;'>👆 Click → next to a store to see its reviews, "
-                f"or select a topic above to drill in</div>",
+                f"padding:16px 0;'>👆 Click a store bar or a donut slice to see reviews</div>",
                 unsafe_allow_html=True
             )
 
