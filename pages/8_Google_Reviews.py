@@ -357,7 +357,6 @@ with tab_ins:
             text=[str(counts[l]) for l in labels],
             textposition="outside",
             hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
-            cliponaxis=False,
         ))
         fig.update_layout(
             height=max(120, len(labels) * 34),
@@ -478,7 +477,6 @@ with tab_ins:
                     text=[str(v) for v in svals],
                     textposition="outside",
                     hovertemplate="%{x}: <b>%{y}</b><extra></extra>",
-                    cliponaxis=False,
                 ))
                 fig_sv.update_layout(
                     height=220,
@@ -555,7 +553,6 @@ with tab_ins:
                     text=[str(v) for v in top_vals],
                     textposition="outside",
                     hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
-                    cliponaxis=False,
                 ))
                 fig_phrases.update_layout(
                     height=max(160, len(top_phrases) * 30),
@@ -716,7 +713,6 @@ with tab_ins:
                 text=[str(c) for c in sc_vals],
                 textposition="outside",
                 hovertemplate="%{y}: <b>%{x}</b> complaints<extra></extra>",
-                cliponaxis=False,
             ))
             fig_sc.update_layout(
                 height=max(200, len(sc_names) * 32),
