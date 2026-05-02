@@ -310,93 +310,93 @@ with tab_ins:
     c_vals         = [complaint_counts[l] for l in sorted_labels]
     p_vals         = [praise_counts[l]    for l in sorted_labels]
 
-    # ── Two-chart row ──────────────────────────────────────────────────────────
+    # ── Two-chart row (visual only) ────────────────────────────────────────────
     ch1, ch2 = st.columns(2)
 
-    def _bar_chart(labels, values, title, bar_color, chart_key, selected_label):
-        colors = [
-            bar_color if l != selected_label else f"{bar_color}ff"
-            for l in labels
-        ]
+    def _bar_chart(labels, values, bar_color, selected_label):
         opacities = [
-            1.0 if selected_label is None or l == selected_label else 0.35
+            1.0 if selected_label is None or l == selected_label else 0.3
             for l in labels
         ]
         fig = go.Figure(go.Bar(
             x=values, y=labels, orientation="h",
-            marker=dict(color=[bar_color]*len(labels), opacity=opacities),
+            marker=dict(color=bar_color, opacity=opacities),
             text=[str(v) if v > 0 else "" for v in values],
             textposition="outside",
             hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
         ))
         fig.update_layout(
-            title=dict(text=title, font=dict(size=14, color=BLUE), x=0),
-            height=260,
-            margin=dict(l=0, r=40, t=36, b=10),
+            height=240,
+            margin=dict(l=0, r=40, t=10, b=10),
             plot_bgcolor="white", paper_bgcolor="white",
             xaxis=dict(showgrid=False, showticklabels=False),
             yaxis=dict(gridcolor=BORDER, autorange="reversed"),
             dragmode=False,
-            clickmode="event+select",
         )
         fig.update_layout(modebar_remove=[
             "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
         ])
-        return st.plotly_chart(
-            fig, use_container_width=True,
-            key=chart_key, on_select="rerun",
-        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    praise_sorted = sorted(praise_counts, key=lambda x: praise_counts[x], reverse=True)
+    p_vals_sorted = [praise_counts[l] for l in praise_sorted]
 
     with ch1:
-        st.markdown(
-            f"<div class='section-hdr'>🔴 Top Complaint Areas <span style='font-size:11px;"
-            f"color:{MUTED};font-weight:400;'>— click to drill in</span></div>",
-            unsafe_allow_html=True
-        )
-        ev_c = _bar_chart(
-            sorted_labels, c_vals,
-            "", DANGER, "chart_complaints",
+        st.markdown(f"<div class='section-hdr'>🔴 Top Complaint Areas</div>",
+                    unsafe_allow_html=True)
+        _bar_chart(
+            sorted_labels, c_vals, DANGER,
             st.session_state.ins_topic if st.session_state.ins_mode=="complaint" else None
         )
-        if ev_c and ev_c.selection and ev_c.selection.get("points"):
-            clicked = ev_c.selection["points"][0].get("y")
-            if clicked:
-                if (st.session_state.ins_topic == clicked
-                        and st.session_state.ins_mode == "complaint"):
-                    st.session_state.ins_topic  = None
-                    st.session_state.ins_phrase = None
-                else:
-                    st.session_state.ins_topic  = clicked
-                    st.session_state.ins_mode   = "complaint"
-                    st.session_state.ins_phrase = None
-                st.rerun()
+        # Clickable topic buttons below chart
+        btn_cols = st.columns(len(sorted_labels))
+        for i, label in enumerate(sorted_labels):
+            cnt = complaint_counts[label]
+            is_sel = (st.session_state.ins_topic == label
+                      and st.session_state.ins_mode == "complaint")
+            with btn_cols[i]:
+                if st.button(
+                    f"**{label}**\n{cnt}",
+                    key=f"cbtn_{label}",
+                    type="primary" if is_sel else "secondary",
+                    use_container_width=True,
+                ):
+                    if is_sel:
+                        st.session_state.ins_topic  = None
+                        st.session_state.ins_phrase = None
+                    else:
+                        st.session_state.ins_topic  = label
+                        st.session_state.ins_mode   = "complaint"
+                        st.session_state.ins_phrase = None
+                    st.rerun()
 
     with ch2:
-        # Praise sorted by praise count
-        praise_sorted = sorted(praise_counts, key=lambda x: praise_counts[x], reverse=True)
-        p_vals_sorted = [praise_counts[l] for l in praise_sorted]
-        st.markdown(
-            f"<div class='section-hdr'>🟢 Top Praise Areas <span style='font-size:11px;"
-            f"color:{MUTED};font-weight:400;'>— click to drill in</span></div>",
-            unsafe_allow_html=True
-        )
-        ev_p = _bar_chart(
-            praise_sorted, p_vals_sorted,
-            "", GREEN, "chart_praise",
+        st.markdown(f"<div class='section-hdr'>🟢 Top Praise Areas</div>",
+                    unsafe_allow_html=True)
+        _bar_chart(
+            praise_sorted, p_vals_sorted, GREEN,
             st.session_state.ins_topic if st.session_state.ins_mode=="praise" else None
         )
-        if ev_p and ev_p.selection and ev_p.selection.get("points"):
-            clicked = ev_p.selection["points"][0].get("y")
-            if clicked:
-                if (st.session_state.ins_topic == clicked
-                        and st.session_state.ins_mode == "praise"):
-                    st.session_state.ins_topic  = None
-                    st.session_state.ins_phrase = None
-                else:
-                    st.session_state.ins_topic  = clicked
-                    st.session_state.ins_mode   = "praise"
-                    st.session_state.ins_phrase = None
-                st.rerun()
+        btn_cols2 = st.columns(len(praise_sorted))
+        for i, label in enumerate(praise_sorted):
+            cnt = praise_counts[label]
+            is_sel = (st.session_state.ins_topic == label
+                      and st.session_state.ins_mode == "praise")
+            with btn_cols2[i]:
+                if st.button(
+                    f"**{label}**\n{cnt}",
+                    key=f"pbtn_{label}",
+                    type="primary" if is_sel else "secondary",
+                    use_container_width=True,
+                ):
+                    if is_sel:
+                        st.session_state.ins_topic  = None
+                        st.session_state.ins_phrase = None
+                    else:
+                        st.session_state.ins_topic  = label
+                        st.session_state.ins_mode   = "praise"
+                        st.session_state.ins_phrase = None
+                    st.rerun()
 
     # ── Active filter banner ───────────────────────────────────────────────────
     sel_topic  = st.session_state.ins_topic
@@ -452,12 +452,13 @@ with tab_ins:
                 st.markdown(
                     f"<div class='section-hdr' style='margin-top:16px;'>"
                     f"Specific {'Issues' if sel_mode=='complaint' else 'Highlights'}: "
-                    f"{sel_topic} — click to filter reviews</div>",
+                    f"{sel_topic}</div>",
                     unsafe_allow_html=True
                 )
 
+                # Phrase bar chart (visual)
                 opacities = [
-                    1.0 if sel_phrase is None or p == sel_phrase else 0.3
+                    1.0 if sel_phrase is None or p == sel_phrase else 0.25
                     for p in top_phrases
                 ]
                 fig_phrases = go.Figure(go.Bar(
@@ -479,18 +480,25 @@ with tab_ins:
                 fig_phrases.update_layout(modebar_remove=[
                     "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
                 ])
-                ev_phrases = st.plotly_chart(
-                    fig_phrases, use_container_width=True,
-                    key="chart_phrases", on_select="rerun"
-                )
-                if ev_phrases and ev_phrases.selection and ev_phrases.selection.get("points"):
-                    clicked_phrase = ev_phrases.selection["points"][0].get("y")
-                    if clicked_phrase:
-                        if st.session_state.ins_phrase == clicked_phrase:
-                            st.session_state.ins_phrase = None
-                        else:
-                            st.session_state.ins_phrase = clicked_phrase
-                        st.rerun()
+                st.plotly_chart(fig_phrases, use_container_width=True)
+
+                # Phrase filter buttons — 4 per row
+                st.caption("Filter to a specific issue:")
+                phrase_rows = [top_phrases[i:i+4] for i in range(0, len(top_phrases), 4)]
+                for row in phrase_rows:
+                    pcols = st.columns(4)
+                    for j, phrase in enumerate(row):
+                        cnt = phrase_counts[phrase]
+                        is_sel = (sel_phrase == phrase)
+                        with pcols[j]:
+                            if st.button(
+                                f"{'✓ ' if is_sel else ''}{phrase} ({cnt})",
+                                key=f"phrase_{phrase}",
+                                type="primary" if is_sel else "secondary",
+                                use_container_width=True,
+                            ):
+                                st.session_state.ins_phrase = None if is_sel else phrase
+                                st.rerun()
 
             elif topic_revs.empty:
                 pass
