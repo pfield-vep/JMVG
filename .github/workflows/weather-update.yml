@@ -1,0 +1,34 @@
+name: Weather Update
+
+on:
+  schedule:
+    # 6:00 AM Pacific Time (14:00 UTC) every day
+    - cron: '0 14 * * *'
+  workflow_dispatch:  # allow manual trigger from GitHub UI
+
+jobs:
+  update-weather:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      SUPABASE_HOST:     ${{ secrets.SUPABASE_HOST }}
+      SUPABASE_PORT:     ${{ secrets.SUPABASE_PORT }}
+      SUPABASE_DBNAME:   ${{ secrets.SUPABASE_DBNAME }}
+      SUPABASE_USER:     ${{ secrets.SUPABASE_USER }}
+      SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch last 10 days of weather data
+        run: python scripts/fetch_weather.py --update

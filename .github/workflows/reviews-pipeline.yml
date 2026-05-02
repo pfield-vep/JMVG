@@ -1,0 +1,42 @@
+name: Reviews Pipeline
+
+on:
+  schedule:
+    # 2:00 AM Pacific Time (10:00 UTC) every night
+    - cron: '0 10 * * *'
+  workflow_dispatch:  # allow manual trigger from GitHub UI
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      SUPABASE_HOST:     ${{ secrets.SUPABASE_HOST }}
+      SUPABASE_PORT:     ${{ secrets.SUPABASE_PORT }}
+      SUPABASE_DBNAME:   ${{ secrets.SUPABASE_DBNAME }}
+      SUPABASE_USER:     ${{ secrets.SUPABASE_USER }}
+      SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Step 1 — Fetch new reviews from Google Places
+        run: python scripts/fetch_google_reviews.py --fetch
+
+      - name: Step 2 — Classify reviews with Claude Haiku
+        run: python scripts/classify_reviews.py
+
+      - name: Step 3 — Extract issues and praises
+        run: python scripts/extract_issues.py
