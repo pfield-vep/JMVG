@@ -164,6 +164,12 @@ def parse_tags(raw, topic_short):
     except Exception:
         return []
 
+def hex_rgba(hex_color, alpha=1.0):
+    """Convert #RRGGBB hex to rgba() string — works with all Plotly versions."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+    return f"rgba({r},{g},{b},{alpha})"
+
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
@@ -344,8 +350,8 @@ with tab_ins:
 
         # Bar colors: full for selected/unfiltered, faded otherwise
         colors = [
-            bar_color if (not any_sel or (l == sel_topic and sel_mode == mode))
-            else f"{bar_color}44"
+            hex_rgba(bar_color) if (not any_sel or (l == sel_topic and sel_mode == mode))
+            else hex_rgba(bar_color, 0.27)
             for l in labels
         ]
 
@@ -467,7 +473,7 @@ with tab_ins:
                 any_sel_s = sel_store is not None
 
                 s_colors = [
-                    lc if (not any_sel_s or s == sel_store) else f"{lc}44"
+                    hex_rgba(lc) if (not any_sel_s or s == sel_store) else hex_rgba(lc, 0.27)
                     for s in snames
                 ]
 
@@ -543,8 +549,8 @@ with tab_ins:
                 # ── Clickable phrase bar chart ─────────────────────────────
                 st.caption("Click a bar to filter reviews to that specific issue:")
                 p_colors = [
-                    bar_col if (sel_phrase is None or p == sel_phrase)
-                    else f"{bar_col}44"
+                    hex_rgba(bar_col) if (sel_phrase is None or p == sel_phrase)
+                    else hex_rgba(bar_col, 0.27)
                     for p in top_phrases
                 ]
                 fig_phrases = go.Figure(go.Bar(
@@ -702,8 +708,8 @@ with tab_ins:
             sc_names  = [s for s, c in store_list]
             sc_vals   = [c for s, c in store_list]
             sc_colors = [
-                RED if (not any_sel_s or s == st.session_state.ins_store)
-                else f"{RED}44"
+                hex_rgba(RED) if (not any_sel_s or s == st.session_state.ins_store)
+                else hex_rgba(RED, 0.27)
                 for s in sc_names
             ]
 
