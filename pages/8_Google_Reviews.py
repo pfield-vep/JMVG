@@ -437,7 +437,7 @@ with tab_ins:
             )
 
             if not store_counts.empty:
-                lc = DANGER if sel_mode == "complaint" else GREEN
+                lc        = DANGER if sel_mode == "complaint" else GREEN
                 sel_store = st.session_state.ins_store
 
                 st.markdown(
@@ -447,56 +447,48 @@ with tab_ins:
                     unsafe_allow_html=True
                 )
 
-                bar_opacities = [
-                    1.0 if (sel_store is None or s == sel_store) else 0.3
-                    for s in store_counts.index
-                ]
-                fig_stores = go.Figure(go.Bar(
-                    x=store_counts.index,
-                    y=store_counts.values,
-                    marker=dict(color=lc, opacity=bar_opacities),
-                    text=store_counts.values,
-                    textposition="outside",
-                    hovertemplate="%{x}: <b>%{y}</b> reviews<extra></extra>",
-                ))
-                fig_stores.update_layout(
-                    height=280,
-                    margin=dict(l=0, r=0, t=20, b=120),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    xaxis=dict(
-                        gridcolor=BORDER,
-                        tickangle=-40,
-                        tickfont=dict(size=11),
-                    ),
-                    yaxis=dict(
-                        showgrid=True, gridcolor=BORDER,
-                        showticklabels=False,
-                    ),
-                    dragmode=False,
-                )
-                fig_stores.update_layout(modebar_remove=[
-                    "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
-                ])
-                st.plotly_chart(fig_stores, use_container_width=True)
+                # Cap at 15 stores; build one column per store
+                stores_to_show = store_counts.head(15)
+                max_cnt_s      = stores_to_show.max()
+                MAX_H          = 120   # px for the tallest bar
+                MIN_H          = 12
 
-                # Store filter buttons — one per store, in rows of 6
-                st.caption("Click a store to filter reviews:")
-                store_list = list(store_counts.index)
-                rows = [store_list[i:i+6] for i in range(0, len(store_list), 6)]
-                for row in rows:
-                    scols = st.columns(6)
-                    for j, sname in enumerate(row):
-                        cnt = store_counts[sname]
-                        is_sel_s = (sel_store == sname)
-                        with scols[j]:
-                            if st.button(
-                                f"{'✓ ' if is_sel_s else ''}{sname}\n({cnt})",
-                                key=f"sbtn_{sname}",
-                                type="primary" if is_sel_s else "secondary",
-                                use_container_width=True,
-                            ):
-                                st.session_state.ins_store = None if is_sel_s else sname
-                                st.rerun()
+                st.markdown("""
+                <style>
+                /* tighten the gap between the bar div and the button */
+                [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
+                  > div:has(> .stButton) { margin-top: -8px; }
+                </style>""", unsafe_allow_html=True)
+
+                scols = st.columns(len(stores_to_show))
+                for i, (sname, cnt) in enumerate(stores_to_show.items()):
+                    is_sel_s = (sel_store == sname)
+                    any_sel_s = sel_store is not None
+                    bar_h    = max(MIN_H, int(cnt / max_cnt_s * MAX_H))
+                    opacity  = "1" if (not any_sel_s or is_sel_s) else "0.25"
+                    bg       = f"{lc}dd" if is_sel_s else lc
+
+                    with scols[i]:
+                        st.markdown(f"""
+                        <div style="display:flex;flex-direction:column;
+                                    align-items:center;opacity:{opacity};">
+                          <div style="font-size:11px;font-weight:700;
+                                      color:{lc};margin-bottom:3px;">{cnt}</div>
+                          <div style="width:80%;height:{bar_h}px;background:{bg};
+                                      border-radius:4px 4px 0 0;"></div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if st.button(
+                            f"{'✓ ' if is_sel_s else ''}{sname}",
+                            key=f"sbtn_{sname}",
+                            type="primary" if is_sel_s else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state.ins_store = None if is_sel_s else sname
+                            st.rerun()
+
+                if len(store_counts) > 15:
+                    st.caption(f"Showing top 15 of {len(store_counts)} stores.")
 
         # ── Specific issue breakdown (if tags available) ───────────────────────
         if has_tags and topic_key:
