@@ -419,6 +419,48 @@ with tab_ins:
                 st.session_state.ins_phrase = None
                 st.rerun()
 
+        # ── Store breakdown chart ──────────────────────────────────────────────
+        if topic_key:
+            if compare_op == "le":
+                _store_revs = df_ins[df_ins[topic_key].notna() & (df_ins[topic_key] <= threshold)]
+            else:
+                _store_revs = df_ins[df_ins[topic_key].notna() & (df_ins[topic_key] >= threshold)]
+
+            store_counts = (
+                _store_revs.groupby("store_name")["id"].count()
+                .sort_values(ascending=True)   # ascending=True → biggest bar at top
+            )
+
+            if not store_counts.empty:
+                lc = DANGER if sel_mode == "complaint" else GREEN
+                st.markdown(
+                    f"<div class='section-hdr' style='margin-top:16px;'>"
+                    f"{'Complaints' if sel_mode=='complaint' else 'Praise'} by Store: {sel_topic}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                fig_stores = go.Figure(go.Bar(
+                    x=store_counts.values,
+                    y=store_counts.index,
+                    orientation="h",
+                    marker_color=lc,
+                    text=store_counts.values,
+                    textposition="outside",
+                    hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
+                ))
+                fig_stores.update_layout(
+                    height=max(200, len(store_counts) * 26),
+                    margin=dict(l=0, r=40, t=10, b=10),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(showgrid=False, showticklabels=False),
+                    yaxis=dict(gridcolor=BORDER, tickfont=dict(size=12)),
+                    dragmode=False,
+                )
+                fig_stores.update_layout(modebar_remove=[
+                    "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
+                ])
+                st.plotly_chart(fig_stores, use_container_width=True)
+
         # ── Specific issue breakdown (if tags available) ───────────────────────
         if has_tags and topic_key:
             tag_col = "complaint_tags" if sel_mode == "complaint" else "praise_tags"
