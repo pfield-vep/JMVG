@@ -193,6 +193,20 @@ st.markdown(f"""
     border-left:4px solid var(--lc);
     border-radius:8px; padding:14px 18px; margin-bottom:8px;
 }}
+/* Reduce gap between element blocks — tighten bar+button sections */
+[data-testid="stVerticalBlock"] > [data-testid="element-container"]:has(+ [data-testid="element-container"] > [data-testid="stHorizontalBlock"]) {{
+    margin-bottom: 0 !important;
+}}
+/* Tighten button row that follows HTML bar block */
+[data-testid="stVerticalBlock"] > [data-testid="element-container"] + [data-testid="element-container"] > [data-testid="stHorizontalBlock"] {{
+    margin-top: -6px;
+}}
+/* Make small button rows compact in height */
+[data-testid="stHorizontalBlock"] .stButton button {{
+    padding: 2px 4px !important;
+    min-height: 28px !important;
+    font-size: 11px !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -334,43 +348,51 @@ with tab_ins:
 
     def _topic_rows(labels, counts, mode, bar_color):
         max_cnt = max(counts.values()) if any(counts.values()) else 1
+        sel_topic = st.session_state.ins_topic
+        sel_mode  = st.session_state.ins_mode
+        any_sel   = sel_topic is not None
+
+        # ── Single HTML block — no Streamlit gaps between rows ────────────
+        html = '<div style="margin-bottom:4px;">'
         for label in labels:
-            cnt = counts[label]
-            pct = cnt / max_cnt * 100 if max_cnt > 0 else 0
-            is_sel = (st.session_state.ins_topic == label
-                      and st.session_state.ins_mode == mode)
-            any_sel = st.session_state.ins_topic is not None
+            cnt    = counts[label]
+            pct    = cnt / max_cnt * 100 if max_cnt > 0 else 0
+            is_sel = (sel_topic == label and sel_mode == mode)
+            bg     = f"{bar_color}12" if is_sel else "white"
+            bdr    = f"1.5px solid {bar_color}70" if is_sel else f"1px solid {BORDER}"
+            op     = "1" if (is_sel or not any_sel) else "0.42"
+            fw     = "700" if is_sel else "500"
+            dot    = (f'<span style="color:{bar_color};font-size:9px;'
+                      f'margin-right:3px;vertical-align:middle;">●</span>'
+                      if is_sel else "")
+            html += (
+                f'<div style="background:{bg};border:{bdr};border-radius:6px;'
+                f'padding:5px 10px;margin-bottom:2px;opacity:{op};">'
+                f'<div style="display:flex;align-items:center;gap:10px;">'
+                f'<div style="font-weight:{fw};font-size:12px;color:{TEXT};'
+                f'min-width:82px;white-space:nowrap;">{dot}{label}</div>'
+                f'<div style="flex:1;background:#F3F4F6;border-radius:3px;'
+                f'height:7px;overflow:hidden;">'
+                f'<div style="width:{pct:.1f}%;background:{bar_color};'
+                f'height:7px;border-radius:3px;"></div></div>'
+                f'<div style="font-weight:700;font-size:12px;color:{bar_color};'
+                f'min-width:24px;text-align:right;">{cnt}</div>'
+                f'</div></div>'
+            )
+        html += '</div>'
+        st.markdown(html, unsafe_allow_html=True)
 
-            bg      = f"{bar_color}12" if is_sel else "white"
-            border  = f"1px solid {bar_color}80" if is_sel else f"1px solid {BORDER}"
-            opacity = "1" if (is_sel or not any_sel) else "0.45"
-            name_w  = "700" if is_sel else "500"
-
-            row_l, row_r = st.columns([11, 1])
-            with row_l:
-                st.markdown(f"""
-                <div style="background:{bg};border:{border};border-radius:8px;
-                            padding:9px 14px;margin-bottom:2px;opacity:{opacity};">
-                  <div style="display:flex;align-items:center;gap:12px;">
-                    <div style="font-weight:{name_w};font-size:13px;color:{TEXT};
-                                min-width:90px;white-space:nowrap;">{label}</div>
-                    <div style="flex:1;background:#F3F4F6;border-radius:4px;height:9px;
-                                overflow:hidden;">
-                      <div style="width:{pct:.1f}%;background:{bar_color};
-                                  height:9px;border-radius:4px;
-                                  transition:width .3s;"></div>
-                    </div>
-                    <div style="font-weight:700;font-size:14px;color:{bar_color};
-                                min-width:32px;text-align:right;">{cnt}</div>
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
-            with row_r:
+        # ── Single compact button row, one button per topic ───────────────
+        bcols = st.columns(len(labels))
+        for i, label in enumerate(labels):
+            is_sel = (sel_topic == label and sel_mode == mode)
+            with bcols[i]:
                 if st.button(
                     "✕" if is_sel else "→",
                     key=f"btn_{mode}_{label}",
                     type="primary" if is_sel else "secondary",
                     use_container_width=True,
+                    help=label,
                 ):
                     if is_sel:
                         st.session_state.ins_topic  = None
@@ -453,37 +475,44 @@ with tab_ins:
                 MAX_H          = 120   # px for the tallest bar
                 MIN_H          = 12
 
-                st.markdown("""
-                <style>
-                /* tighten the gap between the bar div and the button */
-                [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
-                  > div:has(> .stButton) { margin-top: -8px; }
-                </style>""", unsafe_allow_html=True)
+                # ── Single-pass: all bars as HTML, buttons in one row below ──
+                n_stores  = len(stores_to_show)
+                bar_items = list(stores_to_show.items())
 
-                scols = st.columns(len(stores_to_show))
-                for i, (sname, cnt) in enumerate(stores_to_show.items()):
-                    is_sel_s = (sel_store == sname)
+                # Build the bar chart as one HTML block (bottom-aligned)
+                bar_html = (
+                    f'<div style="display:flex;gap:4px;align-items:flex-end;'
+                    f'height:{MAX_H + 26}px;margin-bottom:4px;">'
+                )
+                for sname, cnt in bar_items:
+                    is_sel_s  = (sel_store == sname)
                     any_sel_s = sel_store is not None
-                    bar_h    = max(MIN_H, int(cnt / max_cnt_s * MAX_H))
-                    opacity  = "1" if (not any_sel_s or is_sel_s) else "0.25"
-                    bg       = f"{lc}dd" if is_sel_s else lc
+                    bar_h     = max(MIN_H, int(cnt / max_cnt_s * MAX_H))
+                    opacity   = "1" if (not any_sel_s or is_sel_s) else "0.25"
+                    bg        = f"{lc}dd" if is_sel_s else lc
+                    bar_html += (
+                        f'<div style="flex:1;display:flex;flex-direction:column;'
+                        f'align-items:center;justify-content:flex-end;opacity:{opacity};">'
+                        f'<div style="font-size:10px;font-weight:700;color:{lc};'
+                        f'margin-bottom:2px;">{cnt}</div>'
+                        f'<div style="width:100%;height:{bar_h}px;background:{bg};'
+                        f'border-radius:3px 3px 0 0;"></div>'
+                        f'</div>'
+                    )
+                bar_html += '</div>'
+                st.markdown(bar_html, unsafe_allow_html=True)
 
+                # One row of buttons directly below
+                scols = st.columns(n_stores)
+                for i, (sname, cnt) in enumerate(bar_items):
+                    is_sel_s = (sel_store == sname)
                     with scols[i]:
-                        st.markdown(f"""
-                        <div style="display:flex;flex-direction:column;
-                                    align-items:center;opacity:{opacity};
-                                    height:{MAX_H + 24}px;justify-content:flex-end;">
-                          <div style="font-size:11px;font-weight:700;
-                                      color:{lc};margin-bottom:3px;">{cnt}</div>
-                          <div style="width:80%;height:{bar_h}px;background:{bg};
-                                      border-radius:4px 4px 0 0;"></div>
-                        </div>
-                        """, unsafe_allow_html=True)
                         if st.button(
-                            f"{'✓ ' if is_sel_s else ''}{sname}",
+                            f"{'✓' if is_sel_s else ''}{sname[:7]}",
                             key=f"sbtn_{sname}",
                             type="primary" if is_sel_s else "secondary",
                             use_container_width=True,
+                            help=sname,
                         ):
                             st.session_state.ins_store = None if is_sel_s else sname
                             st.rerun()
@@ -547,13 +576,17 @@ with tab_ins:
                 ])
                 st.plotly_chart(fig_phrases, use_container_width=True)
 
-                # Phrase filter buttons — 4 per row
-                st.caption("Filter to a specific issue:")
-                phrase_rows = [top_phrases[i:i+4] for i in range(0, len(top_phrases), 4)]
-                for row in phrase_rows:
-                    pcols = st.columns(4)
-                    for j, phrase in enumerate(row):
-                        cnt = phrase_counts[phrase]
+                # Phrase filter buttons — all in one tight row (or 2 rows of 8)
+                st.caption("Click a bar or button to filter reviews:")
+                per_row = min(len(top_phrases), 8)
+                phrase_chunks = [
+                    top_phrases[i:i+per_row]
+                    for i in range(0, len(top_phrases), per_row)
+                ]
+                for chunk in phrase_chunks:
+                    pcols = st.columns(len(chunk))
+                    for j, phrase in enumerate(chunk):
+                        cnt    = phrase_counts[phrase]
                         is_sel = (sel_phrase == phrase)
                         with pcols[j]:
                             if st.button(
@@ -677,43 +710,57 @@ with tab_ins:
                 f"<div class='section-hdr'>🏪 Stores With Most Complaints</div>",
                 unsafe_allow_html=True
             )
-            for sname, cnt in store_complaints.items():
-                is_sel_s  = (st.session_state.ins_store == sname)
-                any_sel_s = st.session_state.ins_store is not None
-                pct       = cnt / max_sc * 100
-                bg        = f"{RED}dd" if is_sel_s else RED
-                opacity   = "1" if (not any_sel_s or is_sel_s) else "0.35"
-                fw        = "700" if is_sel_s else "500"
+            store_list = list(store_complaints.items())
+            any_sel_s  = st.session_state.ins_store is not None
 
-                row_l, row_r = st.columns([11, 1])
-                with row_l:
-                    st.markdown(f"""
-                    <div style="background:{'#fff1f1' if is_sel_s else 'white'};
-                                border:1px solid {'#fca5a5' if is_sel_s else BORDER};
-                                border-radius:8px;padding:8px 14px;
-                                margin-bottom:2px;opacity:{opacity};">
-                      <div style="display:flex;align-items:center;gap:10px;">
-                        <div style="font-weight:{fw};font-size:13px;color:{TEXT};
-                                    min-width:110px;white-space:nowrap;">{sname}</div>
-                        <div style="flex:1;background:#F3F4F6;border-radius:4px;
-                                    height:9px;overflow:hidden;">
-                          <div style="width:{pct:.1f}%;background:{bg};
-                                      height:9px;border-radius:4px;"></div>
-                        </div>
-                        <div style="font-weight:700;font-size:13px;color:{RED};
-                                    min-width:24px;text-align:right;">{cnt}</div>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                with row_r:
-                    if st.button(
-                        "✕" if is_sel_s else "→",
-                        key=f"dsbtn_{sname}",
-                        type="primary" if is_sel_s else "secondary",
-                        use_container_width=True,
-                    ):
-                        st.session_state.ins_store = None if is_sel_s else sname
-                        st.rerun()
+            # ── Single HTML block for all store bars ─────────────────────
+            html = '<div style="margin-bottom:4px;">'
+            for sname, cnt in store_list:
+                is_sel_s = (st.session_state.ins_store == sname)
+                pct      = cnt / max_sc * 100
+                bg       = f"{RED}dd" if is_sel_s else RED
+                bdr      = f"1.5px solid #fca5a5" if is_sel_s else f"1px solid {BORDER}"
+                card_bg  = "#fff1f1" if is_sel_s else "white"
+                opacity  = "1" if (not any_sel_s or is_sel_s) else "0.35"
+                fw       = "700" if is_sel_s else "500"
+                dot      = (f'<span style="color:{RED};font-size:9px;'
+                            f'margin-right:3px;vertical-align:middle;">●</span>'
+                            if is_sel_s else "")
+                html += (
+                    f'<div style="background:{card_bg};border:{bdr};'
+                    f'border-radius:6px;padding:5px 10px;margin-bottom:2px;'
+                    f'opacity:{opacity};">'
+                    f'<div style="display:flex;align-items:center;gap:10px;">'
+                    f'<div style="font-weight:{fw};font-size:12px;color:{TEXT};'
+                    f'min-width:105px;white-space:nowrap;">{dot}{sname}</div>'
+                    f'<div style="flex:1;background:#F3F4F6;border-radius:3px;'
+                    f'height:7px;overflow:hidden;">'
+                    f'<div style="width:{pct:.1f}%;background:{bg};'
+                    f'height:7px;border-radius:3px;"></div></div>'
+                    f'<div style="font-weight:700;font-size:12px;color:{RED};'
+                    f'min-width:22px;text-align:right;">{cnt}</div>'
+                    f'</div></div>'
+                )
+            html += '</div>'
+            st.markdown(html, unsafe_allow_html=True)
+
+            # ── Compact button grid below (2 rows of 6) ───────────────────
+            per_row  = 6
+            chunks   = [store_list[i:i+per_row] for i in range(0, len(store_list), per_row)]
+            for chunk in chunks:
+                bcols = st.columns(len(chunk))
+                for j, (sname, cnt) in enumerate(chunk):
+                    is_sel_s = (st.session_state.ins_store == sname)
+                    with bcols[j]:
+                        if st.button(
+                            "✕" if is_sel_s else "→",
+                            key=f"dsbtn_{sname}",
+                            type="primary" if is_sel_s else "secondary",
+                            use_container_width=True,
+                            help=sname,
+                        ):
+                            st.session_state.ins_store = None if is_sel_s else sname
+                            st.rerun()
 
         with sc2:
             st.markdown(
