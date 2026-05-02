@@ -754,46 +754,47 @@ with tab_ins:
                 st.rerun()
 
         with sc2:
-            sel_sent   = st.session_state.ins_sentiment
-            any_sent   = sel_sent is not None
+            sel_sent    = st.session_state.ins_sentiment
+            any_sent    = sel_sent is not None
             sent_counts = df_ins["sentiment"].value_counts()
             colors_map  = {"positive": GREEN, "negative": DANGER,
                            "mixed": AMBER, "neutral": MUTED}
 
-            # Pull selected slice out; fade unselected slices
-            pull_vals = [
-                0.08 if (any_sent and s == sel_sent) else 0
-                for s in sent_counts.index
-            ]
-            pie_colors = [
-                hex_rgba(colors_map.get(s, MUTED))
-                if (not any_sent or s == sel_sent)
-                else hex_rgba(colors_map.get(s, MUTED), 0.25)
-                for s in sent_counts.index
-            ]
-
-            sent_hdr = f"📊 Sentiment"
-            if sel_sent:
-                sent_hdr += f" — <span style='color:{colors_map.get(sel_sent,MUTED)};'>{sel_sent.capitalize()}</span> selected · <a href='#' onclick='return false;' style='font-size:12px;color:{MUTED};'>click again to clear</a>"
-            st.markdown(f"<div class='section-hdr'>{sent_hdr}</div>",
+            st.markdown("<div class='section-hdr'>📊 Sentiment Breakdown</div>",
                         unsafe_allow_html=True)
 
-            fig_sent = go.Figure(go.Pie(
-                labels=sent_counts.index,
-                values=sent_counts.values,
-                marker=dict(colors=pie_colors),
-                pull=pull_vals,
-                hole=0.55,
-                textinfo="label+percent",
-                hovertemplate="%{label}: <b>%{value}</b> reviews — click to filter<extra></extra>",
+            # Order: positive → mixed → neutral → negative
+            sent_order = [s for s in ["positive","mixed","neutral","negative"]
+                          if s in sent_counts.index]
+            s_labels = sent_order
+            s_vals   = [sent_counts[s] for s in sent_order]
+            s_colors = [
+                hex_rgba(colors_map.get(s, MUTED))
+                if (not any_sent or s == sel_sent)
+                else hex_rgba(colors_map.get(s, MUTED), 0.27)
+                for s in sent_order
+            ]
+
+            fig_sent = go.Figure(go.Bar(
+                y=s_labels, x=s_vals, orientation="h",
+                marker_color=s_colors,
+                text=[f"{v:,}  ({v/sum(s_vals)*100:.0f}%)" for v in s_vals],
+                textposition="outside",
+                hovertemplate="%{y}: <b>%{x}</b> reviews<extra></extra>",
             ))
             fig_sent.update_layout(
-                height=280, margin=dict(l=0, r=0, t=10, b=10),
-                paper_bgcolor="white", showlegend=False,
+                height=max(140, len(s_labels) * 44),
+                margin=dict(l=0, r=80, t=4, b=4),
+                plot_bgcolor="white", paper_bgcolor="white",
+                xaxis=dict(showgrid=False, showticklabels=False,
+                           range=[0, max(s_vals) * 1.45]),
+                yaxis=dict(tickfont=dict(size=13, color=TEXT),
+                           gridcolor=BORDER, ticksuffix="  "),
                 dragmode=False, clickmode="event+select",
             )
             fig_sent.update_layout(modebar_remove=[
-                "zoom2d","pan2d","select2d","lasso2d","autoScale2d","resetScale2d"
+                "zoom2d","pan2d","select2d","lasso2d",
+                "autoScale2d","resetScale2d","zoomIn2d","zoomOut2d","toImage",
             ])
 
             ver = st.session_state.pfig_ver
@@ -802,13 +803,12 @@ with tab_ins:
                 key=f"pfig_sent_{ver}",
             )
             if ev_sent.selection and ev_sent.selection.points:
-                clicked_sent = ev_sent.selection.points[0].get("label")
-                if clicked_sent:
-                    st.session_state.pfig_ver += 1
-                    st.session_state.ins_sentiment = (
-                        None if clicked_sent == sel_sent else clicked_sent
-                    )
-                    st.rerun()
+                clicked_sent = ev_sent.selection.points[0]["y"]
+                st.session_state.pfig_ver += 1
+                st.session_state.ins_sentiment = (
+                    None if clicked_sent == sel_sent else clicked_sent
+                )
+                st.rerun()
 
         # ── Default view reviews — filtered by store and/or sentiment ──────────
         sel_sent  = st.session_state.ins_sentiment
