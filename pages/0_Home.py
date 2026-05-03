@@ -58,27 +58,34 @@ st.markdown(f"""
         margin: 0 !important; line-height: 1.3 !important;
     }}
 
-    /* ── Mobile: stack columns into 2-wide grid ── */
+    /* ── Mobile: 2×2 wrap grid ── */
     @media (max-width: 768px) {{
-        /* Row 1 spacers: hide them */
-        [data-testid="stHorizontalBlock"]:nth-of-type(1) > [data-testid="stColumn"]:nth-child(odd) {{
-            display: none !important;
-        }}
-        /* All columns go 2-up */
-        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
-            min-width: 45% !important;
-            flex: 1 1 45% !important;
-        }}
         [data-testid="stHorizontalBlock"] {{
             flex-wrap: wrap !important;
-            gap: 12px !important;
+            gap: 12px 10px !important;
+        }}
+        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
+            width: calc(50% - 6px) !important;
+            min-width: calc(50% - 6px) !important;
+            flex: 0 0 calc(50% - 6px) !important;
         }}
         a[data-testid="stPageLink-NavLink"] {{
-            min-height: 110px !important;
-            padding: 18px 12px !important;
+            min-height: 120px !important;
+            padding: 20px 14px !important;
+            border-radius: 14px !important;
         }}
         a[data-testid="stPageLink-NavLink"] p {{
-            font-size: 1.1em !important;
+            font-size: 1.05em !important;
+        }}
+        a[data-testid="stPageLink-NavLink"]:active {{
+            transform: scale(0.97) !important;
+            background: #0d3a5e !important;
+        }}
+        /* tighter page padding on mobile */
+        .block-container {{
+            padding-left: 12px !important;
+            padding-right: 12px !important;
+            padding-top: 0 !important;
         }}
     }}
 </style>
@@ -88,22 +95,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Row 1: Four primary dashboards ────────────────────────────────────────────
+# ── Four main dashboard cards ─────────────────────────────────────────────────
+# Desktop: 4 across  |  Mobile: 2×2 grid (CSS wraps them automatically)
 c1, c2, c3, c4 = st.columns(4, gap="medium")
 with c1:
-    st.page_link("pages/5_Daily_Sales.py",        label="📊  Daily Sales",        use_container_width=True)
+    st.page_link("pages/5_Daily_Sales.py",    label="📊  Daily Sales",    use_container_width=True)
 with c2:
-    st.page_link("pages/7_Hourly_Heatmap.py",     label="🕐  Hourly Heatmap",     use_container_width=True)
+    st.page_link("pages/7_Hourly_Heatmap.py", label="🕐  Hourly Heatmap", use_container_width=True)
 with c3:
-    st.page_link("pages/6_Weather_Impact.py",     label="🌤️  Weather Impact",     use_container_width=True)
+    st.page_link("pages/6_Weather_Impact.py", label="🌤️  Weather Impact", use_container_width=True)
 with c4:
-    st.page_link("pages/2_Balanced_Scorecard.py", label="🎯  Balanced Scorecard", use_container_width=True)
-
-st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-# ── Row 2: Two secondary dashboards ───────────────────────────────────────────
-_, c5, gap, c6, _ = st.columns([1, 3, 0.4, 3, 1], gap="small")
-with c5:
-    st.page_link("pages/1_SSS_Dashboard.py",  label="📈  Same Store Sales", use_container_width=True)
-with c6:
-    st.page_link("pages/8_Google_Reviews.py", label="⭐  Google Reviews",   use_container_width=True)
+    st.page_link("pages/8_Google_Reviews.py", label="⭐  Google Reviews",  use_container_width=True)
