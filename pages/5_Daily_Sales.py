@@ -176,6 +176,31 @@ def get_date_range():
         pass
     return date(2024, 1, 1), date.today()
 
+@st.cache_data(ttl=300)
+def load_all_daily_for_trends():
+    """Full daily_sales history (net_sales + transactions) for weekly trend computation."""
+    conn, dialect = get_conn()
+    df = pd.read_sql_query(
+        "SELECT store_id, sale_date, net_sales, total_transactions "
+        "FROM daily_sales WHERE net_sales > 0 AND total_transactions > 0 "
+        "ORDER BY sale_date",
+        conn,
+    )
+    conn.close()
+    df["sale_date"]  = pd.to_datetime(df["sale_date"])
+    df["store_id"]   = df["store_id"].astype(str).str.strip()
+    return df
+
+@st.cache_data(ttl=300)
+def load_stores_open_dates():
+    """Return store_id → open_date for comp-eligibility checks."""
+    conn, _ = get_conn()
+    df = pd.read_sql_query("SELECT store_id, open_date FROM stores", conn)
+    conn.close()
+    df["store_id"]  = df["store_id"].astype(str).str.strip()
+    df["open_date"] = pd.to_datetime(df["open_date"], errors="coerce")
+    return df
+
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
@@ -364,6 +389,25 @@ st.markdown(f"""
   .chart-card {{
     background: {WHITE}; border: 1px solid {BORDER};
     border-radius: 8px; padding: 16px; margin-bottom: 8px;
+  }}
+
+  /* Trends tab — charts scroll horizontally on mobile */
+  .trend-chart-wrap {{
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 4px;
+  }}
+  @media (max-width: 768px) {{
+    .trend-chart-wrap [data-testid="stPlotlyChart"] > div {{
+      min-width: 480px;
+    }}
+  }}
+
+  /* Trends filter labels */
+  .t-label {{
+    font-size: 10px; font-weight: 700; letter-spacing: .8px;
+    text-transform: uppercase; color: {MUTED};
+    margin-bottom: 2px;
   }}
 
   /* Store detail table */
@@ -613,7 +657,7 @@ def kpi_delta_html(v):
     arrow = "▲" if v >= 0 else "▼"
     return f'<span class="{cls}">{arrow} {fmt_pct(v)}</span> vs prior year'
 
-tab1, tab2 = st.tabs(["Overview", "By District Manager"])
+tab1, tab2, tab3 = st.tabs(["Overview", "By District Manager", "Trends"])
 with tab1:
     # ── Compute metrics for selected period and YTD ───────────────────────────
     T  = comp_metrics(curr_df, prior_df)      # current period
@@ -1361,6 +1405,177 @@ with tab2:
 
         html_parts.append('</div></div>')  # close dm-tree and scroll wrapper
         st.markdown('\n'.join(html_parts), unsafe_allow_html=True)
+
+with tab3:
+    # ── Filters ──────────────────────────────────────────────────────────────
+    dm_map_t = load_dm_store_map()
+
+    tf1, tf2, tf3 = st.columns([1.4, 1.4, 2.2])
+    with tf1:
+        st.markdown('<div class="t-label">Market</div>', unsafe_allow_html=True)
+        mkt_opts = ["All Markets"] + sorted(dm_map_t["display_market"].dropna().unique().tolist())
+        t_market = st.selectbox("Market", mkt_opts, key="t_mkt", label_visibility="collapsed")
+    dm_base = dm_map_t if t_market == "All Markets" else dm_map_t[dm_map_t["display_market"] == t_market]
+    with tf2:
+        st.markdown('<div class="t-label">DM</div>', unsafe_allow_html=True)
+        dm_opts = ["All DMs"] + sorted(dm_base["dm_name"].dropna().unique().tolist())
+        t_dm = st.selectbox("DM", dm_opts, key="t_dm", label_visibility="collapsed")
+    store_base = dm_base if t_dm == "All DMs" else dm_base[dm_base["dm_name"] == t_dm]
+    store_opts = {"All Stores": None}
+    for _, _r in store_base.sort_values("store_id").iterrows():
+        _nm = STORE_NAMES.get(_r["store_id"], _r["store_id"])
+        store_opts[_nm] = _r["store_id"]
+    with tf3:
+        st.markdown('<div class="t-label">Store</div>', unsafe_allow_html=True)
+        t_store = st.selectbox("Store", list(store_opts.keys()), key="t_store", label_visibility="collapsed")
+
+    # Resolve which store IDs to include
+    _filtered = t_store != "All Stores" or t_market != "All Markets" or t_dm != "All DMs"
+    if t_store != "All Stores" and store_opts.get(t_store):
+        t_sids = {store_opts[t_store]}
+    elif t_market != "All Markets" or t_dm != "All DMs":
+        t_sids = set(store_base["store_id"].tolist())
+    else:
+        t_sids = None  # all comp-eligible stores
+
+    # ── Load + filter data ────────────────────────────────────────────────────
+    t_raw = load_all_daily_for_trends()
+    if t_sids is not None:
+        t_raw = t_raw[t_raw["store_id"].isin(t_sids)].copy()
+
+    if t_raw.empty:
+        st.info("No data available for the selected filters.")
+    else:
+        # Assign week-ending (Sunday) to every row
+        t_raw["week_ending"] = (
+            t_raw["sale_date"]
+            .dt.to_period("W-SUN")
+            .apply(lambda p: p.end_time.date())
+        )
+
+        # Pre-build comp-eligibility lookup: store_id → first date eligible (or None = always)
+        _sm = load_stores_open_dates()
+        _comp_from = {}
+        for _, _sr in _sm.iterrows():
+            _sid2 = _sr["store_id"]
+            if pd.isna(_sr["open_date"]):
+                _comp_from[_sid2] = None
+            else:
+                _comp_from[_sid2] = (_sr["open_date"] + pd.Timedelta(days=364)).date()
+
+        # Aggregate daily → weekly by store
+        weekly_agg = (
+            t_raw.groupby(["store_id", "week_ending"])
+            .agg(net_sales=("net_sales", "sum"), transactions=("total_transactions", "sum"))
+            .reset_index()
+        )
+        wk_index = weekly_agg.set_index(["store_id", "week_ending"])
+
+        weeks_all = sorted(weekly_agg["week_ending"].unique())
+        min_stores = 1 if t_sids else 3
+
+        trend_rows = []
+        for wk in weeks_all:
+            prior_wk = wk - timedelta(days=364)
+            curr  = weekly_agg[weekly_agg["week_ending"] == wk].set_index("store_id")
+            prior = weekly_agg[weekly_agg["week_ending"] == prior_wk].set_index("store_id")
+            if curr.empty or prior.empty:
+                continue
+            both = curr.index.intersection(prior.index)
+            # Comp filter only when no specific store/DM selection
+            if t_sids is None:
+                both = pd.Index([
+                    s for s in both
+                    if _comp_from.get(s) is None or _comp_from[s] <= wk
+                ])
+            if len(both) < min_stores:
+                continue
+            c = curr.loc[both]; p = prior.loc[both]
+            valid = both[(p["net_sales"] > 0) & (p["transactions"] > 0)]
+            if len(valid) < min_stores:
+                continue
+            c = c.loc[valid]; p = p.loc[valid]
+            sss   = (c["net_sales"].sum()    / p["net_sales"].sum()    - 1) * 100
+            sst   = (c["transactions"].sum() / p["transactions"].sum() - 1) * 100
+            check = ((1 + sss / 100) / (1 + sst / 100) - 1) * 100
+            trend_rows.append({
+                "week_ending": wk.strftime("%m/%d/%y"),
+                "sss_pct":     round(sss,   2),
+                "sst_pct":     round(sst,   2),
+                "check_pct":   round(check, 2),
+                "comp_stores": len(valid),
+            })
+
+        trend_df_t = pd.DataFrame(trend_rows)
+
+        if trend_df_t.empty:
+            st.info("Not enough comp data for the selected filters.")
+        else:
+            # ── Week range toggle ─────────────────────────────────────────────
+            if "t_weeks" not in st.session_state:
+                st.session_state["t_weeks"] = "13 weeks"
+            t_n_opts = {"13 weeks": 13, "26 weeks": 26, "52 weeks": 52, "All": len(trend_df_t)}
+            t_active = st.session_state.get("t_weeks", "13 weeks")
+            if t_active not in t_n_opts:
+                t_active = "13 weeks"
+
+            _bcols = st.columns(len(t_n_opts))
+            for _bi, _lbl in enumerate(t_n_opts):
+                with _bcols[_bi]:
+                    if st.button(_lbl, key=f"t_btn_{_bi}", use_container_width=True,
+                                 type="primary" if _lbl == t_active else "secondary"):
+                        st.session_state["t_weeks"] = _lbl
+                        st.rerun()
+
+            t_n    = t_n_opts[t_active]
+            plot_t = trend_df_t.tail(t_n).copy()
+            _bf    = 13 if t_n <= 13 else 11 if t_n <= 26 else 9
+
+            def _tbar(col, title):
+                _vals = plot_t[col].tolist()
+                _clrs = [GREEN if v >= 0 else DANGER for v in _vals]
+                _fig  = go.Figure(go.Bar(
+                    x=plot_t["week_ending"], y=_vals,
+                    marker_color=_clrs,
+                    text=[f"{v:+.1f}%" for v in _vals],
+                    textposition="outside",
+                    textfont=dict(size=_bf, family="Arial", color=TEXT),
+                    hovertemplate=f"Week ending %{{x}}<br>{title}: %{{y:+.1f}}%<extra></extra>",
+                ))
+                _fig.add_hline(y=0, line_color=TEXT, line_width=1.5)
+                _fig.update_layout(
+                    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+                    font=dict(family="Arial", size=12, color=TEXT),
+                    dragmode=False,
+                    modebar=dict(remove=["zoom2d","pan2d","select2d","lasso2d",
+                                         "autoScale2d","resetScale2d","toImage"]),
+                    height=300,
+                    margin=dict(l=50, r=15, t=45, b=70),
+                    title=dict(text=title, font=dict(size=13, color=BLUE), x=0),
+                    xaxis=dict(tickangle=-45, tickfont=dict(size=max(_bf-1, 8)),
+                               gridcolor=BORDER),
+                    yaxis=dict(ticksuffix="%", gridcolor=BORDER, zeroline=False),
+                    showlegend=False,
+                )
+                return _fig
+
+            for _col, _title in [
+                ("sss_pct",   f"Same Store Sales % — {t_active}"),
+                ("sst_pct",   f"Same Store Transactions % — {t_active}"),
+                ("check_pct", f"SS Avg Check % — {t_active}"),
+            ]:
+                st.markdown('<div class="trend-chart-wrap">', unsafe_allow_html=True)
+                st.plotly_chart(_tbar(_col, _title), use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            _avg_c = int(plot_t["comp_stores"].mean())
+            st.markdown(
+                f"<div style='font-size:11px;color:{MUTED};margin-top:2px;'>"
+                f"Avg <b>{_avg_c}</b> comp stores/week &nbsp;·&nbsp; 364-day YoY &nbsp;·&nbsp; "
+                f"Weeks: {trend_df_t['week_ending'].iloc[0]} – {trend_df_t['week_ending'].iloc[-1]}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
