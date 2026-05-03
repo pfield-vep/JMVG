@@ -777,8 +777,7 @@ with tab1:
     """, unsafe_allow_html=True)
     
     # ── Daily SSS Trend (always last 7 days, independent of period toggle) ────────
-    # _SR_COL_W = sub-region label (150px) + legend column (72px)
-    # Chart margin.l is set to this combined width so bars align with day columns.
+    # _SR_COL_W used by the sub-region weather grid below (labels + legend columns)
     _SR_COL_W = 222  # px  (150 label + 72 legend)
     PLOTLY_LAYOUT = dict(
         plot_bgcolor=WHITE, paper_bgcolor=WHITE,
@@ -786,7 +785,7 @@ with tab1:
         dragmode=False,
         modebar=dict(remove=["select2d","lasso2d","zoom2d","pan2d",
                               "autoScale2d","resetScale2d","toImage","sendDataToCloud"]),
-        margin=dict(l=_SR_COL_W, r=20, t=40, b=80),
+        margin=dict(l=55, r=20, t=40, b=80),
         legend=dict(bgcolor=WHITE, bordercolor=BORDER, borderwidth=1,
                     font=dict(size=11), orientation="h",
                     yanchor="top", y=-0.25, xanchor="center", x=0.5),
@@ -871,33 +870,6 @@ with tab1:
         height=300,
     )
     st.plotly_chart(fig_sss, use_container_width=True, key="sss_trend_chart")
-
-    # On mobile, reduce the 222px left margin so the chart fills the screen width
-    st.markdown("""
-<div id="sss-mobile-fix"></div>
-<script>
-(function() {
-  if (window.innerWidth > 768) return;
-  var attempts = 0;
-  function fix() {
-    if (attempts++ > 30) return;
-    var plots = document.querySelectorAll('.js-plotly-plot');
-    for (var i = 0; i < plots.length; i++) {
-      try {
-        var t = (plots[i]._fullLayout || {}).title || {};
-        var txt = (t.text || t || '').toString();
-        if (txt.indexOf('Daily SSS') !== -1) {
-          Plotly.relayout(plots[i], {'margin.l': 10, 'margin.r': 8});
-          return;
-        }
-      } catch(e) {}
-    }
-    setTimeout(fix, 300);
-  }
-  setTimeout(fix, 400);
-})();
-</script>
-""", unsafe_allow_html=True)
 
     # ── Sub-Region Weather × SSS Attribution Panel ───────────────────────────────
     _SR_MAP = {
