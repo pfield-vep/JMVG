@@ -870,7 +870,34 @@ with tab1:
         yaxis=dict(ticksuffix="%", gridcolor="#E5E7EB"),
         height=300,
     )
-    st.plotly_chart(fig_sss, use_container_width=True)
+    st.plotly_chart(fig_sss, use_container_width=True, key="sss_trend_chart")
+
+    # On mobile, reduce the 222px left margin so the chart fills the screen width
+    st.markdown("""
+<div id="sss-mobile-fix"></div>
+<script>
+(function() {
+  if (window.innerWidth > 768) return;
+  var attempts = 0;
+  function fix() {
+    if (attempts++ > 30) return;
+    var plots = document.querySelectorAll('.js-plotly-plot');
+    for (var i = 0; i < plots.length; i++) {
+      try {
+        var t = (plots[i]._fullLayout || {}).title || {};
+        var txt = (t.text || t || '').toString();
+        if (txt.indexOf('Daily SSS') !== -1) {
+          Plotly.relayout(plots[i], {'margin.l': 10, 'margin.r': 8});
+          return;
+        }
+      } catch(e) {}
+    }
+    setTimeout(fix, 300);
+  }
+  setTimeout(fix, 400);
+})();
+</script>
+""", unsafe_allow_html=True)
 
     # ── Sub-Region Weather × SSS Attribution Panel ───────────────────────────────
     _SR_MAP = {
