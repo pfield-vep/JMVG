@@ -1655,22 +1655,82 @@ with tab4:
                         else "fytd_same_store_ticket" if "fytd_same_store_ticket" in _jm_week.columns \
                         else None
 
-        # ── JM Valley aggregates (unweighted store mean, matches dashboard.py) ─
+        # ── JM Valley aggregates ──────────────────────────────────────────────
+        # Methodology — using sales-weighted aggregation so the system totals
+        # match the JM Inspire weekly PDF Grand Total (which is what Pete sees
+        # on paper). The prior earlier version used unweighted .mean() which
+        # diverged from the PDF (e.g., showed JMVG SSS as -5.2% when the
+        # Inspire Grand Total reported -6.1% for week ending 5/10/26).
+        #
+        # SSS / SS Ticket are YoY % changes. Without prior-year sales stored
+        # directly, we reconstruct them per store from current sales and the
+        # per-store YoY pct:
+        #     implied_prior = curr_net_sales / (1 + pct/100)
+        # then aggregate:
+        #     system_pct = sum(curr) / sum(implied_prior) - 1
+        # This is algebraically equivalent to a sales-weighted average.
+        #
+        # Loyalty % (and similar $-share metrics) are dollar-weighted directly:
+        #     sum(pct_i * sales_i) / sum(sales_i)
+        #
+        # Avg Daily Bread is a per-store-per-day count; equal-weighted mean
+        # across stores is the correct interpretation of "system avg per store"
+        # — matches how RBW's Grand Total is computed.
+
         def _safe_mean(df_, col):
+            """Unweighted cross-store mean. Used only for avg_daily_bread."""
             if df_.empty or col is None or col not in df_.columns:
                 return None
             try:
-                return float(df_[col].dropna().mean())
+                v = df_[col].dropna().mean()
+                return float(v) if pd.notna(v) else None
             except Exception:
                 return None
 
-        _jm_sss = _safe_mean(_jm_week, "sss_pct")
-        _jm_tkt = _safe_mean(_jm_week, _tkt_col)
-        _jm_brd = _safe_mean(_jm_week, "avg_daily_bread")
-        _jm_loy = _safe_mean(_jm_week, "loyalty_sales_pct")
+        def _weighted_yoy(df_, pct_col, sales_col):
+            """
+            Sales-weighted YoY % aggregate from per-store rows.
+            Reconstructs prior-year sales as net_sales / (1 + pct/100), then
+            returns (sum(curr) / sum(implied_prior) - 1) * 100.
+            Returns None if no valid comp rows.
+            """
+            if df_.empty or pct_col is None or pct_col not in df_.columns \
+                    or sales_col not in df_.columns:
+                return None
+            d = df_[[pct_col, sales_col]].dropna()
+            d = d[(d[sales_col] > 0)]
+            factor = 1.0 + d[pct_col] / 100.0
+            d = d[factor > 0]
+            if d.empty:
+                return None
+            implied_prior = (d[sales_col] / (1.0 + d[pct_col] / 100.0)).sum()
+            if implied_prior <= 0:
+                return None
+            return (d[sales_col].sum() / implied_prior - 1.0) * 100.0
 
-        _jm_fytd_sss = _safe_mean(_jm_week, "fytd_sss_pct")
-        _jm_fytd_tkt = _safe_mean(_jm_week, _fytd_tkt_col)
+        def _weighted_share(df_, pct_col, sales_col="net_sales"):
+            """Dollar-weighted average of a $-share %: sum(pct·sales)/sum(sales)."""
+            if df_.empty or pct_col is None or pct_col not in df_.columns \
+                    or sales_col not in df_.columns:
+                return None
+            d = df_[[pct_col, sales_col]].dropna()
+            d = d[d[sales_col] > 0]
+            if d.empty:
+                return None
+            return float((d[pct_col] * d[sales_col]).sum() / d[sales_col].sum())
+
+        # Current-week aggregates
+        _jm_sss = _weighted_yoy(_jm_week, "sss_pct", "net_sales")
+        _jm_tkt = _weighted_yoy(_jm_week, _tkt_col, "net_sales")
+        _jm_brd = _safe_mean(_jm_week, "avg_daily_bread")
+        _jm_loy = _weighted_share(_jm_week, "loyalty_sales_pct", "net_sales")
+
+        # FYTD aggregates — weight by fytd_net_sales when available, else
+        # fall back to current-week net_sales
+        _fytd_sales_col = "fytd_net_sales" if "fytd_net_sales" in _jm_week.columns \
+                          else "net_sales"
+        _jm_fytd_sss = _weighted_yoy(_jm_week, "fytd_sss_pct", _fytd_sales_col)
+        _jm_fytd_tkt = _weighted_yoy(_jm_week, _fytd_tkt_col, _fytd_sales_col)
         _jm_fytd_brd = _safe_mean(_jm_week, "fytd_avg_daily_bread")
         # weekly_sales has no fytd_loyalty column — leave None
 
@@ -1883,12 +1943,118 @@ with tab4:
                 st.plotly_chart(_fig_rb2, use_container_width=True,
                                 config={"responsive": True, "displayModeBar": False})
 
+        # ── Section: BlakeWard Regional Breakdown — FYTD ──────────────────────
+        st.markdown(
+            f"<div style='font-size:12px;font-weight:800;letter-spacing:1.5px;"
+            f"text-transform:uppercase;color:{BLUE};border-bottom:2px solid {BLUE};"
+            f"padding-bottom:6px;margin:22px 0 14px;'>"
+            f"BlakeWard Regional Breakdown — FYTD</div>",
+            unsafe_allow_html=True,
+        )
+
+        # _reg_latest already pinned to the latest BW week; the fytd_* columns
+        # on those rows are the cumulative fiscal-YTD values, so we just sort
+        # and chart them.
+        if _reg_latest.empty:
+            st.info(f"No regional FYTD data for week ending {_bm_week_str}.")
+        else:
+            _reg_fytd_sss = _reg_latest.sort_values("fytd_sss_pct", ascending=False)
+            _reg_fytd_tkt = _reg_latest.sort_values("fytd_ss_ticket_pct", ascending=False)
+            _bw_fytd_sss = float(_bm_snap_row["fytd_sss_pct"]) if pd.notna(_bm_snap_row["fytd_sss_pct"]) else None
+            _bw_fytd_tkt = float(_bm_snap_row["fytd_ss_ticket_pct"]) if pd.notna(_bm_snap_row["fytd_ss_ticket_pct"]) else None
+
+            _yb1, _yb2 = st.columns(2)
+
+            with _yb1:
+                _fig_yb1 = go.Figure()
+                _bar_colors_y1 = [_REGION_COLORS.get(r, MUTED) for r in _reg_fytd_sss["region"]]
+                _fig_yb1.add_trace(go.Bar(
+                    x=_reg_fytd_sss["region"],
+                    y=_reg_fytd_sss["fytd_sss_pct"],
+                    marker_color=_bar_colors_y1,
+                    text=[f"{v:+.1f}%" if pd.notna(v) else "—"
+                          for v in _reg_fytd_sss["fytd_sss_pct"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>FYTD SSS: %{y:+.1f}%<extra></extra>",
+                ))
+                if _jm_fytd_sss is not None:
+                    _fig_yb1.add_hline(
+                        y=_jm_fytd_sss, line_color=BLUE, line_width=2, line_dash="dot",
+                        annotation_text=f"JM Valley {_jm_fytd_sss:+.1f}%",
+                        annotation_position="top right",
+                        annotation_font=dict(color=BLUE, size=11),
+                    )
+                if _bw_fytd_sss is not None:
+                    _fig_yb1.add_hline(
+                        y=_bw_fytd_sss, line_color=MUTED, line_width=1.5, line_dash="dash",
+                        annotation_text=f"BW Avg {_bw_fytd_sss:+.1f}%",
+                        annotation_position="bottom right",
+                        annotation_font=dict(color=MUTED, size=10),
+                    )
+                _fig_yb1.update_layout(
+                    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+                    font=dict(family="Arial", size=12, color=TEXT),
+                    height=340,
+                    title=dict(text="FYTD SSS % by BlakeWard Region",
+                               font=dict(size=14, color=TEXT, family="Arial")),
+                    margin=dict(l=40, r=20, t=55, b=40),
+                    showlegend=False,
+                    yaxis=dict(ticksuffix="%", zeroline=True, zerolinecolor=MUTED,
+                               gridcolor=BORDER),
+                    xaxis=dict(gridcolor=BORDER),
+                )
+                st.plotly_chart(_fig_yb1, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
+            with _yb2:
+                _fig_yb2 = go.Figure()
+                _bar_colors_y2 = [_REGION_COLORS.get(r, MUTED) for r in _reg_fytd_tkt["region"]]
+                _fig_yb2.add_trace(go.Bar(
+                    x=_reg_fytd_tkt["region"],
+                    y=_reg_fytd_tkt["fytd_ss_ticket_pct"],
+                    marker_color=_bar_colors_y2,
+                    text=[f"{v:+.1f}%" if pd.notna(v) else "—"
+                          for v in _reg_fytd_tkt["fytd_ss_ticket_pct"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>FYTD Ticket: %{y:+.1f}%<extra></extra>",
+                ))
+                if _jm_fytd_tkt is not None:
+                    _fig_yb2.add_hline(
+                        y=_jm_fytd_tkt, line_color=BLUE, line_width=2, line_dash="dot",
+                        annotation_text=f"JM Valley {_jm_fytd_tkt:+.1f}%",
+                        annotation_position="top right",
+                        annotation_font=dict(color=BLUE, size=11),
+                    )
+                if _bw_fytd_tkt is not None:
+                    _fig_yb2.add_hline(
+                        y=_bw_fytd_tkt, line_color=MUTED, line_width=1.5, line_dash="dash",
+                        annotation_text=f"BW Avg {_bw_fytd_tkt:+.1f}%",
+                        annotation_position="bottom right",
+                        annotation_font=dict(color=MUTED, size=10),
+                    )
+                _fig_yb2.update_layout(
+                    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+                    font=dict(family="Arial", size=12, color=TEXT),
+                    height=340,
+                    title=dict(text="FYTD SS Ticket % by BlakeWard Region",
+                               font=dict(size=14, color=TEXT, family="Arial")),
+                    margin=dict(l=40, r=20, t=55, b=40),
+                    showlegend=False,
+                    yaxis=dict(ticksuffix="%", zeroline=True, zerolinecolor=MUTED,
+                               gridcolor=BORDER),
+                    xaxis=dict(gridcolor=BORDER),
+                )
+                st.plotly_chart(_fig_yb2, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
         st.markdown(
             f"<div style='font-family:Arial,sans-serif;font-size:11px;color:{MUTED};"
             f"margin-top:8px;line-height:1.5;'>"
-            f"JM Valley aggregate = unweighted mean of per-store values from "
-            f"<code>weekly_sales</code> for week ending {_bm_week_str}, "
-            f"matching the convention used elsewhere in the dashboard. "
+            f"JM Valley SSS / SS Ticket = sales-weighted aggregate "
+            f"(implied prior = curr ÷ (1 + pct/100); system pct = Σcurr ÷ Σimplied − 1). "
+            f"Loyalty % = dollar-weighted (Σ pct·sales ÷ Σ sales). "
+            f"Avg Daily Bread = cross-store mean. "
+            f"Source: <code>weekly_sales</code> for week ending {_bm_week_str}. "
             f"BlakeWard = system Grand Total from <code>weekly_benchmark</code>."
             f"</div>",
             unsafe_allow_html=True,
