@@ -657,7 +657,7 @@ def kpi_delta_html(v):
     arrow = "▲" if v >= 0 else "▼"
     return f'<span class="{cls}">{arrow} {fmt_pct(v)}</span> vs prior year'
 
-tab1, tab2, tab3 = st.tabs(["Overview", "By District Manager", "Trends"])
+tab1, tab2, tab3, tab4 = st.tabs(["Overview", "By District Manager", "Trends", "vs Benchmark"])
 with tab1:
     # ── Compute metrics for selected period and YTD ───────────────────────────
     T  = comp_metrics(curr_df, prior_df)      # current period
@@ -1573,6 +1573,253 @@ with tab3:
                 f"<div style='font-size:11px;color:{MUTED};margin-top:2px;'>"
                 f"Avg <b>{_avg_c}</b> comp stores/week &nbsp;·&nbsp; 364-day YoY &nbsp;·&nbsp; "
                 f"Weeks: {trend_df_t['week_ending'].iloc[0]} – {trend_df_t['week_ending'].iloc[-1]}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+with tab4:
+    # ── Benchmark tab: Valley Group SSS by market segment vs. RBW system ──────
+    # Compares our SSS for the latest available RBW week (Mon–Sun ending the
+    # week_ending date in weekly_benchmark) and YTD against RBW's system totals.
+    #
+    # Notes on methodology:
+    #   • SSS uses the same comp methodology as Overview / By DM tabs:
+    #     store open ≥ 364 days before period start AND prior_net_sales > 0.
+    #   • "Most Recent Week" = Mon–Sun ending on RBW's latest week_ending.
+    #   • YTD on our side = calendar YTD (Jan 1 → today).
+    #     YTD on RBW side = fytd_sss_pct from their PDF, which is FISCAL YTD.
+    #     These are close but not identical if JM's fiscal year doesn't start
+    #     on Jan 1. Flagged below the table.
+
+    # ── Pull latest RBW Total row from weekly_benchmark ──────────────────────
+    _conn, _dialect = get_conn()
+    try:
+        rbw_latest = pd.read_sql_query(
+            "SELECT week_ending, sss_pct, fytd_sss_pct, store_count, region_name "
+            "FROM weekly_benchmark WHERE region = 'TOTAL' "
+            "ORDER BY week_ending DESC LIMIT 1",
+            _conn,
+        )
+    except Exception as e:
+        rbw_latest = pd.DataFrame()
+        st.error(f"Could not query weekly_benchmark: {e}")
+    finally:
+        _conn.close()
+
+    if rbw_latest.empty:
+        st.warning(
+            "No RBW benchmark data found in `weekly_benchmark`. "
+            "Run `py scripts/load_benchmark.py` to ingest the BlakeWard "
+            "'Sales Dashboard Summary (Weekly)' PDFs from `benchmark_pdfs/`."
+        )
+    else:
+        rbw_week_end    = pd.to_datetime(rbw_latest["week_ending"].iloc[0]).date()
+        rbw_recent_sss  = rbw_latest["sss_pct"].iloc[0]
+        rbw_ytd_sss     = rbw_latest["fytd_sss_pct"].iloc[0]
+        rbw_store_count = rbw_latest["store_count"].iloc[0]
+
+        # Week range: Mon → Sun ending on rbw_week_end
+        bw_end       = rbw_week_end
+        bw_start     = bw_end - timedelta(days=6)
+        prior_bw_end   = bw_end   - timedelta(days=364)
+        prior_bw_start = bw_start - timedelta(days=364)
+
+        # ── Load our daily_sales for that week + prior year ──────────────────
+        bw_all = load_sales(
+            str(prior_bw_start), str(bw_end),
+            str(prior_bw_start), str(prior_bw_end),
+        )
+        bw_curr  = bw_all[bw_all["sale_date"].dt.date.between(bw_start, bw_end)].copy()
+        bw_prior = bw_all[bw_all["sale_date"].dt.date.between(prior_bw_start, prior_bw_end)].copy()
+
+        # Comp eligibility for the recent week (open ≥ 364 days before bw_start)
+        bw_comp_eligible = load_comp_eligible_stores(str(bw_start))
+
+        # YTD already loaded above as ytd_curr_df / ytd_prior_df.
+        # Comp eligibility for YTD: stores open ≥ 364 days before Jan 1.
+        ytd_comp_eligible = load_comp_eligible_stores(str(_ytd_start))
+
+        # ── DM map (6 segments) ──────────────────────────────────────────────
+        dm_map_b = load_dm_store_map()
+
+        if dm_map_b is None or dm_map_b.empty:
+            st.info("DM data not loaded — run `py scripts/update_stores.py`.")
+        else:
+            # ── SSS helper: weighted by store-level current/prior net_sales ──
+            def _sss(curr_df_, prior_df_, store_ids, comp_set):
+                """Return (sss_pct, comp_count). None if insufficient data."""
+                if not store_ids or not comp_set:
+                    return None, 0
+                c_f = curr_df_[
+                    curr_df_["store_id"].isin(store_ids)
+                    & curr_df_["store_id"].isin(comp_set)
+                ]
+                p_f = prior_df_[
+                    prior_df_["store_id"].isin(store_ids)
+                    & prior_df_["store_id"].isin(comp_set)
+                ]
+                c_agg = c_f.groupby("store_id")["net_sales"].sum().reset_index()
+                p_agg = p_f.groupby("store_id")["net_sales"].sum().reset_index()
+                mg = c_agg.merge(p_agg, on="store_id", suffixes=("_c", "_p"))
+                mg = mg[mg["net_sales_p"] > 0]
+                if mg.empty:
+                    return None, 0
+                num = mg["net_sales_c"].sum() - mg["net_sales_p"].sum()
+                den = mg["net_sales_p"].sum()
+                if den <= 0:
+                    return None, 0
+                return (num / den) * 100, len(mg)
+
+            # ── Build 6 DM-group rows ────────────────────────────────────────
+            MARKET_ORDER_B = {
+                "LA - San Fernando Valley": 0,
+                "Los Angeles": 0,
+                "San Diego": 1,
+                "Santa Barbara": 2,
+            }
+            seg_rows = []
+            for dm_group, grp in dm_map_b.groupby("dm_group"):
+                sids = set(grp["store_id"].tolist())
+                wk_sss,  wk_n  = _sss(bw_curr,      bw_prior,      sids, bw_comp_eligible)
+                yt_sss,  yt_n  = _sss(ytd_curr_df,  ytd_prior_df,  sids, ytd_comp_eligible)
+                mkt = grp["display_market"].iloc[0]
+                seg_rows.append({
+                    "label":   dm_group,
+                    "market":  mkt,
+                    "stores":  len(sids),
+                    "wk_sss":  wk_sss,  "wk_n": wk_n,
+                    "yt_sss":  yt_sss,  "yt_n": yt_n,
+                })
+            seg_rows.sort(key=lambda r: (MARKET_ORDER_B.get(r["market"], 9), r["label"]))
+
+            # ── Valley Group Total (all stores in dm_map) ────────────────────
+            all_sids = set(dm_map_b["store_id"].tolist())
+            vg_wk_sss, vg_wk_n = _sss(bw_curr,     bw_prior,     all_sids, bw_comp_eligible)
+            vg_yt_sss, vg_yt_n = _sss(ytd_curr_df, ytd_prior_df, all_sids, ytd_comp_eligible)
+
+            # ── Header / context strip ───────────────────────────────────────
+            st.markdown(
+                f"<div style='font-size:11px;color:{MUTED};margin-bottom:10px;'>"
+                f"<b>Most Recent Week:</b> "
+                f"{bw_start.strftime('%b %d')} – {bw_end.strftime('%b %d, %Y')} "
+                f"(vs same week 364 days prior) &nbsp;·&nbsp; "
+                f"<b>YTD:</b> {_ytd_start.strftime('%b %d')} – "
+                f"{today.strftime('%b %d, %Y')} (vs prior year)"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # ── Render table ─────────────────────────────────────────────────
+            def _pct_cell(v, is_total=False, is_bench=False):
+                if v is None:
+                    if is_total or is_bench:
+                        return '<span style="opacity:.6">—</span>'
+                    return '<span class="na-val">—</span>'
+                sign = "+" if v >= 0 else ""
+                if is_total or is_bench:
+                    # white text on dark row
+                    return f'<span>{sign}{v:.1f}%</span>'
+                cls = "pos-val" if v >= 0 else "neg-val"
+                return f'<span class="{cls}">{sign}{v:.1f}%</span>'
+
+            # CSS scoped to this table (reuses dm-tree colors)
+            st.markdown(f"""
+            <style>
+              .bench-wrap {{ overflow-x:auto; -webkit-overflow-scrolling:touch; }}
+              .bench-table {{
+                font-family: Arial, sans-serif; font-size: 13px;
+                min-width: 540px; width: 100%; border-collapse: collapse;
+              }}
+              .bench-table thead th {{
+                background: {BLUE}; color: white;
+                font-size: 11px; font-weight: 700; letter-spacing: 1px;
+                text-transform: uppercase;
+                padding: 10px 12px; text-align: right;
+              }}
+              .bench-table thead th:first-child {{ text-align: left; }}
+              .bench-table tbody td {{
+                padding: 9px 12px;
+                border-bottom: 1px solid {BORDER};
+                text-align: right;
+                background: white;
+              }}
+              .bench-table tbody td:first-child {{
+                text-align: left; font-weight: 600;
+              }}
+              .bench-table tr.seg td {{ background: {LIGHT}; }}
+              .bench-table tr.seg:hover td {{ background: #e4eaf4; }}
+              .bench-table tr.vg-total td {{
+                background: {BLUE}; color: white; font-weight: 700;
+              }}
+              .bench-table tr.rbw-total td {{
+                background: {RED}; color: white; font-weight: 700;
+              }}
+              .bench-table td .stores-sub {{
+                font-size: 10px; color: {MUTED}; font-weight: 400;
+                margin-left: 6px;
+              }}
+              .bench-table tr.vg-total td .stores-sub,
+              .bench-table tr.rbw-total td .stores-sub {{
+                color: rgba(255,255,255,0.75);
+              }}
+            </style>
+            """, unsafe_allow_html=True)
+
+            html = ['<div class="bench-wrap"><table class="bench-table">']
+            html.append(
+                '<thead><tr>'
+                '<th>Market Segment</th>'
+                '<th>Stores</th>'
+                '<th>Most Recent Week SSS</th>'
+                '<th>YTD SSS</th>'
+                '</tr></thead><tbody>'
+            )
+            for r in seg_rows:
+                html.append(
+                    f'<tr class="seg">'
+                    f'<td>{r["label"]}</td>'
+                    f'<td>{r["stores"]}</td>'
+                    f'<td>{_pct_cell(r["wk_sss"])}</td>'
+                    f'<td>{_pct_cell(r["yt_sss"])}</td>'
+                    f'</tr>'
+                )
+            # Valley Group total
+            html.append(
+                f'<tr class="vg-total">'
+                f'<td>Valley Group Total</td>'
+                f'<td>{len(all_sids)}</td>'
+                f'<td>{_pct_cell(vg_wk_sss, is_total=True)}</td>'
+                f'<td>{_pct_cell(vg_yt_sss, is_total=True)}</td>'
+                f'</tr>'
+            )
+            # RBW total
+            try:
+                rbw_n = int(rbw_store_count) if rbw_store_count is not None else "—"
+            except Exception:
+                rbw_n = "—"
+            html.append(
+                f'<tr class="rbw-total">'
+                f'<td>RBW System Total</td>'
+                f'<td>{rbw_n}</td>'
+                f'<td>{_pct_cell(rbw_recent_sss, is_bench=True)}</td>'
+                f'<td>{_pct_cell(rbw_ytd_sss,    is_bench=True)}</td>'
+                f'</tr>'
+            )
+            html.append('</tbody></table></div>')
+            st.markdown('\n'.join(html), unsafe_allow_html=True)
+
+            # ── Methodology notes ────────────────────────────────────────────
+            st.markdown(
+                f"<div style='font-size:11px;color:{MUTED};margin-top:10px;"
+                f"line-height:1.55;'>"
+                f"<b>SSS</b> = (current net sales − prior-year net sales) ÷ prior-year net sales, "
+                f"on comp-eligible stores (open ≥364 days before period start, prior-year sales &gt; 0). "
+                f"<br/>"
+                f"<b>RBW Most Recent Week SSS</b> sourced from RBW's weekly Sales Dashboard Summary "
+                f"for week ending {bw_end.strftime('%b %d, %Y')}; "
+                f"<b>RBW YTD SSS</b> uses their <i>fiscal</i> YTD figure (<code>fytd_sss_pct</code>). "
+                f"Our YTD uses calendar YTD (Jan 1 → today); these will differ if JM's fiscal "
+                f"calendar doesn't start Jan 1."
                 f"</div>",
                 unsafe_allow_html=True,
             )
