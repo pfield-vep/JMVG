@@ -657,7 +657,7 @@ def kpi_delta_html(v):
     arrow = "▲" if v >= 0 else "▼"
     return f'<span class="{cls}">{arrow} {fmt_pct(v)}</span> vs prior year'
 
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "By District Manager", "Trends", "vs Benchmark"])
+tab1, tab2, tab3, tab4 = st.tabs(["Overview", "By District Manager", "Trends", "Benchmark"])
 with tab1:
     # ── Compute metrics for selected period and YTD ───────────────────────────
     T  = comp_metrics(curr_df, prior_df)      # current period
@@ -1578,251 +1578,321 @@ with tab3:
             )
 
 with tab4:
-    # ── Benchmark tab: Valley Group SSS by market segment vs. RBW system ──────
-    # Compares our SSS for the latest available RBW week (Mon–Sun ending the
-    # week_ending date in weekly_benchmark) and YTD against RBW's system totals.
+    # ── Benchmark tab: JMVG vs. BlakeWard peer comparison ─────────────────────
+    # Current-week + FYTD plaques (SSS%, SS Ticket%, Avg Daily Bread, Loyalty
+    # Sales%) followed by BlakeWard regional breakdown bar charts.
     #
-    # Notes on methodology:
-    #   • SSS uses the same comp methodology as Overview / By DM tabs:
-    #     store open ≥ 364 days before period start AND prior_net_sales > 0.
-    #   • "Most Recent Week" = Mon–Sun ending on RBW's latest week_ending.
-    #   • YTD on our side = calendar YTD (Jan 1 → today).
-    #     YTD on RBW side = fytd_sss_pct from their PDF, which is FISCAL YTD.
-    #     These are close but not identical if JM's fiscal year doesn't start
-    #     on Jan 1. Flagged below the table.
+    # Data sources (all Supabase):
+    #   • weekly_benchmark (region='TOTAL')  → BW system snapshot + FYTD
+    #   • weekly_benchmark (region != 'TOTAL') → BW regional bars
+    #   • weekly_sales (per-store)           → JMVG snapshot + FYTD (unweighted
+    #                                          .mean() across stores, matching
+    #                                          dashboard.py's existing approach)
+    #
+    # Note: JM Valley FY2026 began 12/29/25. FYTD values are pulled from the
+    # fytd_* columns the PDF parser stored, so they already respect JM's
+    # fiscal calendar — we don't need to compute the start ourselves.
 
-    # ── Pull latest RBW Total row from weekly_benchmark ──────────────────────
-    _conn, _dialect = get_conn()
+    FY26_START = date(2025, 12, 29)   # JM Valley FY2026 fiscal year start
+
+    # ── Load RBW benchmark data ──────────────────────────────────────────────
+    _bm_df = None
     try:
-        rbw_latest = pd.read_sql_query(
-            "SELECT week_ending, sss_pct, fytd_sss_pct, store_count, region_name "
-            "FROM weekly_benchmark WHERE region = 'TOTAL' "
-            "ORDER BY week_ending DESC LIMIT 1",
-            _conn,
+        _bm_conn, _ = get_conn()
+        _bm_df = pd.read_sql_query(
+            "SELECT * FROM weekly_benchmark ORDER BY week_ending, region",
+            _bm_conn,
         )
-    except Exception as e:
-        rbw_latest = pd.DataFrame()
-        st.error(f"Could not query weekly_benchmark: {e}")
-    finally:
-        _conn.close()
+        _bm_conn.close()
+        if _bm_df.empty:
+            _bm_df = None
+        else:
+            _bm_df["week_ending"] = pd.to_datetime(_bm_df["week_ending"])
+    except Exception as _bm_e:
+        st.error(f"Could not load weekly_benchmark: {_bm_e}")
+        _bm_df = None
 
-    if rbw_latest.empty:
+    if _bm_df is None:
         st.warning(
             "No RBW benchmark data found in `weekly_benchmark`. "
-            "Run `py scripts/load_benchmark.py` to ingest the BlakeWard "
-            "'Sales Dashboard Summary (Weekly)' PDFs from `benchmark_pdfs/`."
+            "Drop the BlakeWard 'Sales Dashboard Summary (Weekly)' PDF into "
+            "`benchmark_pdfs/` and run `py scripts/load_benchmark.py`."
         )
     else:
-        rbw_week_end    = pd.to_datetime(rbw_latest["week_ending"].iloc[0]).date()
-        rbw_recent_sss  = rbw_latest["sss_pct"].iloc[0]
-        rbw_ytd_sss     = rbw_latest["fytd_sss_pct"].iloc[0]
-        rbw_store_count = rbw_latest["store_count"].iloc[0]
+        # Separate TOTAL row from regional rows
+        _bm_total = _bm_df[_bm_df["region"] == "TOTAL"].copy().sort_values("week_ending")
+        _bm_reg   = _bm_df[_bm_df["region"] != "TOTAL"].copy()
 
-        # Week range: Mon → Sun ending on rbw_week_end
-        bw_end       = rbw_week_end
-        bw_start     = bw_end - timedelta(days=6)
-        prior_bw_end   = bw_end   - timedelta(days=364)
-        prior_bw_start = bw_start - timedelta(days=364)
+        # Latest BW week
+        _bm_snap_row  = _bm_total.iloc[-1]
+        _bm_snap_week = _bm_snap_row["week_ending"]
+        _bm_week_str  = _bm_snap_week.strftime("%-m/%-d/%y") if hasattr(_bm_snap_week, "strftime") \
+                        else pd.to_datetime(_bm_snap_week).strftime("%m/%d/%y").lstrip("0").replace("/0", "/")
+        try:
+            _store_cnt = int(_bm_snap_row["store_count"]) if _bm_snap_row["store_count"] else "?"
+        except Exception:
+            _store_cnt = "?"
 
-        # ── Load our daily_sales for that week + prior year ──────────────────
-        bw_all = load_sales(
-            str(prior_bw_start), str(bw_end),
-            str(prior_bw_start), str(prior_bw_end),
-        )
-        bw_curr  = bw_all[bw_all["sale_date"].dt.date.between(bw_start, bw_end)].copy()
-        bw_prior = bw_all[bw_all["sale_date"].dt.date.between(prior_bw_start, prior_bw_end)].copy()
-
-        # Comp eligibility for the recent week (open ≥ 364 days before bw_start)
-        bw_comp_eligible = load_comp_eligible_stores(str(bw_start))
-
-        # YTD already loaded above as ytd_curr_df / ytd_prior_df.
-        # Comp eligibility for YTD: stores open ≥ 364 days before Jan 1.
-        ytd_comp_eligible = load_comp_eligible_stores(str(_ytd_start))
-
-        # ── DM map (6 segments) ──────────────────────────────────────────────
-        dm_map_b = load_dm_store_map()
-
-        if dm_map_b is None or dm_map_b.empty:
-            st.info("DM data not loaded — run `py scripts/update_stores.py`.")
-        else:
-            # ── SSS helper: weighted by store-level current/prior net_sales ──
-            def _sss(curr_df_, prior_df_, store_ids, comp_set):
-                """Return (sss_pct, comp_count). None if insufficient data."""
-                if not store_ids or not comp_set:
-                    return None, 0
-                c_f = curr_df_[
-                    curr_df_["store_id"].isin(store_ids)
-                    & curr_df_["store_id"].isin(comp_set)
-                ]
-                p_f = prior_df_[
-                    prior_df_["store_id"].isin(store_ids)
-                    & prior_df_["store_id"].isin(comp_set)
-                ]
-                c_agg = c_f.groupby("store_id")["net_sales"].sum().reset_index()
-                p_agg = p_f.groupby("store_id")["net_sales"].sum().reset_index()
-                mg = c_agg.merge(p_agg, on="store_id", suffixes=("_c", "_p"))
-                mg = mg[mg["net_sales_p"] > 0]
-                if mg.empty:
-                    return None, 0
-                num = mg["net_sales_c"].sum() - mg["net_sales_p"].sum()
-                den = mg["net_sales_p"].sum()
-                if den <= 0:
-                    return None, 0
-                return (num / den) * 100, len(mg)
-
-            # ── Build 6 DM-group rows ────────────────────────────────────────
-            MARKET_ORDER_B = {
-                "LA - San Fernando Valley": 0,
-                "Los Angeles": 0,
-                "San Diego": 1,
-                "Santa Barbara": 2,
-            }
-            seg_rows = []
-            for dm_group, grp in dm_map_b.groupby("dm_group"):
-                sids = set(grp["store_id"].tolist())
-                wk_sss,  wk_n  = _sss(bw_curr,      bw_prior,      sids, bw_comp_eligible)
-                yt_sss,  yt_n  = _sss(ytd_curr_df,  ytd_prior_df,  sids, ytd_comp_eligible)
-                mkt = grp["display_market"].iloc[0]
-                seg_rows.append({
-                    "label":   dm_group,
-                    "market":  mkt,
-                    "stores":  len(sids),
-                    "wk_sss":  wk_sss,  "wk_n": wk_n,
-                    "yt_sss":  yt_sss,  "yt_n": yt_n,
-                })
-            seg_rows.sort(key=lambda r: (MARKET_ORDER_B.get(r["market"], 9), r["label"]))
-
-            # ── Valley Group Total (all stores in dm_map) ────────────────────
-            all_sids = set(dm_map_b["store_id"].tolist())
-            vg_wk_sss, vg_wk_n = _sss(bw_curr,     bw_prior,     all_sids, bw_comp_eligible)
-            vg_yt_sss, vg_yt_n = _sss(ytd_curr_df, ytd_prior_df, all_sids, ytd_comp_eligible)
-
-            # ── Header / context strip ───────────────────────────────────────
-            st.markdown(
-                f"<div style='font-size:11px;color:{MUTED};margin-bottom:10px;'>"
-                f"<b>Most Recent Week:</b> "
-                f"{bw_start.strftime('%b %d')} – {bw_end.strftime('%b %d, %Y')} "
-                f"(vs same week 364 days prior) &nbsp;·&nbsp; "
-                f"<b>YTD:</b> {_ytd_start.strftime('%b %d')} – "
-                f"{today.strftime('%b %d, %Y')} (vs prior year)"
-                f"</div>",
-                unsafe_allow_html=True,
+        # ── Load JM Valley weekly_sales for the BW snapshot week ──────────────
+        _jm_week = pd.DataFrame()
+        try:
+            _jm_conn, _jm_dialect = get_conn()
+            _p = "%s" if _jm_dialect == "postgres" else "?"
+            _jm_week = pd.read_sql_query(
+                f"SELECT * FROM weekly_sales WHERE week_ending = {_p}",
+                _jm_conn,
+                params=(_bm_snap_week.strftime("%Y-%m-%d"),),
             )
+            _jm_conn.close()
+        except Exception as _jm_e:
+            st.warning(f"Could not load weekly_sales: {_jm_e}")
 
-            # ── Render table ─────────────────────────────────────────────────
-            def _pct_cell(v, is_total=False, is_bench=False):
-                if v is None:
-                    if is_total or is_bench:
-                        return '<span style="opacity:.6">—</span>'
-                    return '<span class="na-val">—</span>'
-                sign = "+" if v >= 0 else ""
-                if is_total or is_bench:
-                    # white text on dark row
-                    return f'<span>{sign}{v:.1f}%</span>'
-                cls = "pos-val" if v >= 0 else "neg-val"
-                return f'<span class="{cls}">{sign}{v:.1f}%</span>'
+        # Identify the SS Ticket column name (schema variant tolerance)
+        _tkt_col = "same_store_txn_pct" if "same_store_txn_pct" in _jm_week.columns \
+                   else "same_store_ticket_pct" if "same_store_ticket_pct" in _jm_week.columns \
+                   else None
+        _fytd_tkt_col = "fytd_same_store_txn_pct" if "fytd_same_store_txn_pct" in _jm_week.columns \
+                        else "fytd_same_store_ticket" if "fytd_same_store_ticket" in _jm_week.columns \
+                        else None
 
-            # CSS scoped to this table (reuses dm-tree colors)
-            st.markdown(f"""
-            <style>
-              .bench-wrap {{ overflow-x:auto; -webkit-overflow-scrolling:touch; }}
-              .bench-table {{
-                font-family: Arial, sans-serif; font-size: 13px;
-                min-width: 540px; width: 100%; border-collapse: collapse;
-              }}
-              .bench-table thead th {{
-                background: {BLUE}; color: white;
-                font-size: 11px; font-weight: 700; letter-spacing: 1px;
-                text-transform: uppercase;
-                padding: 10px 12px; text-align: right;
-              }}
-              .bench-table thead th:first-child {{ text-align: left; }}
-              .bench-table tbody td {{
-                padding: 9px 12px;
-                border-bottom: 1px solid {BORDER};
-                text-align: right;
-                background: white;
-              }}
-              .bench-table tbody td:first-child {{
-                text-align: left; font-weight: 600;
-              }}
-              .bench-table tr.seg td {{ background: {LIGHT}; }}
-              .bench-table tr.seg:hover td {{ background: #e4eaf4; }}
-              .bench-table tr.vg-total td {{
-                background: {BLUE}; color: white; font-weight: 700;
-              }}
-              .bench-table tr.rbw-total td {{
-                background: {RED}; color: white; font-weight: 700;
-              }}
-              .bench-table td .stores-sub {{
-                font-size: 10px; color: {MUTED}; font-weight: 400;
-                margin-left: 6px;
-              }}
-              .bench-table tr.vg-total td .stores-sub,
-              .bench-table tr.rbw-total td .stores-sub {{
-                color: rgba(255,255,255,0.75);
-              }}
-            </style>
-            """, unsafe_allow_html=True)
-
-            html = ['<div class="bench-wrap"><table class="bench-table">']
-            html.append(
-                '<thead><tr>'
-                '<th>Market Segment</th>'
-                '<th>Stores</th>'
-                '<th>Most Recent Week SSS</th>'
-                '<th>YTD SSS</th>'
-                '</tr></thead><tbody>'
-            )
-            for r in seg_rows:
-                html.append(
-                    f'<tr class="seg">'
-                    f'<td>{r["label"]}</td>'
-                    f'<td>{r["stores"]}</td>'
-                    f'<td>{_pct_cell(r["wk_sss"])}</td>'
-                    f'<td>{_pct_cell(r["yt_sss"])}</td>'
-                    f'</tr>'
-                )
-            # Valley Group total
-            html.append(
-                f'<tr class="vg-total">'
-                f'<td>Valley Group Total</td>'
-                f'<td>{len(all_sids)}</td>'
-                f'<td>{_pct_cell(vg_wk_sss, is_total=True)}</td>'
-                f'<td>{_pct_cell(vg_yt_sss, is_total=True)}</td>'
-                f'</tr>'
-            )
-            # RBW total
+        # ── JM Valley aggregates (unweighted store mean, matches dashboard.py) ─
+        def _safe_mean(df_, col):
+            if df_.empty or col is None or col not in df_.columns:
+                return None
             try:
-                rbw_n = int(rbw_store_count) if rbw_store_count is not None else "—"
+                return float(df_[col].dropna().mean())
             except Exception:
-                rbw_n = "—"
-            html.append(
-                f'<tr class="rbw-total">'
-                f'<td>RBW System Total</td>'
-                f'<td>{rbw_n}</td>'
-                f'<td>{_pct_cell(rbw_recent_sss, is_bench=True)}</td>'
-                f'<td>{_pct_cell(rbw_ytd_sss,    is_bench=True)}</td>'
-                f'</tr>'
-            )
-            html.append('</tbody></table></div>')
-            st.markdown('\n'.join(html), unsafe_allow_html=True)
+                return None
 
-            # ── Methodology notes ────────────────────────────────────────────
-            st.markdown(
-                f"<div style='font-size:11px;color:{MUTED};margin-top:10px;"
-                f"line-height:1.55;'>"
-                f"<b>SSS</b> = (current net sales − prior-year net sales) ÷ prior-year net sales, "
-                f"on comp-eligible stores (open ≥364 days before period start, prior-year sales &gt; 0). "
-                f"<br/>"
-                f"<b>RBW Most Recent Week SSS</b> sourced from RBW's weekly Sales Dashboard Summary "
-                f"for week ending {bw_end.strftime('%b %d, %Y')}; "
-                f"<b>RBW YTD SSS</b> uses their <i>fiscal</i> YTD figure (<code>fytd_sss_pct</code>). "
-                f"Our YTD uses calendar YTD (Jan 1 → today); these will differ if JM's fiscal "
-                f"calendar doesn't start Jan 1."
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+        _jm_sss = _safe_mean(_jm_week, "sss_pct")
+        _jm_tkt = _safe_mean(_jm_week, _tkt_col)
+        _jm_brd = _safe_mean(_jm_week, "avg_daily_bread")
+        _jm_loy = _safe_mean(_jm_week, "loyalty_sales_pct")
+
+        _jm_fytd_sss = _safe_mean(_jm_week, "fytd_sss_pct")
+        _jm_fytd_tkt = _safe_mean(_jm_week, _fytd_tkt_col)
+        _jm_fytd_brd = _safe_mean(_jm_week, "fytd_avg_daily_bread")
+        # weekly_sales has no fytd_loyalty column — leave None
+
+        # ── Header strip ──────────────────────────────────────────────────────
+        st.markdown(f"""
+        <div style='background:{BLUE};padding:14px 20px;border-radius:8px;margin-bottom:18px;'>
+          <span style='color:white;font-family:Arial,sans-serif;font-size:15px;font-weight:700;
+                       letter-spacing:1px;'>
+            PEER BENCHMARK — JM VALLEY GROUP &nbsp;vs.&nbsp; BLAKEWARD ({_store_cnt} STORES)
+          </span>
+          <span style='color:rgba(255,255,255,0.65);font-size:12px;margin-left:16px;'>
+            Week ending {_bm_week_str}
+          </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Plaque builder ────────────────────────────────────────────────────
+        def _bm_card(label, jm_val, bm_val, fmt="{:+.1f}%"):
+            jm_str = fmt.format(jm_val) if jm_val is not None else "—"
+            bm_str = fmt.format(bm_val) if bm_val is not None else "—"
+            if jm_val is not None and bm_val is not None:
+                delta   = jm_val - bm_val
+                d_str   = f"{delta:+.1f}pp"
+                d_color = GREEN if delta >= 0 else DANGER
+                d_arrow = "▲" if delta >= 0 else "▼"
+            else:
+                d_str, d_color, d_arrow = "—", MUTED, ""
+            return f"""
+            <div style='background:#F8F9FB;border:1px solid {BORDER};border-radius:8px;
+                        padding:14px 16px;text-align:center;'>
+              <div style='font-size:11px;color:{MUTED};font-family:Arial;
+                          letter-spacing:.5px;margin-bottom:8px;'>{label}</div>
+              <div style='display:flex;justify-content:space-around;align-items:flex-end;'>
+                <div>
+                  <div style='font-size:10px;color:{BLUE};font-weight:700;font-family:Arial;
+                               margin-bottom:3px;'>JM VALLEY</div>
+                  <div style='font-size:22px;font-weight:700;color:{TEXT};
+                               font-family:Arial;'>{jm_str}</div>
+                </div>
+                <div style='font-size:18px;color:{MUTED};padding-bottom:4px;'>vs</div>
+                <div>
+                  <div style='font-size:10px;color:{MUTED};font-weight:700;font-family:Arial;
+                               margin-bottom:3px;'>BLAKEWARD</div>
+                  <div style='font-size:22px;font-weight:700;color:{MUTED};
+                               font-family:Arial;'>{bm_str}</div>
+                </div>
+              </div>
+              <div style='margin-top:8px;font-size:13px;font-weight:700;
+                           color:{d_color};font-family:Arial;'>{d_arrow} {d_str} vs peer</div>
+            </div>"""
+
+        # ── Section: Current Week ─────────────────────────────────────────────
+        st.markdown(
+            f"<div style='font-size:12px;font-weight:800;letter-spacing:1.5px;"
+            f"text-transform:uppercase;color:{BLUE};border-bottom:2px solid {BLUE};"
+            f"padding-bottom:6px;margin:8px 0 14px;'>"
+            f"Current Week — JM Valley vs. BlakeWard Total</div>",
+            unsafe_allow_html=True,
+        )
+        _bc1, _bc2, _bc3, _bc4 = st.columns(4)
+        with _bc1:
+            st.markdown(_bm_card("SAME STORE SALES %", _jm_sss,
+                                 float(_bm_snap_row["sss_pct"]) if pd.notna(_bm_snap_row["sss_pct"]) else None),
+                        unsafe_allow_html=True)
+        with _bc2:
+            st.markdown(_bm_card("SS TICKET %", _jm_tkt,
+                                 float(_bm_snap_row["ss_ticket_pct"]) if pd.notna(_bm_snap_row["ss_ticket_pct"]) else None),
+                        unsafe_allow_html=True)
+        with _bc3:
+            st.markdown(_bm_card("AVG DAILY BREAD", _jm_brd,
+                                 float(_bm_snap_row["avg_daily_bread"]) if pd.notna(_bm_snap_row["avg_daily_bread"]) else None,
+                                 fmt="{:.0f}"),
+                        unsafe_allow_html=True)
+        with _bc4:
+            st.markdown(_bm_card("LOYALTY SALES %", _jm_loy,
+                                 float(_bm_snap_row["loyalty_sales_pct"]) if pd.notna(_bm_snap_row["loyalty_sales_pct"]) else None),
+                        unsafe_allow_html=True)
+
+        # ── Section: FYTD ─────────────────────────────────────────────────────
+        st.markdown(
+            f"<div style='font-size:12px;font-weight:800;letter-spacing:1.5px;"
+            f"text-transform:uppercase;color:{BLUE};border-bottom:2px solid {BLUE};"
+            f"padding-bottom:6px;margin:20px 0 6px;'>"
+            f"Fiscal Year to Date — JM Valley vs. BlakeWard Total</div>"
+            f"<div style='font-size:11px;color:{MUTED};margin-bottom:14px;'>"
+            f"JM Valley FY2026 began <b>{FY26_START.strftime('%-m/%-d/%y')}</b>. "
+            f"FYTD figures come from the <code>fytd_*</code> columns in each "
+            f"source PDF, so JM and BW each respect their own fiscal calendars."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        _yc1, _yc2, _yc3, _yc4 = st.columns(4)
+        with _yc1:
+            st.markdown(_bm_card("FYTD SSS %", _jm_fytd_sss,
+                                 float(_bm_snap_row["fytd_sss_pct"]) if pd.notna(_bm_snap_row["fytd_sss_pct"]) else None),
+                        unsafe_allow_html=True)
+        with _yc2:
+            st.markdown(_bm_card("FYTD SS TICKET %", _jm_fytd_tkt,
+                                 float(_bm_snap_row["fytd_ss_ticket_pct"]) if pd.notna(_bm_snap_row["fytd_ss_ticket_pct"]) else None),
+                        unsafe_allow_html=True)
+        with _yc3:
+            st.markdown(_bm_card("FYTD AVG DAILY BREAD", _jm_fytd_brd,
+                                 float(_bm_snap_row["fytd_avg_daily_bread"]) if pd.notna(_bm_snap_row["fytd_avg_daily_bread"]) else None,
+                                 fmt="{:.0f}"),
+                        unsafe_allow_html=True)
+        with _yc4:
+            # No FYTD loyalty in either schema — show "—"
+            st.markdown(_bm_card("FYTD LOYALTY SALES %", None, None), unsafe_allow_html=True)
+
+        # ── Section: BlakeWard Regional Breakdown — Latest Week ───────────────
+        st.markdown(
+            f"<div style='font-size:12px;font-weight:800;letter-spacing:1.5px;"
+            f"text-transform:uppercase;color:{BLUE};border-bottom:2px solid {BLUE};"
+            f"padding-bottom:6px;margin:22px 0 14px;'>"
+            f"BlakeWard Regional Breakdown — Latest Week</div>",
+            unsafe_allow_html=True,
+        )
+
+        _reg_latest = _bm_reg[_bm_reg["week_ending"] == _bm_snap_week] \
+                          .sort_values("sss_pct", ascending=False)
+
+        _REGION_COLORS = {
+            "FL": "#134A7C", "KC": "#EE3227", "KS": "#D4AF37",
+            "MO": "#16a34a", "NC": "#6B21A8", "NY": "#0ea5e9", "SC": "#f97316",
+        }
+
+        if _reg_latest.empty:
+            st.info(f"No regional data available for week ending {_bm_week_str}.")
+        else:
+            _rb1, _rb2 = st.columns(2)
+
+            with _rb1:
+                _fig_rb1 = go.Figure()
+                _bar_colors = [_REGION_COLORS.get(r, MUTED) for r in _reg_latest["region"]]
+                _fig_rb1.add_trace(go.Bar(
+                    x=_reg_latest["region"],
+                    y=_reg_latest["sss_pct"],
+                    marker_color=_bar_colors,
+                    text=[f"{v:+.1f}%" for v in _reg_latest["sss_pct"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>SSS: %{y:+.1f}%<extra></extra>",
+                ))
+                if _jm_sss is not None:
+                    _fig_rb1.add_hline(
+                        y=_jm_sss, line_color=BLUE, line_width=2, line_dash="dot",
+                        annotation_text=f"JM Valley {_jm_sss:+.1f}%",
+                        annotation_position="top right",
+                        annotation_font=dict(color=BLUE, size=11),
+                    )
+                _fig_rb1.add_hline(
+                    y=float(_bm_snap_row["sss_pct"]),
+                    line_color=MUTED, line_width=1.5, line_dash="dash",
+                    annotation_text=f"BW Avg {float(_bm_snap_row['sss_pct']):+.1f}%",
+                    annotation_position="bottom right",
+                    annotation_font=dict(color=MUTED, size=10),
+                )
+                _fig_rb1.update_layout(
+                    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+                    font=dict(family="Arial", size=12, color=TEXT),
+                    height=340,
+                    title=dict(text="SSS % by BlakeWard Region",
+                               font=dict(size=14, color=TEXT, family="Arial")),
+                    margin=dict(l=40, r=20, t=55, b=40),
+                    showlegend=False,
+                    yaxis=dict(ticksuffix="%", zeroline=True, zerolinecolor=MUTED,
+                               gridcolor=BORDER),
+                    xaxis=dict(gridcolor=BORDER),
+                )
+                st.plotly_chart(_fig_rb1, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
+            with _rb2:
+                _fig_rb2 = go.Figure()
+                _reg_tkt = _reg_latest.sort_values("ss_ticket_pct", ascending=False)
+                _bar_colors2 = [_REGION_COLORS.get(r, MUTED) for r in _reg_tkt["region"]]
+                _fig_rb2.add_trace(go.Bar(
+                    x=_reg_tkt["region"],
+                    y=_reg_tkt["ss_ticket_pct"],
+                    marker_color=_bar_colors2,
+                    text=[f"{v:+.1f}%" for v in _reg_tkt["ss_ticket_pct"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>Ticket: %{y:+.1f}%<extra></extra>",
+                ))
+                if _jm_tkt is not None:
+                    _fig_rb2.add_hline(
+                        y=_jm_tkt, line_color=BLUE, line_width=2, line_dash="dot",
+                        annotation_text=f"JM Valley {_jm_tkt:+.1f}%",
+                        annotation_position="top right",
+                        annotation_font=dict(color=BLUE, size=11),
+                    )
+                _fig_rb2.add_hline(
+                    y=float(_bm_snap_row["ss_ticket_pct"]),
+                    line_color=MUTED, line_width=1.5, line_dash="dash",
+                    annotation_text=f"BW Avg {float(_bm_snap_row['ss_ticket_pct']):+.1f}%",
+                    annotation_position="bottom right",
+                    annotation_font=dict(color=MUTED, size=10),
+                )
+                _fig_rb2.update_layout(
+                    plot_bgcolor=WHITE, paper_bgcolor=WHITE,
+                    font=dict(family="Arial", size=12, color=TEXT),
+                    height=340,
+                    title=dict(text="SS Ticket % by BlakeWard Region",
+                               font=dict(size=14, color=TEXT, family="Arial")),
+                    margin=dict(l=40, r=20, t=55, b=40),
+                    showlegend=False,
+                    yaxis=dict(ticksuffix="%", zeroline=True, zerolinecolor=MUTED,
+                               gridcolor=BORDER),
+                    xaxis=dict(gridcolor=BORDER),
+                )
+                st.plotly_chart(_fig_rb2, use_container_width=True,
+                                config={"responsive": True, "displayModeBar": False})
+
+        st.markdown(
+            f"<div style='font-family:Arial,sans-serif;font-size:11px;color:{MUTED};"
+            f"margin-top:8px;line-height:1.5;'>"
+            f"JM Valley aggregate = unweighted mean of per-store values from "
+            f"<code>weekly_sales</code> for week ending {_bm_week_str}, "
+            f"matching the convention used elsewhere in the dashboard. "
+            f"BlakeWard = system Grand Total from <code>weekly_benchmark</code>."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
