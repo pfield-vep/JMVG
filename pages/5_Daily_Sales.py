@@ -1471,7 +1471,17 @@ with tab3:
         )
         wk_index = weekly_agg.set_index(["store_id", "week_ending"])
 
-        weeks_all = sorted(weekly_agg["week_ending"].unique())
+        # Only show weeks with a FULL 7 days of daily data ingested.
+        # Without this guard, an in-progress week (e.g. today=Tue, week_ending=Sun)
+        # compares 2 days of current sales against a full 7-day prior-year week,
+        # producing nonsense like -85.9% on the trend chart.
+        _all_dates = pd.Series(t_raw["sale_date"].dt.date.unique())
+        weeks_all = []
+        for _wk in sorted(weekly_agg["week_ending"].unique()):
+            _wk_start = _wk - timedelta(days=6)
+            _days_in_wk = _all_dates[(_all_dates >= _wk_start) & (_all_dates <= _wk)].nunique()
+            if _days_in_wk >= 7:
+                weeks_all.append(_wk)
         min_stores = 1 if t_sids else 3
 
         trend_rows = []
