@@ -8,6 +8,7 @@ Runs automatically via the scheduled task at 11:15 AM CT daily.
 Can also be run manually:  py scripts/fetch_daily_email.py
 """
 import os, sys, io, base64, tempfile
+from datetime import datetime
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
@@ -16,6 +17,21 @@ CLIENT_ID  = "44f09a6a-eae4-43d6-bd80-3c806a3b2d1a"
 TENANT_ID  = "8dc59d31-158a-4afd-855d-446c26c6adc7"
 SENDER     = "vpnotifications@vp-analytics.com"
 SUBJECT_KW = "JM Valley Daily Export"
+
+
+def today_pt():
+    """Today in America/Los_Angeles. Stores are CA-based — PT defines 'today'.
+
+    The Vantage Point export sometimes includes a partial same-day row that
+    looks complete but isn't (e.g. only morning sales recorded so far).
+    Always discard rows >= today (PT) before upserting; we'll re-pick them
+    up tomorrow when they're fully populated.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/Los_Angeles")).date()
 
 def get_conn():
     import psycopg2
@@ -197,20 +213,34 @@ def main():
                   if n.lower().endswith((".xlsx", ".xls"))
                   and "hourly" not in n.lower()}
 
+    today = today_pt()
+
     for fname, xl_bytes in xlsx_files.items():
         print(f"\n── Daily sales: {fname} ({len(xl_bytes):,} bytes)")
         df_ds = ds_parse(io.BytesIO(xl_bytes))
         total_rows = len(df_ds)
+
+        # SAFEGUARD: drop any rows dated today (PT) or later. The Vantage Point
+        # export occasionally includes a same-day partial row that looks
+        # complete but isn't (transactions still happening). We'll re-pick
+        # those rows up tomorrow when they're fully populated.
+        partial_today = (df_ds["Date"].dt.date >= today).sum()
+        df_ds = df_ds[df_ds["Date"].dt.date < today]
+        if partial_today:
+            print(f"  ⚠ Dropped {partial_today:,} rows dated {today} or later (partial same-day data)")
 
         # Always process the last 5 days from the email so that stores whose
         # data arrived late (NULL fields on a prior run) get backfilled.
         # Rows older than 5 days that are already fully loaded are skipped by
         # the NULL-preserving upsert — no data is ever overwritten.
         from datetime import timedelta
+        if df_ds.empty:
+            print("  No eligible rows in this email after same-day filter.")
+            continue
         cutoff = df_ds["Date"].max().date() - timedelta(days=4)
         df_ds = df_ds[df_ds["Date"].dt.date >= cutoff]
         print(f"  Processing last 5 days ({cutoff} → {df_ds['Date'].max().date()}): "
-              f"{len(df_ds):,} rows ({total_rows - len(df_ds):,} older rows skipped)")
+              f"{len(df_ds):,} rows ({total_rows - len(df_ds) - partial_today:,} older rows skipped)")
 
         if not df_ds.empty:
             n = ds_upsert(conn, dialect, df_ds)
@@ -233,6 +263,14 @@ def main():
         print(f"\n── Hourly sales: {fname} ({len(zip_bytes):,} bytes)")
         latest_hr = hr_latest(conn)
         df_hr = hr_parse(zip_bytes, after_date=latest_hr)
+
+        # SAFEGUARD: same same-day filter as daily sales. The hourly CSV in
+        # the same email can also contain partial same-day rows.
+        if not df_hr.empty:
+            partial_today_hr = (df_hr["sale_date"].dt.date >= today).sum()
+            df_hr = df_hr[df_hr["sale_date"].dt.date < today]
+            if partial_today_hr:
+                print(f"  ⚠ Dropped {partial_today_hr:,} hourly rows dated {today} or later (partial same-day data)")
 
         if not df_hr.empty:
             n = hr_upsert(conn, dialect, df_hr)
