@@ -855,25 +855,53 @@ with tab1:
 
     def _sss_per_day(chart_days, lookback_days):
         """
-        Compute SSS% for each day using only the intersection of stores that
-        have data on BOTH the current day AND the equivalent prior-year day.
-        This matches the comp_metrics() inner-join methodology used in the tiles,
-        so a store missing data on any given day is excluded from both sides of
-        that day's calc — never inflating/deflating the denominator.
+        Compute SSS% for each day using the SAME methodology as comp_metrics()
+        so the chart's most-recent-day bar matches the BY MARKET → TOTAL row
+        when the page period is set to that same day.
+
+        Per day:
+          1. comp_eligible is anchored to the curr_day (not the chart start).
+             A store is comp-eligible iff open_date + 364 days <= curr_day.
+          2. Inner-join curr and prior rows on store_id (sums per store).
+          3. Drop stores where prior_sales <= 0 (per-store, not aggregate).
+          4. SSS% = (sum(curr) - sum(prior)) / sum(prior) * 100.
+
         Returns DataFrame with columns [sale_date, sss].
         """
         rows = []
         for curr_day in chart_days:
             prior_day = curr_day - timedelta(days=lookback_days)
-            curr_sub  = _comp_data[_comp_data["sale_date"].dt.date == curr_day]
-            prior_sub = _comp_data[_comp_data["sale_date"].dt.date == prior_day]
-            both = set(curr_sub["store_id"]) & set(prior_sub["store_id"])
-            if not both:
+            day_eligible = load_comp_eligible_stores(str(curr_day))
+            if not day_eligible:
                 continue
-            c_sales = curr_sub[curr_sub["store_id"].isin(both)]["net_sales"].sum()
-            p_sales = prior_sub[prior_sub["store_id"].isin(both)]["net_sales"].sum()
-            if p_sales > 0:
-                rows.append({"sale_date": pd.Timestamp(curr_day), "sss": (c_sales - p_sales) / p_sales * 100})
+
+            c = _chart_all[
+                (_chart_all["sale_date"].dt.date == curr_day) &
+                _chart_all["store_id"].astype(str).isin(day_eligible)
+            ]
+            p = _chart_all[
+                (_chart_all["sale_date"].dt.date == prior_day) &
+                _chart_all["store_id"].astype(str).isin(day_eligible)
+            ]
+            if c.empty or p.empty:
+                continue
+
+            c_agg = (c.groupby("store_id")["net_sales"].sum()
+                       .reset_index().rename(columns={"net_sales": "curr"}))
+            p_agg = (p.groupby("store_id")["net_sales"].sum()
+                       .reset_index().rename(columns={"net_sales": "prior"}))
+            merged = c_agg.merge(p_agg, on="store_id", how="inner")
+            merged = merged[merged["prior"] > 0]
+            if merged.empty:
+                continue
+
+            prior_sum = merged["prior"].sum()
+            if prior_sum > 0:
+                curr_sum = merged["curr"].sum()
+                rows.append({
+                    "sale_date": pd.Timestamp(curr_day),
+                    "sss": (curr_sum - prior_sum) / prior_sum * 100,
+                })
         return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["sale_date", "sss"])
 
     _days7 = [_chart_start + timedelta(days=i) for i in range(7)]
