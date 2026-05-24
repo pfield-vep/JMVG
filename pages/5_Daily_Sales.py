@@ -661,7 +661,19 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "By District Manager", "Trends", "
 with tab1:
     # ── Compute metrics for selected period and YTD ───────────────────────────
     T  = comp_metrics(curr_df, prior_df)      # current period
-    TY = comp_metrics(ytd_curr_df, ytd_prior_df)  # YTD
+
+    # YTD subscript: anchor comp eligibility to Jan 1 (not the page-level
+    # start_date) so the gray YTD value matches the YTD toggle's main tile
+    # regardless of which time-frame button is active. Without this, stores
+    # that comped mid-year (e.g. Studio City) inflate YTD when viewed from
+    # Day/WTD/PTD because comp_eligible would include them.
+    _ytd_eligible = load_comp_eligible_stores(str(_ytd_start))
+    _saved_comp_eligible = comp_eligible
+    try:
+        globals()["comp_eligible"] = _ytd_eligible
+        TY = comp_metrics(ytd_curr_df, ytd_prior_df)
+    finally:
+        globals()["comp_eligible"] = _saved_comp_eligible
 
     # CHECK% = ticket change = (1+SSS)/(1+SST) - 1
     def _check(sss, sst):
