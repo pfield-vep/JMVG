@@ -5,15 +5,24 @@ DELETE THIS FILE once the connection is confirmed working.
 
 import base64
 import streamlit as st
-import snowflake.connector
 
 st.set_page_config(page_title="Snowflake Connection Test", page_icon="❄️")
 st.title("❄️ Snowflake Connection Test")
 st.caption("Temporary page — delete after confirming the connection works.")
 st.write("---")
 
-# ── Step 1: Read secrets ──────────────────────────────────────────────────────
-st.subheader("Step 1: Read secrets")
+# ── Step 1: Import snowflake connector ────────────────────────────────────────
+st.subheader("Step 1: Import snowflake.connector")
+try:
+    import snowflake.connector
+    st.success("✅ snowflake.connector imported successfully.")
+except ImportError as e:
+    st.error("❌ snowflake.connector not available — package may not have installed.")
+    st.code(str(e))
+    st.stop()
+
+# ── Step 2: Read secrets ──────────────────────────────────────────────────────
+st.subheader("Step 2: Read secrets")
 try:
     cfg = st.secrets["connections"]["snowflake"]
     st.success(f"✅ Secrets found. account=`{cfg['account']}` user=`{cfg['user']}`")
@@ -22,8 +31,8 @@ except Exception as e:
     st.code(str(e))
     st.stop()
 
-# ── Step 2: Decode private key ────────────────────────────────────────────────
-st.subheader("Step 2: Decode private key")
+# ── Step 3: Decode private key ────────────────────────────────────────────────
+st.subheader("Step 3: Decode private key")
 try:
     private_key_bytes = base64.b64decode(cfg["private_key"])
     st.success(f"✅ Private key decoded ({len(private_key_bytes)} bytes).")
@@ -32,8 +41,8 @@ except Exception as e:
     st.code(str(e))
     st.stop()
 
-# ── Step 3: Open Snowflake connection ─────────────────────────────────────────
-st.subheader("Step 3: Connect to Snowflake")
+# ── Step 4: Connect ───────────────────────────────────────────────────────────
+st.subheader("Step 4: Connect to Snowflake")
 try:
     conn = snowflake.connector.connect(
         account=cfg["account"],
@@ -45,27 +54,20 @@ try:
         schema=cfg.get("schema", ""),
     )
     st.success("✅ Connected to Snowflake!")
-except Exception as e:
-    st.error("❌ Connection failed. Full error:")
-    st.code(str(e))
-    st.markdown("""
-**Common fixes:**
-- `account` wrong → try `host = "vantagedata.eu-west-1.snowflakecomputing.com"` instead of `account`
-- `JWT token invalid` → public key may not be registered on the Snowflake user
-- `250001 / Failed to connect` → warehouse or database name is wrong
-""")
-    st.stop()
 
-# ── Step 4: Run a query ───────────────────────────────────────────────────────
-st.subheader("Step 4: Run a query")
-try:
     cs = conn.cursor()
     cs.execute("SELECT CURRENT_TIMESTAMP() AS ts, CURRENT_USER() AS usr, CURRENT_WAREHOUSE() AS wh")
     row = cs.fetchone()
     st.success("✅ Query succeeded!")
     st.write(f"**Timestamp:** {row[0]}  |  **User:** {row[1]}  |  **Warehouse:** {row[2]}")
-except Exception as e:
-    st.error("❌ Query failed:")
-    st.code(str(e))
-finally:
     conn.close()
+
+except Exception as e:
+    st.error("❌ Connection failed. Full error:")
+    st.code(str(e))
+    st.markdown("""
+**Common fixes:**
+- `account` wrong → try replacing `account` with `host = "vantagedata.eu-west-1.snowflakecomputing.com"` in Cloud Secrets
+- `JWT token invalid` → public key may not be registered on the Snowflake user yet
+- `250001 / Failed to connect` → warehouse or database name is wrong
+""")
