@@ -29,6 +29,9 @@ __pycache__/
 .env.*
 secrets.toml
 
+# Snowflake key files - NEVER commit private keys
+sales/
+
 # Streamlit local config
 .streamlit/secrets.toml
 
