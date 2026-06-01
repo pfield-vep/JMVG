@@ -1,14 +1,13 @@
 """
-pages/00_connection_test.py — Snowflake data explorer (temporary)
-DELETE THIS FILE once you've confirmed what data is available.
+pages/00_connection_test.py — Snowflake schema explorer (temporary)
 """
 import base64
 import pandas as pd
 import streamlit as st
 import snowflake.connector
 
-st.set_page_config(page_title="Snowflake Explorer", page_icon="❄️")
-st.title("❄️ Snowflake Data Explorer")
+st.set_page_config(page_title="Snowflake Schema", page_icon="❄️")
+st.title("❄️ Snowflake — Schema & Sample Data")
 st.write("---")
 
 @st.cache_resource
@@ -24,48 +23,40 @@ def get_conn():
         schema=cfg.get("schema", ""),
     )
 
-def query(sql):
+def run(sql):
     cs = get_conn().cursor()
     cs.execute(sql)
     cols = [d[0] for d in cs.description]
     return pd.DataFrame(cs.fetchall(), columns=cols)
 
+VIEWS = [
+    "RPT_DAILY_DISCOUNTS",
+    "RPT_DAILY_LABOR",
+    "RPT_DAILY_REVIEWS",
+    "RPT_DAILY_SALES",
+    "RPT_WEEKLY_COGS",
+]
+
 try:
-    conn = get_conn()
-    cs = conn.cursor()
+    for view in VIEWS:
+        st.subheader(f"📋 {view}")
 
-    # ── Current context ───────────────────────────────────────────────────────
-    cs.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA(), CURRENT_WAREHOUSE(), CURRENT_ROLE()")
-    row = cs.fetchone()
-    st.success(f"✅ Connected")
-    st.write(f"**Database:** `{row[0]}` | **Schema:** `{row[1]}` | **Warehouse:** `{row[2]}` | **Role:** `{row[3]}`")
-    st.write("---")
+        # Column list
+        df_cols = run(f"""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'REPORTING' AND table_name = '{view}'
+            ORDER BY ordinal_position
+        """)
+        st.write(f"**{len(df_cols)} columns:**")
+        st.dataframe(df_cols, use_container_width=True, hide_index=True)
 
-    # ── All tables this user can see (across all schemas) ─────────────────────
-    st.subheader("All tables visible to this user")
-    df_tables = query("""
-        SELECT table_schema, table_name, table_type, row_count
-        FROM information_schema.tables
-        WHERE table_schema NOT IN ('INFORMATION_SCHEMA')
-        ORDER BY table_schema, table_name
-    """)
-    if df_tables.empty:
-        st.warning("No tables visible. The user may lack SELECT grants on any table.")
-    else:
-        st.dataframe(df_tables, use_container_width=True)
-    st.write("---")
+        # Sample rows
+        with st.expander("Show 5 sample rows"):
+            df_sample = run(f"SELECT * FROM REPORTING.{view} LIMIT 5")
+            st.dataframe(df_sample, use_container_width=True, hide_index=True)
 
-    # ── Preview a table ───────────────────────────────────────────────────────
-    st.subheader("Preview a table")
-    if not df_tables.empty:
-        options = [f"{r['TABLE_SCHEMA']}.{r['TABLE_NAME']}" for _, r in df_tables.iterrows()]
-        selected = st.selectbox("Pick a table", options)
-        if selected:
-            df_preview = query(f"SELECT * FROM {selected} LIMIT 50")
-            st.write(f"{len(df_preview)} rows shown (max 50)")
-            st.dataframe(df_preview, use_container_width=True)
-    else:
-        st.info("No tables to preview.")
+        st.write("---")
 
 except Exception as e:
     st.error("Error:")
