@@ -11,12 +11,11 @@ NOT YET INCLUDED vs old dashboard (see SNOWFLAKE_MIGRATION_GAPS.md):
 """
 
 import base64
-from datetime import date, timedelta
+from datetime import date
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import snowflake.connector
-from dateutil.relativedelta import relativedelta
 
 st.set_page_config(
     page_title="SF Daily Sales | JM Valley Group",
@@ -36,8 +35,6 @@ GREEN  = "#16a34a"
 DANGER = "#dc2626"
 AMBER  = "#d97706"
 MUTED  = "#6B7280"
-
-COMP_MONTHS = 15  # months before period start for SSS eligibility
 
 # ── Snowflake connection ──────────────────────────────────────────────────────
 @st.cache_resource
@@ -205,21 +202,13 @@ PERIOD_COLS = {
     },
 }
 
-def period_start(period, latest):
-    d = latest if isinstance(latest, date) else date.fromisoformat(str(latest))
-    if period == "WTD": return d - timedelta(days=d.weekday())
-    if period == "MTD": return d.replace(day=1)
-    if period == "QTD":
-        q_month = ((d.month - 1) // 3) * 3 + 1
-        return d.replace(month=q_month, day=1)
-    return d.replace(month=1, day=1)  # YTD
+def comp_mask(df, py_col):
+    """Comp-eligible = stores that had sales in the same period last year.
+    Matches existing dashboard methodology: prior year sales > 0."""
+    return df[py_col] > 0
 
-def comp_mask(df, pstart):
-    cutoff = pstart - relativedelta(months=COMP_MONTHS)
-    return df["FIRST_SALES_DATE"].notna() & (df["FIRST_SALES_DATE"] <= cutoff)
-
-def calc_sss(df, cy_col, py_col, pstart):
-    mask = comp_mask(df, pstart)
+def calc_sss(df, cy_col, py_col):
+    mask = comp_mask(df, py_col)
     cy = df.loc[mask, cy_col].sum()
     py = df.loc[mask, py_col].sum()
     return (cy - py) / py * 100 if py > 0 else None
@@ -305,7 +294,6 @@ period = st.radio("", ["WTD", "MTD", "QTD", "YTD"],
                   horizontal=True, index=0, label_visibility="collapsed")
 
 pc       = PERIOD_COLS[period]
-pstart   = period_start(period, latest)
 cy_s, py_s = pc["sales"]
 cy_t, py_t = pc["tx"]
 cy_b, py_b = pc["bread"]
@@ -317,14 +305,14 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "By District", "3P Channels", "Cat
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
 # ══════════════════════════════════════════════════════════════════════════════
-    sss_v  = calc_sss(df, cy_s, py_s, pstart)
-    sst_v  = calc_sss(df, cy_t, py_t, pstart)
-    bread_v = calc_sss(df, cy_b, py_b, pstart)
+    sss_v  = calc_sss(df, cy_s, py_s)
+    sst_v  = calc_sss(df, cy_t, py_t)
+    bread_v = calc_sss(df, cy_b, py_b)
 
     total_cy = df[cy_s].sum()
     total_py = df[py_s].sum()
     total_tx_cy = df[cy_t].sum()
-    comp_count  = comp_mask(df, pstart).sum()
+    comp_count  = comp_mask(df, py_s).sum()
     atc = total_cy / total_tx_cy if total_tx_cy else None
 
     # Channel mix — WTD columns used for %
@@ -361,8 +349,8 @@ with tab1:
         r_cy  = grp[cy_s].sum()
         r_py  = grp[py_s].sum()
         r_tx  = grp[cy_t].sum()
-        r_sss = calc_sss(grp, cy_s, py_s, pstart)
-        r_sst = calc_sss(grp, cy_t, py_t, pstart)
+        r_sss = calc_sss(grp, cy_s, py_s)
+        r_sst = calc_sss(grp, cy_t, py_t)
         rows.append(f"""<tr>
           <td>{region or "—"}</td>
           <td>{len(grp)}</td>
@@ -372,8 +360,8 @@ with tab1:
           <td>{r_tx:,.0f}</td>
         </tr>""")
 
-    total_sss = calc_sss(df, cy_s, py_s, pstart)
-    total_sst = calc_sss(df, cy_t, py_t, pstart)
+    total_sss = calc_sss(df, cy_s, py_s)
+    total_sst = calc_sss(df, cy_t, py_t)
     rows.append(f"""<tr>
       <td>TOTAL</td>
       <td>{len(df)}</td>
@@ -421,9 +409,9 @@ with tab2:
         d_cy   = grp[cy_s].sum()
         d_py   = grp[py_s].sum()
         d_tx   = grp[cy_t].sum()
-        d_sss  = calc_sss(grp, cy_s, py_s, pstart)
-        d_sst  = calc_sss(grp, cy_t, py_t, pstart)
-        d_comp = comp_mask(grp, pstart).sum()
+        d_sss  = calc_sss(grp, cy_s, py_s)
+        d_sst  = calc_sss(grp, cy_t, py_t)
+        d_comp = comp_mask(grp, py_s).sum()
         dist_rows.append({
             "District": district or "—",
             "Stores": len(grp),
@@ -438,11 +426,11 @@ with tab2:
     dist_rows.append({
         "District": "TOTAL",
         "Stores": len(df),
-        "Comp": comp_mask(df, pstart).sum(),
+        "Comp": comp_mask(df, py_s).sum(),
         f"Net Sales ({period})": fmt_usd(df[cy_s].sum()),
         "vs PY": fmt_pct(yoy(df[cy_s].sum(), df[py_s].sum())),
-        "SSS%": fmt_pct(calc_sss(df, cy_s, py_s, pstart)),
-        "SST%": fmt_pct(calc_sss(df, cy_t, py_t, pstart)),
+        "SSS%": fmt_pct(calc_sss(df, cy_s, py_s)),
+        "SST%": fmt_pct(calc_sss(df, cy_t, py_t)),
         "Transactions": f"{df[cy_t].sum():,.0f}",
     })
 
@@ -559,8 +547,8 @@ with tab4:
                   BLUE, fmt_pct(yoy(total_tkt_cy, total_tkt_py))),
         tile_html("ezCater Sales", fmt_usd(ezcater_cy),
                   GOLD, fmt_pct(yoy(ezcater_cy, ezcater_py))),
-        tile_html("ezCater Orders", f"{ez_cnt_cy:,.0f}",
-                  GOLD, f"PY: {ez_cnt_py:,.0f}"),
+        tile_html("ezCater Orders", f"{int(ez_cnt_cy):,}",
+                  GOLD, f"PY: {int(ez_cnt_py):,}"),
         tile_html("% of Total Sales", f"{cat_share:.1f}%" if cat_share else "—",
                   MUTED, period),
     ]), unsafe_allow_html=True)
@@ -579,7 +567,7 @@ with tab4:
                 "vs PY": fmt_pct(yoy(cy_v, py_v)),
                 "Tickets": f"{r[tkt_cy_col]:,.0f}",
                 "ezCater $": fmt_usd(r["EZCATER_TOTAL_AMOUNT"]),
-                "ezCater Orders": f"{r['EZCATER_COUNT']:,.0f}",
+                "ezCater Orders": f"{int(r.get('EZCATER_COUNT') or 0):,}",
             })
 
     if cat_store:
