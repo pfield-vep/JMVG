@@ -18,6 +18,7 @@ pg = st.navigation([
     st.Page("pages/1_SSS_Dashboard.py",      title="SSS Dashboard",      icon="📈"),
     st.Page("pages/3_Data_Export.py",        title="Data Export",        icon="📥"),
     st.Page("pages/4_Update_Data.py",        title="Update Data",        icon="🔄"),
+    st.Page("pages/11_SF_Data_Export.py",    title="SF Data Export",     icon="📤"),
     st.Page("pages/00_connection_test.py",   title="SF Connection Test", icon="🔌"),
 ])
 
