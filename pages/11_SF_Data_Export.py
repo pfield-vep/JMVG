@@ -99,7 +99,7 @@ if st.button("📥 Pull & Download Catering Data", type="primary", key="catering
                 ORDER BY DATE_OF_BUSINESS, SITE_ID
             """)
 
-            st.success(f"✅ {len(df_cat):,} rows pulled — {df_cat['Date'].min()} to {df_cat['Date'].max()}")
+            st.success(f"✅ {len(df_cat):,} rows pulled — {df_cat.iloc[:,0].min()} to {df_cat.iloc[:,0].max()}")
             st.dataframe(df_cat.head(10), use_container_width=True, hide_index=True)
             st.caption(f"Showing first 10 of {len(df_cat):,} rows. Download below for full dataset.")
 
@@ -107,7 +107,7 @@ if st.button("📥 Pull & Download Catering Data", type="primary", key="catering
             st.download_button(
                 label="💾 Download Catering Data (.xlsx)",
                 data=excel_bytes,
-                file_name=f"JMV_Catering_Daily_{min_date}_to_{max_date}.xlsx",
+                file_name=f"JMV_Catering_Daily_{df_cat.iloc[:,0].min()}_to_{df_cat.iloc[:,0].max()}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="dl_catering",
             )
@@ -158,7 +158,7 @@ if st.button("📥 Pull & Download 3P Delivery Data", type="primary", key="third
                 ORDER BY DATE_OF_BUSINESS, SITE_ID
             """)
 
-            st.success(f"✅ {len(df_3p):,} rows pulled — {df_3p['Date'].min()} to {df_3p['Date'].max()}")
+            st.success(f"✅ {len(df_3p):,} rows pulled — {df_3p.iloc[:,0].min()} to {df_3p.iloc[:,0].max()}")
             st.dataframe(df_3p.head(10), use_container_width=True, hide_index=True)
             st.caption(f"Showing first 10 of {len(df_3p):,} rows. Download below for full dataset.")
 
@@ -166,7 +166,7 @@ if st.button("📥 Pull & Download 3P Delivery Data", type="primary", key="third
             st.download_button(
                 label="💾 Download 3P Delivery Data (.xlsx)",
                 data=excel_bytes,
-                file_name=f"JMV_3P_Delivery_Daily_{min_date}_to_{max_date}.xlsx",
+                file_name=f"JMV_3P_Delivery_Daily_{df_3p.iloc[:,0].min()}_to_{df_3p.iloc[:,0].max()}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="dl_3p",
             )
